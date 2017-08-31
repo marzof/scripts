@@ -1,4 +1,38 @@
 #!/usr/bin/env python
+#
+# Copyright (c) 2017 Marco Ferrara
+
+# Purpose:
+# This script reads a SVG file created by FreeCAD and creates multiple DXF files
+# according to lines style (visible, hidden, thick, thin...).
+# To convert SVG into DXF it runs the script "svgToDxf.sh" (that runs pstoedit).
+# svgToDxf.sh is a script by Will Winder that I forked and slightly changed to
+# fulfil my needs: you can find it at https://github.com/marzof/svgToDxf
+# You also need to get the mf.py module at https://github.com/marzof/scripts/blob/master/mf.py
+
+######################################
+# REMEMBER:
+# The script needs to use the svgToDxf.sh file so, after you download it,
+# you have to change its location (search the corresponding line at the beginning
+# of tha main function) according to the actual path in your machine
+######################################
+ 
+# License:
+# GNU GPL License
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 
 import sys
 import os
@@ -24,6 +58,7 @@ def main(f):
     path_suffix = lambda x: '_%032x' % hash_code if x else ''
     actual_case = 0
 
+    ## Checks what to do if a folder with same name exists yet
     cases = {
             'n': {
                 'label': 'create a new folder with a different name',
@@ -88,6 +123,7 @@ def main(f):
     list_dict = mf.lists_from_list(split_svg, test, label, action)
 
     cases[actual_case]['actions']()
+    ## For every dict creates an SVG file uniquely named, converts it to DXF and deletes it
     for k in list_dict:
         if k is not '' and 'colnone' not in k:
             filepath = path + '/' + filename + '-' + k + '.svg'
