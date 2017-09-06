@@ -22,6 +22,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import sys
+
+sys.setrecursionlimit(10000)
+
 def content_of_file(file):
     ''' Return the content of file '''
     f = open(file, 'r')
@@ -33,19 +37,19 @@ def printf(x):
     ''' Print as function '''
     print x
 
-def lists_from_list(lst, test, label, action, a = {}, verbose = False):
+def lists_from_list(lst, test, label, action, verbose = False, a = {}):
     ''' Filter a list lst according to test and return a
         dict of lists using label as key and action as rule'''
-    if verbose:
-        print 'before:', lst, a
+    if verbose and len(lst) > 0:
+            print 'before:', lst[0][:100], a
     if len(lst) > 0:
         if test(lst[0]) and label(lst[0]) not in a:
             a[label(lst[0])] = []
-        lists_from_list(lst[1:], test, label, action, a, verbose)
+        lists_from_list(lst[1:], test, label, action, verbose, a)
         if test(lst[0]):
             action(lst[0], label(lst[0]), a)
         if verbose:
-            print 'after:', lst, a
+            print 'after:', lst[0][:100], a
         return a
 
 def export(content, filename):
