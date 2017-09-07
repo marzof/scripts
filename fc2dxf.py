@@ -8,13 +8,17 @@
 # To convert SVG into DXF it runs the script "svgToDxf.sh" (that runs pstoedit).
 # svgToDxf.sh is a script by Will Winder that I forked and slightly changed to
 # fulfil my needs: you can find it at https://github.com/marzof/svgToDxf
-# You also need to get the mf.py module at https://github.com/marzof/scripts/blob/master/mf.py
+# To merge all the dxf files you need the QCAD's merge script (see at
+# http://www.ribbonsoft.com/en/qcad-documentation/qcad-command-line-tools).
+# You also need to get the mf.py module at
+# https://github.com/marzof/scripts/blob/master/mf.py
 
 ######################################
 # REMEMBER:
-# The script needs to use the svgToDxf.sh file so, after you download it,
-# you have to change its location (search the corresponding line at the beginning
-# of tha main function) according to the actual path in your machine
+# The script needs to use the svgToDxf.sh and the QCAD's merge script file so,
+# after you download them, you have to change their location (search the corresponding
+# lines at the beginning of tha main function) according to the actual paths in your
+# machine
 ######################################
  
 # License:
@@ -50,8 +54,9 @@ def main(f):
 
     filename = re.sub('\.svg$', '', f)
     ######################################################
-    ## Change path according to svgToDxf.sh location
+    ## Change path according to svgToDxf.sh location and QCAD location
     svg2dxf_path = '/home/mf/softwares/svgToDxf/svgToDxf.sh'
+    dxfmerge_path = '/home/mf/softwares/qcad-pro/merge' 
     ######################################################
     hash_code = random.getrandbits(128)
 
@@ -123,16 +128,48 @@ def main(f):
     list_dict = mf.lists_from_list(split_svg, test, label, action)
 
     cases[actual_case]['actions']()
-    ## For every dict creates an SVG file uniquely named, converts it to DXF and deletes it
+
+    ## Create the xml for dxf merging
+    print "Create xml for merging of following dict:"
+    print [d for d in list_dict.keys() if len(d) > 0]
+    xml_opening = '<?xml version="1.0" encoding="UTF-8"?> \
+            <merge xmlns="http://qcad.org/merge/elements/1.0/" unit="Millimeter">'
+    xml_item = lambda x: '<item src="' + filename + '-' + x + \
+            '.dxf"><insert></insert></item>'
+    xml_close = '</merge>'
+    xml_body = xml_opening + \
+            ''.join([xml_item(d) for d in list_dict.keys() if len(d) > 0]) + xml_close
+    xml_path = path + '/' + filename + '.xml'
+    xml_file = open(xml_path, 'w')
+    xml_file.write(xml_body)
+    xml_file.close()
+
+    ## Add a page-sized rectangle to the svg
+    re_viewbox = re.compile('viewBox="([\d ]+)"')
+    a_dict = list_dict[list(list_dict)[1]][0]
+    viewbox = re_viewbox.findall(a_dict)[0].split()
+    print "Page size is" + str(viewbox[2:])
+    rect = '<rect style="stroke:#000000;stroke-width:1;fill:none" id="rect999999" \
+            width="' + viewbox[2] + '" height="' + viewbox[3] + '" \
+            x="' + viewbox[0] + '" y="' + viewbox[1] + '" /></svg>'
+
+    ## For every dict create an SVG file uniquely named, convert it to DXF and delete it
     for k in list_dict:
         if k is not '' and 'colnone' not in k:
             filepath = path + '/' + filename + '-' + k + '.svg'
             print 'Exporting ' + filepath
             f = open(filepath, 'w')
-            [f.write(x) for x in list_dict[k]]
+            ## Last line is replaced by rect
+            [f.write(x) for x in list_dict[k][:-1]]
+            f.write(rect)
             f.close()
             subprocess.call([svg2dxf_path, filepath])
             os.remove(filepath)
+
+    ## Merge all dxfs in one
+    merging_parameters = '-f -o ' + filename + '.dxf ' + path + '/' + filename + '.xml'
+    subprocess.call(dxfmerge_path + ' ' + merging_parameters, shell=True)
+    #subprocess.call([dxfmerge_path, merging_parameters])
 
 
 if len(sys.argv) == 2:
