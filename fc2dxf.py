@@ -104,8 +104,9 @@ def main(f):
 
 
     ## Creates a dict for every tag containing stroke color definition (key: col).
-    ## Stroke-dasharray (key: dsh) and stroke-width (key: wdt) are optional
-    rule = '(?= stroke="#?(?P<col>[\d\w]+))(?:.* stroke-dasharray="(?P<dsh>[\d\.,]+))?(?:.* stroke-width="(?P<wdt>[\d\.,]+))?'
+    ## Fill (key:fil), stroke-dasharray (key: dsh) and stroke-width (key: wdt) are optional
+    #rule = '(?= stroke="#?(?P<col>[\d\w]+))(?:.* stroke-dasharray="(?P<dsh>[\d\.,]+))?(?:.* stroke-width="(?P<wdt>[\d\.,]+))?'
+    rule = '(?:.* fill="#?(?P<fil>[\d\w]+)" )?[^\s]+(?= stroke="#?(?P<col>[\d\w]+))(?:.* stroke-dasharray="(?P<dsh>[\d\.,]+))?(?:.* stroke-width="(?P<wdt>[\d\.,]+))?'
 
     ## Catches everything
     test = lambda x: True
@@ -155,7 +156,7 @@ def main(f):
 
     ## For every dict create an SVG file uniquely named, convert it to DXF and delete it
     for k in list_dict:
-        if k is not '' and 'colnone' not in k:
+        if k is not '': # and 'colnone' not in k:
             filepath = path + '/' + filename + '-' + k + '.svg'
             print 'Exporting ' + filepath
             f = open(filepath, 'w')
