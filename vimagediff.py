@@ -29,9 +29,18 @@
 import sys
 import subprocess, shlex
 import tempfile
+from pathlib import Path
 
-imagediff = "~/softwares/scripts/imagediff.sh"
+home = str(Path.home())
+imagediff = home + "/softwares/scripts/imagediff.sh"
+resolution_marker = '-r'
 args = sys.argv[1:]
+resolution = '72'
+base_files = args[:]
+if resolution_marker in args:
+    r_index = args.index(resolution_marker)
+    resolution = args[r_index + 1]
+    base_files = args[2:]
 
 git_show_cmd = shlex.split('git show')
 git_rev_parse_cmd = shlex.split('git rev-parse')
@@ -63,14 +72,14 @@ def main():
     files = []
 
     ## Wrong files number
-    if not 0<len(args)<3:
+    if not 0<len(base_files)<3:
         get_instructions()
         return
 
     ## Simple comparison between two files
-    if len(args) == 2 and ':' not in ' '.join(args):
-        files = sys.argv[1:]
-        subprocess.run([imagediff] + files) 
+    if len(base_files) == 2 and ':' not in ' '.join(base_files):
+        files = base_files
+        subprocess.run([imagediff] + files + [resolution])  
         return
         
     ## Versioning comparison
@@ -86,12 +95,12 @@ def main():
         return
 
     ## Get versioned files and add to files
-    for i, arg in enumerate(sys.argv[1:]):
-        colon_idx = arg.find(':')
-        path[i] = arg[colon_idx+1:]
+    for i, b_file in enumerate(base_files):
+        colon_idx = b_file.find(':')
+        path[i] = b_file[colon_idx+1:]
         
         temp_file[i] = tempfile.NamedTemporaryFile(delete=False)
-        show = subprocess.run(git_show_cmd + [referred(arg)], 
+        show = subprocess.run(git_show_cmd + [referred(b_file)], 
                 stdout=temp_file[i])
         temp_file[i].close()
         files.append(temp_file[i].name)
@@ -99,6 +108,6 @@ def main():
     if not temp_file[1]:
         files.append(path[0])
 
-    subprocess.run([imagediff] + files) 
+    subprocess.run([imagediff] + files + [resolution])  
 
 main()
