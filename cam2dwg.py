@@ -25,7 +25,13 @@
 # - pstoedit
 
 
-## TODO: make universal (no fixed layer names)
+## TODO: make universal (no fixed layer names). Use just first 8 colors:
+## C00-00-00-BLACK
+## CFF-FF-FF-WHITE
+## CFF-00-00 (red)
+## CFF-FF-00 (yellow)
+## ...
+## bpy.data.linestyles["LineStyle.002"].color -> Color((1.0, 1.0, 0.0))
 
 import sys
 import bpy
@@ -62,6 +68,7 @@ freestyle_layers_label = 'Freestyle_layers'
 raw_label = ''
 factor = 2
 large_render_factor = 10
+large_render_factor = 1
 bpy.context.scene.render.resolution_x = factor * 1000
 bpy.context.scene.render.resolution_y = factor * 1000
 base_ortho_scale = factor * large_render_factor * 254.0/96.0
@@ -73,6 +80,7 @@ def set_back(cam):
     bpy.ops.transform.translate(value=(0,0,2*cam.data.clip_start), 
             orient_type='LOCAL')
 
+
 def finalize_render(render_name):
     global renders
     subprocess.run('mv ' + render_name + frame + '.svg ' + render_name + '.svg',
@@ -80,18 +88,25 @@ def finalize_render(render_name):
 
     renders.append(render_name)
 
-def back_render(cam):
+def back_render(cam, render_filename):
     bpy.ops.object.select_all(action='DESELECT')
     cam.select_set(True)
     bpy.context.view_layer.objects.active = cam
     
     set_back(cam)
 
+    for ls in freestyle_settings.linesets:
+        ls.show_render = False
+        if ls.name == 'Back':
+            ls.show_render = True
+
     bpy.context.scene.render.filepath = render_filename + back_label
     bpy.ops.render.render()
 
     ## Reset to start conditions (for non back view)
     set_back(cam)
+    for ls in freestyle_settings.linesets:
+        ls.show_render = freestyle_linesets[ls.name]
 
     bpy.ops.object.select_all(action='DESELECT')
     for obj in selection:
@@ -110,11 +125,12 @@ def render_cam(cam):
         freestyle_layers = [l.strip() for 
                 l in cam.data[freestyle_layers_label].split(',')]
 
-    ## Active freestyle linesets
-    for ls in freestyle_settings.linesets:
-        ls.show_render = False
-        if ls.name in freestyle_layers:
-            ls.show_render = True
+        ## Activate freestyle linesets
+        for ls in freestyle_settings.linesets:
+            ls.show_render = False
+            if ls.name in freestyle_layers:
+                ls.show_render = True
+
 
     bpy.context.scene.render.filepath = render_filename
     bpy.context.scene.camera = cam
@@ -125,7 +141,7 @@ def render_cam(cam):
 
     ## Render back view if needed
     if back_view in cam.data.keys() and cam.data[back_view]:
-        back_render(cam)
+        back_render(cam, render_filename)
 
     ## Reset freestyle linesets
     for ls in freestyle_settings.linesets:
