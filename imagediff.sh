@@ -26,9 +26,9 @@
 	convert - -write mpr:AB \
 		-delete 0--1 \
 		mpr:AB[0] \
-		\( mpr:AB[1] \( mpr:AB[1] -fill '#ffbf00' -colorize 100 \) \
+		\( mpr:AB[1] \( mpr:AB[1] -fill '#cc6600' -colorize 100 \) \
 			-compose blend -composite \) \
-		\( mpr:AB[2] \( mpr:AB[2] -fill '#bf0000' -colorize 100 \) \
+		\( mpr:AB[2] \( mpr:AB[2] -fill '#800000' -colorize 100 \) \
 			-compose blend -composite \) \
 		mpr:AB[3] \
 		miff:-;
