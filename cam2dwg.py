@@ -42,6 +42,7 @@ import re
 
 oda_file_converter = '/usr/bin/ODAFileConverter'
 args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
+large_render_factor = 1
 
 layers = {'cut': ['C00-FF-FF'],
         'proj': ['CFF-00-00'],
@@ -52,6 +53,13 @@ layers = {'cut': ['C00-FF-FF'],
 
 selection = bpy.context.selected_objects
 active = bpy.context.view_layer.objects.active
+
+factor_marker = '-f'
+if factor_marker in args:
+    factor_index = args.index(factor_marker) + 1 
+    large_render_factor = int(args[factor_index])
+    del args[factor_index - 1 : factor_index + 1]
+
 if not args:
     cams = [obj for obj in selection if obj.type == 'CAMERA']
 else:
@@ -67,8 +75,6 @@ freestyle_layers_label = 'Freestyle_layers'
 #raw_label = '_RAW_'
 raw_label = ''
 factor = 2
-large_render_factor = 10
-large_render_factor = 1
 bpy.context.scene.render.resolution_x = factor * 1000
 bpy.context.scene.render.resolution_y = factor * 1000
 base_ortho_scale = factor * large_render_factor * 254.0/96.0
