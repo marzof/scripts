@@ -91,4 +91,7 @@ FILENAME=${1%.*}-${2%.*};
 		miff:-;
 } |
 
-display
+convert - diff.png
+convert diff.png diff.pdf
+rm diff.png
+#display #-write diff.png
