@@ -58,6 +58,7 @@ factor_marker = '-f'
 if factor_marker in args:
     factor_index = args.index(factor_marker) + 1 
     large_render_factor = int(args[factor_index])
+    print('### Render factor:', large_render_factor)
     del args[factor_index - 1 : factor_index + 1]
 
 if not args:
@@ -81,9 +82,9 @@ base_ortho_scale = factor * large_render_factor * 254.0/96.0
 freestyle_settings = bpy.context.window.view_layer.freestyle_settings
 freestyle_linesets = {ls.name: ls.show_render for ls in freestyle_settings.linesets}
 
-def set_back(cam):
+def set_back(cam, direction):
     bpy.ops.transform.resize(value=(1,1,-1), orient_type='LOCAL')
-    bpy.ops.transform.translate(value=(0,0,2*cam.data.clip_start), 
+    bpy.ops.transform.translate(value=(0,0,2*cam.data.clip_start*direction), 
             orient_type='LOCAL')
 
 
@@ -99,7 +100,7 @@ def back_render(cam, render_filename):
     cam.select_set(True)
     bpy.context.view_layer.objects.active = cam
     
-    set_back(cam)
+    set_back(cam, -1)
 
     for ls in freestyle_settings.linesets:
         ls.show_render = False
@@ -110,7 +111,7 @@ def back_render(cam, render_filename):
     bpy.ops.render.render()
 
     ## Reset to start conditions (for non back view)
-    set_back(cam)
+    set_back(cam, 1)
     for ls in freestyle_settings.linesets:
         ls.show_render = freestyle_linesets[ls.name]
 
