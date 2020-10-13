@@ -28,31 +28,34 @@ import bpy
 import os, sys
 import re, random
 import subprocess, shlex
+from shutil import copyfile
 
-oda_file_converter = '/usr/bin/ODAFileConverter'
-active = bpy.context.view_layer.objects.active
-large_render_factor = 1
+ARGS = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
+BLANK_CAD = './blank.dwg'
+ODA_FILE_CONVERTER = '/usr/bin/ODAFileConverter'
+#CONTINUOUS_LINE_RE = r'AcDbLine\n(\s*62\n\s*0\n\s*6\n\s*CONTINUOUS\n)'
+LINEWEIGHT_RE = r'\n\s*100\n\s*AcDbLine\n'
+FACTOR_MARKER = '-f'
+SCRIPT_NAME = 'script.scr'
+FRAME = "{:04d}".format(bpy.context.scene.frame_current)
+RENDER_FACTOR = 2 ## Multiply this value by 1000 to get render resolution
+LARGE_RENDER_FACTOR = int(ARGS[ARGS.index(FACTOR_MARKER) + 1]) \
+        if FACTOR_MARKER in ARGS else 1
+BASE_ORTHO_SCALE = RENDER_FACTOR * LARGE_RENDER_FACTOR * 254.0/96.0
+FREESTYLE_SETS = {
+        'prj': { 'visibility': 'VISIBLE', 'silhouette': True, 'border': False,
+            'contour': True, 'crease': True },
+        'cut': { 'visibility': 'VISIBLE', 'silhouette': False, 'border': True,
+            'contour': False, 'crease': False },
+        'hid': { 'visibility': 'HIDDEN', 'silhouette': True, 'border': True,
+            'contour': True, 'crease': True }
+        }
 
-tmp_name = ''
-
-frame = "{:04d}".format(bpy.context.scene.frame_current)
-renders_paths = []
-
-dxfmerge_path = '/home/mf/softwares/qcad-pro/merge' 
-
-re_block = r"^BLOCK$[^\*]+?^AcDbBlockEnd$"
-re_block_begin = r"^AcDbBlockBegin\n\s*?2\n(.+)\n\s*?70\n\s*(\w+)\n"
-re_block_body = lambda x: r"^"+ x +"\n\s*?1\n([^*]*)?\n\s*0\nENDBLK"
-xref_code = '100'
-dxf_extension = 'dxf'
-
-path = bpy.context.scene.render.filepath
-args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
-selection = bpy.context.selected_objects
+undotted = lambda x: x.replace('.', '_')
+void_svg = lambda x: False if '<path' in x else True
 
 def create_tmp_collection():
     """ Create a tmp collection and link it to the actual scene """
-    global tmp_name
     ## Set a random name for the render collection
     hash_code = random.getrandbits(32)
     collection_name = '%x' % hash_code
@@ -60,31 +63,36 @@ def create_tmp_collection():
         hash_code = random.getrandbits(32)
         collection_name = '%x' % hash_code
 
-    tmp_name = collection_name
-    render_collection = bpy.data.collections.new(tmp_name)
+    render_collection = bpy.data.collections.new(collection_name)
     bpy.context.scene.collection.children.link(render_collection)
-    print('Created tmp collection', tmp_name) 
+    print('Created tmp collection', collection_name) 
     print(render_collection) 
+    return collection_name
 
-def set_freestyle():
+def set_freestyle(tmp_name):
     ''' Enable Freestyle and set lineset and style for rendering '''
     bpy.context.scene.render.use_freestyle = True
     bpy.context.scene.svg_export.use_svg_export = True
     fs_settings = bpy.context.window.view_layer.freestyle_settings
-    fs_settings.linesets.new(tmp_name)
-    for lineset in fs_settings.linesets:
-        lineset.show_render = False
+    for ls in fs_settings.linesets:
+        ls.show_render = False
 
-    fs_lineset = fs_settings.linesets[-1]
-    fs_lineset.name = tmp_name
-    fs_lineset.show_render = True
-    fs_lineset.select_by_collection = True
-    fs_lineset.collection = bpy.data.collections[tmp_name]
+    ## Create dedicated linesets
+    linesets = {}
+    for ls in FREESTYLE_SETS:
+        linesets[ls] = fs_settings.linesets.new(tmp_name + '_' + ls)
+        linesets[ls].show_render = False
+        linesets[ls].select_by_collection = True
+        linesets[ls].collection = bpy.data.collections[tmp_name]
+        linesets[ls].visibility = FREESTYLE_SETS[ls]['visibility']
+        linesets[ls].select_silhouette = FREESTYLE_SETS[ls]['silhouette']
+        linesets[ls].select_border = FREESTYLE_SETS[ls]['border']
+        linesets[ls].select_contour = FREESTYLE_SETS[ls]['contour']
+        linesets[ls].select_crease = FREESTYLE_SETS[ls]['crease']
 
-    print('Created tmp lineset', fs_lineset.name)
-    print(fs_settings.linesets[tmp_name])
+    return linesets
 
-def get_objects():
+def get_objects(cam):
     """ Filter objects to collect """
     ## TODO set to just rendered objects
     objs = []
@@ -94,125 +102,183 @@ def get_objects():
         objs.append(obj)
     return objs
 
-def render_cam(cam, folder_path):
-    global renders_paths
-    
-    for obj in get_objects():
-        render_filename = folder_path  + '/' + obj.name
-        print('render_filename', render_filename)
-        
-        bpy.data.collections[tmp_name].objects.link(obj)
+def render_cam(cam, folder_path, objects, tmp_name, fs_linesets):
+    ''' Execute render for every object and save them as svg '''
 
-        bpy.context.scene.render.filepath = render_filename
+    ## 100% if cam ortho scale == base ortho scale
+    render_scale = round(100 * cam.data.ortho_scale/BASE_ORTHO_SCALE)
+    bpy.context.scene.render.resolution_percentage = render_scale
+
+    for obj in objects:
+        bpy.data.collections[tmp_name].objects.link(obj)
         bpy.context.scene.camera = cam
-        bpy.ops.render.render()
+
+        for ls in fs_linesets:
+            render_name = folder_path  + '/' + undotted(obj.name) + '_' + ls
+            print('Render name:', render_name)
+            fs_linesets[ls].show_render = True
+            bpy.context.scene.render.filepath = render_name
+            bpy.ops.render.render()
+            fs_linesets[ls].show_render = False
+
+            ## Rename svg to remove frame counting
+            os.rename(render_name + FRAME + '.svg', render_name + '.svg')
         
         bpy.data.collections[tmp_name].objects.unlink(obj)
 
-        ## Rename svg to remove frame counting
-        subprocess.run('mv ' + render_filename + frame + '.svg ' + \
-            render_filename + '.svg', shell=True)
 
-        renders_paths.append(render_filename)
-    
-def svg2dxf(render_path, folder_path):
+def svg2dwg(folder_path, drawing):
     ''' Convert svg to dxf '''
+    render_path = folder_path + '/' + undotted(drawing)
     svg = render_path + '.svg'
     eps = render_path + '.eps'
     dxf = render_path + '.dxf'
 
-    ## Run with Inkscape 0.92
-    subprocess.run(['inkscape', '-f', svg, '-C', '-E', eps])
+    ## Remove svg not containing '<path'
+    f_svg = open(svg, 'r')
+    svg_content = f_svg.read()
+    f_svg.close()
+    if void_svg(svg_content):
+        os.remove(svg)
+    else:
+        ## Run with Inkscape 0.92
+        subprocess.run(['inkscape', '-f', svg, '-C', '-E', eps])
+        os.remove(svg)
 
-    ## Run with Inkscape 1.0
-    ## subprocess.run(['inkscape', svg, '-C', '-o', eps])
+        ## Run with Inkscape 1.0
+        ## subprocess.run(['inkscape', svg, '-C', '-o', eps])
 
-    eps2dxf = "pstoedit -xscale {} -yscale {} -dt -f ".format(
-            str(large_render_factor), str(large_render_factor)) + \
-                    "'dxf_s:-polyaslines -dumplayernames -mm' {} {}".format(eps, dxf)
-    subprocess.run(eps2dxf, shell=True) 
-    subprocess.run(['rm', svg, eps])
+        eps2dxf = "pstoedit -xscale {} -yscale {} -dt -f ".format(
+                str(LARGE_RENDER_FACTOR), str(LARGE_RENDER_FACTOR)) + \
+                        "'dxf_s:-polyaslines -dumplayernames -mm' {} {}".format(eps, dxf)
+        subprocess.run(eps2dxf, shell=True) 
+        os.remove(eps)
 
-def merge_dxf(renders_paths, folder_path):
-    ''' Create the xml for dxf merging '''
-    print("Create xml for dxfs merging")
-    xml_opening = '<?xml version="1.0" encoding="UTF-8"?> \
-            \n\t<merge xmlns="http://qcad.org/merge/elements/1.0/" unit="Millimeter">'
-    xml_item = lambda x: '\n\t\t<item src="' + x + '.dxf"><insert></insert></item>'
-    xml_close = '\n\t</merge>'
-    xml_body = xml_opening + \
-            ''.join([xml_item(d) for d in renders_paths]) + xml_close
-    xml_path = folder_path + '.xml'
-    xml_file = open(xml_path, 'w')
-    xml_file.write(xml_body)
-    xml_file.close()
-    print("Merging done")
+        ## Change continuous lines and lineweight to ByBlock in dxfs
+        f_dxf = open(dxf, 'r')
+        dxf_content = f_dxf.read()
+        f_dxf.close()
 
-    ## Merge all dxfs in one
-    merging_parameters = '-f -o ' + folder_path + '.dxf ' + xml_path
-    subprocess.call(dxfmerge_path + ' ' + merging_parameters, shell=True)
-    subprocess.run(['rm', xml_path])
+        dxf_linetype = re.sub(r'CONTINUOUS', r'ByBlock', dxf_content)
+        dxf_lineweight = re.sub(LINEWEIGHT_RE, 
+                r'\n370\n    -2\n100\nAcDbLine\n', dxf_linetype)
 
-def blocks2xref(folder_path):
-    ''' Convert every block inside dxf in xref '''
-    f = open(folder_path + '.' + dxf_extension, 'r')
-    dxf = f.read()
-    f.close()
+        f_dxf = open(dxf, 'w')
+        f_dxf.write(dxf_lineweight)
+        f_dxf.close()
 
-    blocks = re.findall(re_block, dxf, re.MULTILINE)
 
-    for b in blocks:
-        block_begin_src = re.search(re_block_begin, b, re.MULTILINE)
-        block_name = block_begin_src.group(1).strip()
-        block_type = block_begin_src.group(2)
-        type_start = block_begin_src.span(2)[0]
-        type_end = block_begin_src.span(2)[1]
-        begin_end = block_begin_src.span(0)[1]
+        subprocess.run([ODA_FILE_CONVERTER, folder_path, folder_path, 'ACAD2010', 
+            'DWG', '0', '1', undotted(drawing) + '.dxf'])
+        os.remove(dxf)
+        if drawing:
+            return undotted(drawing)
 
-        block_body_src = re.search(re_block_body(block_name), b[begin_end:], 
-                re.MULTILINE)
-        block_body = block_body_src.group(1)
-        body_start = begin_end + block_body_src.span(1)[0]
-        body_end = begin_end + block_body_src.span(1)[1]
+def create_cad_script(dwgs, files_list, folder_path):
+    ''' Create script to run on cad file '''
+    print(dwgs)
+    print(files_list)
+    new_objs = list(set(dwgs) - set(files_list))
+    del_objs = list(set(files_list) - set(dwgs))
+    print('new', new_objs)
+    print('new', bool(new_objs))
+    print('del', del_objs)
+    with open(folder_path + '/' + SCRIPT_NAME, 'w') as scr:
+        if new_objs:
+            for new_obj in new_objs:
+                scr.write('XREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(
+                    folder_path + '/' + new_obj + '.dwg'))
+        if del_objs:
+            scr.write('XREF\nd\n{}'.format(','.join(del_objs)))
+            for f in [folder_path + '/' + del_obj + '.dwg' 
+                    for del_obj in del_objs]:
+                os.remove(f)
+    scr.close()
 
-        new_block = b[:type_start] + xref_code + b[type_end:body_start] + folder_path + \
-                '/' + block_name + '.' + dxf_extension + b[body_end:]
+def get_render_args():
+    ''' Get cameras and object based on args or selection '''
+    selection = bpy.context.selected_objects
+    render_args = []
+    cams = []
+    objs = []
+    marker_index = -1
+    for i, arg in enumerate(ARGS):
+        if arg == FACTOR_MARKER:
+            marker_index = i + 1
+        elif i == marker_index:
+            continue
+        else:
+            render_args.append(arg)
 
-        dxf = re.sub(b, new_block, dxf, re.MULTILINE)
+    for arg in render_args:
+        try:
+            item = bpy.data.objects[arg]
+            if item.type == "CAMERA":
+                cams.append(item)
+            elif item.type == "MESH":
+                objs.append(item)
+        except:
+            print(arg, 'not present')
+            continue
 
-    f = open(folder_path + '.' + dxf_extension, 'w')
-    f.write(dxf)
-    f.close()
+    if not cams:
+        cams = [obj for obj in selection if obj.type == 'CAMERA']
+    if not objs:
+        objs = [obj for obj in selection if obj.type in ['MESH', 'CURVE']]
+    return {'cams': cams, 'objs': objs}
+
+def prepare_files(path, folder_path, cam_name):
+    ''' Prepare files and folder to receive new renders '''
+    files_list = []
+    if cam_name not in os.listdir(path):
+        print('Create', folder_path)
+        os.mkdir(folder_path)
+    else:
+        ## Folder already exists. Get the dwg inside it
+        files_list = [os.path.splitext(ob)[0] for ob in os.listdir(folder_path) 
+                if os.path.splitext(ob)[1] == '.dwg' ]
+        print(folder_path, 'exists and contains:\n', files_list)
+
+    ## If dwg doesn't exist, copy it from blank template
+    if cam_name + '.dwg' not in os.listdir(path):
+        print('Create', cam_name + '.dwg')
+        copyfile(BLANK_CAD, cam_name + '.dwg')
+    else: print(cam_name + '.dwg exists')
+
+    return files_list
 
 def main():
-    ## Get the cameras
-    ## TODO get objects too: allowing partial rendering
-    if not args:
-        cams = [obj for obj in selection if obj.type == 'CAMERA']
-    else:
-        cams = [bpy.data.objects[arg] for arg in args]
+    path = bpy.context.scene.render.filepath
+    #active = bpy.context.view_layer.objects.active
 
-    create_tmp_collection()
-    set_freestyle()
+    bpy.context.scene.render.resolution_x = RENDER_FACTOR * 1000
+    bpy.context.scene.render.resolution_y = RENDER_FACTOR * 1000
+
+    cams = get_render_args()['cams']
+    objs = get_render_args()['objs']
+
+    tmp_name = create_tmp_collection()
+    fs_linesets = set_freestyle(tmp_name)
+    ## TODO set freestyle for back view
+
     for cam in cams:
-        folder_path = path + cam.name
+        cam_name = undotted(cam.name)
+        folder_path = path + cam_name
+        objects = get_objects(cam) if not objs else objs
+        print('Objects to render are:\n', [undotted(ob.name) for ob in objects])
 
-        ## Try to create the folder for objects drawings.
-        ## If it exists go on and rewrite files inside it
-        ## TODO check all the files already in folder and compare with new files
-        try:
-            os.mkdir(folder_path)
-        except:
-            pass
+        files_list = prepare_files(path, folder_path, cam_name)
 
-        render_cam(cam, folder_path)
+        render_cam(cam, folder_path, objects, tmp_name, fs_linesets)
 
-        for render_path in renders_paths:
-            ## TODO convert to dwg and delete unnecessary files
-            svg2dxf(render_path, folder_path)
-        ## TODO create a script to populate the dwg with xref
-        if not os.path.exists(folder_path + '.' + dxf_extension):
-            merge_dxf(renders_paths, folder_path)
-            blocks2xref(folder_path)
+        dwg_raw_list = []
+        drawings = [os.path.splitext(ob)[0] for ob in os.listdir(folder_path) 
+                if os.path.splitext(ob)[1] == '.svg' ]
+        for drawing in drawings:
+            dwg_raw_list.append(svg2dwg(folder_path, drawing))
+
+        dwgs = [d for d in dwg_raw_list if d]
+
+        create_cad_script(dwgs, files_list, folder_path)
 
 main()
