@@ -29,27 +29,42 @@ import os, sys
 import re, random
 import subprocess, shlex
 from shutil import copyfile
+from pathlib import Path
 
 ARGS = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
+FLAGS = [arg for arg in ARGS if arg.startswith('-')]
 BLANK_CAD = './blank.dwg'
 ODA_FILE_CONVERTER = '/usr/bin/ODAFileConverter'
 #CONTINUOUS_LINE_RE = r'AcDbLine\n(\s*62\n\s*0\n\s*6\n\s*CONTINUOUS\n)'
 LINEWEIGHT_RE = r'\n\s*100\n\s*AcDbLine\n'
 FACTOR_MARKER = '-f'
+LINESTYLE_MARKER = {
+        'p': 'prj',
+        'h': 'hid',
+        'c': 'cut',
+        'b': 'bak'
+        }
 SCRIPT_NAME = 'script.scr'
 FRAME = "{:04d}".format(bpy.context.scene.frame_current)
 RENDER_FACTOR = 2 ## Multiply this value by 1000 to get render resolution
 LARGE_RENDER_FACTOR = int(ARGS[ARGS.index(FACTOR_MARKER) + 1]) \
         if FACTOR_MARKER in ARGS else 1
+RENDERABLE_ARGS = list(set(ARGS) - set(FLAGS) - 
+        set([str(LARGE_RENDER_FACTOR) * (FACTOR_MARKER in ARGS)]))
 BASE_ORTHO_SCALE = RENDER_FACTOR * LARGE_RENDER_FACTOR * 254.0/96.0
+RENDERABLES = ['MESH', 'CURVE', 'EMPTY']
 FREESTYLE_SETS = {
         'prj': { 'visibility': 'VISIBLE', 'silhouette': True, 'border': False,
             'contour': True, 'crease': True },
         'cut': { 'visibility': 'VISIBLE', 'silhouette': False, 'border': True,
             'contour': False, 'crease': False },
         'hid': { 'visibility': 'HIDDEN', 'silhouette': True, 'border': True,
-            'contour': True, 'crease': True }
+            'contour': True, 'crease': True },
+        'bak': { 'visibility': 'VISIBLE', 'silhouette': True, 'border': False,
+            'contour': True, 'crease': True },
         }
+RENDERABLE_STYLES = [LINESTYLE_MARKER[lm] for lm in LINESTYLE_MARKER 
+        if lm in list(''.join(FLAGS))]
 
 undotted = lambda x: x.replace('.', '_')
 void_svg = lambda x: False if '<path' in x else True
@@ -59,10 +74,12 @@ def create_tmp_collection():
     ## Set a random name for the render collection
     hash_code = random.getrandbits(32)
     collection_name = '%x' % hash_code
+    ## If collection name exists get a new name
     while collection_name in [coll.name for coll in bpy.data.collections]:
         hash_code = random.getrandbits(32)
         collection_name = '%x' % hash_code
 
+    ## Create the new collection and link it to the scene
     render_collection = bpy.data.collections.new(collection_name)
     bpy.context.scene.collection.children.link(render_collection)
     print('Created tmp collection', collection_name) 
@@ -74,12 +91,13 @@ def set_freestyle(tmp_name):
     bpy.context.scene.render.use_freestyle = True
     bpy.context.scene.svg_export.use_svg_export = True
     fs_settings = bpy.context.window.view_layer.freestyle_settings
+    ## Disable existing linesets
     for ls in fs_settings.linesets:
         ls.show_render = False
 
     ## Create dedicated linesets
     linesets = {}
-    for ls in FREESTYLE_SETS:
+    for ls in [fs for fs in FREESTYLE_SETS if fs in RENDERABLE_STYLES]:
         linesets[ls] = fs_settings.linesets.new(tmp_name + '_' + ls)
         linesets[ls].show_render = False
         linesets[ls].select_by_collection = True
@@ -94,13 +112,26 @@ def set_freestyle(tmp_name):
 
 def get_objects(cam):
     """ Filter objects to collect """
-    ## TODO set to just rendered objects
+    ## TODO set to just viewed objects
+    ## TODO cut render only for actual cut objects
+    ## TODO bak render only for actual rear objects
+
     objs = []
     for obj in bpy.context.selectable_objects:
-        if obj.type not in ['MESH', 'CURVE']:
-            continue
-        objs.append(obj)
+        if obj.type in RENDERABLES:
+            objs.append(obj)
     return objs
+
+def set_back(cam):
+    ''' Invert cam direction to render back view '''
+
+    bpy.ops.object.select_all(action='DESELECT')
+    cam.select_set(True)
+    bpy.context.view_layer.objects.active = cam
+
+    bpy.ops.transform.resize(value=(1,1,-1), orient_type='LOCAL')
+    bpy.ops.transform.translate(value=(0,0,-2*cam.data.clip_start), 
+            orient_type='LOCAL')
 
 def render_cam(cam, folder_path, objects, tmp_name, fs_linesets):
     ''' Execute render for every object and save them as svg '''
@@ -108,17 +139,24 @@ def render_cam(cam, folder_path, objects, tmp_name, fs_linesets):
     ## 100% if cam ortho scale == base ortho scale
     render_scale = round(100 * cam.data.ortho_scale/BASE_ORTHO_SCALE)
     bpy.context.scene.render.resolution_percentage = render_scale
+    cam_name = undotted(cam.name)
 
     for obj in objects:
         bpy.data.collections[tmp_name].objects.link(obj)
         bpy.context.scene.camera = cam
 
         for ls in fs_linesets:
-            render_name = folder_path  + '/' + undotted(obj.name) + '_' + ls
+            render_name = folder_path  + '/' + ls + '/' + cam_name + '-' + \
+                    undotted(obj.name) + '_' + ls
             print('Render name:', render_name)
             fs_linesets[ls].show_render = True
             bpy.context.scene.render.filepath = render_name
-            bpy.ops.render.render()
+            if ls == 'bak':
+                set_back(cam)
+                bpy.ops.render.render()
+                set_back(cam)
+            else:
+                bpy.ops.render.render()
             fs_linesets[ls].show_render = False
 
             ## Rename svg to remove frame counting
@@ -126,18 +164,25 @@ def render_cam(cam, folder_path, objects, tmp_name, fs_linesets):
         
         bpy.data.collections[tmp_name].objects.unlink(obj)
 
+def get_file_content(f):
+    f = open(f, 'r')
+    f_content = f.read()
+    f.close()
+    return f_content
 
-def svg2dwg(folder_path, drawing):
+def svg2dxf(folder_path, svg_file):
     ''' Convert svg to dxf '''
-    render_path = folder_path + '/' + undotted(drawing)
-    svg = render_path + '.svg'
+    render_path = os.path.splitext(svg_file)[0]
+    svg = svg_file
     eps = render_path + '.eps'
     dxf = render_path + '.dxf'
 
+    eps2dxf = "pstoedit -xscale {} -yscale {} -dt -f ".format(
+        str(LARGE_RENDER_FACTOR), str(LARGE_RENDER_FACTOR)) + \
+            "'dxf_s:-polyaslines -dumplayernames -mm' {} {}".format(eps, dxf)
+
     ## Remove svg not containing '<path'
-    f_svg = open(svg, 'r')
-    svg_content = f_svg.read()
-    f_svg.close()
+    svg_content = get_file_content(svg)
     if void_svg(svg_content):
         os.remove(svg)
     else:
@@ -148,16 +193,11 @@ def svg2dwg(folder_path, drawing):
         ## Run with Inkscape 1.0
         ## subprocess.run(['inkscape', svg, '-C', '-o', eps])
 
-        eps2dxf = "pstoedit -xscale {} -yscale {} -dt -f ".format(
-                str(LARGE_RENDER_FACTOR), str(LARGE_RENDER_FACTOR)) + \
-                        "'dxf_s:-polyaslines -dumplayernames -mm' {} {}".format(eps, dxf)
         subprocess.run(eps2dxf, shell=True) 
         os.remove(eps)
 
         ## Change continuous lines and lineweight to ByBlock in dxfs
-        f_dxf = open(dxf, 'r')
-        dxf_content = f_dxf.read()
-        f_dxf.close()
+        dxf_content = get_file_content(dxf)
 
         dxf_linetype = re.sub(r'CONTINUOUS', r'ByBlock', dxf_content)
         dxf_lineweight = re.sub(LINEWEIGHT_RE, 
@@ -167,118 +207,100 @@ def svg2dwg(folder_path, drawing):
         f_dxf.write(dxf_lineweight)
         f_dxf.close()
 
+        return dxf
 
-        subprocess.run([ODA_FILE_CONVERTER, folder_path, folder_path, 'ACAD2010', 
-            'DWG', '0', '1', undotted(drawing) + '.dxf'])
-        os.remove(dxf)
-        if drawing:
-            return undotted(drawing)
-
-def create_cad_script(dwgs, files_list, folder_path):
+def create_cad_script(dwgs, existing_files, folder_path):
     ''' Create script to run on cad file '''
-    print(dwgs)
-    print(files_list)
-    new_objs = list(set(dwgs) - set(files_list))
-    del_objs = list(set(files_list) - set(dwgs))
-    print('new', new_objs)
-    print('new', bool(new_objs))
-    print('del', del_objs)
-    with open(folder_path + '/' + SCRIPT_NAME, 'w') as scr:
-        if new_objs:
+    print('dwgs:', dwgs)
+    print('existing files:', existing_files)
+    new_objs = list(set(dwgs) - set(existing_files))
+    print('new files:', new_objs)
+    if new_objs:
+        with open(folder_path + '/' + SCRIPT_NAME, 'w') as scr:
+            ## Add new files only to script
             for new_obj in new_objs:
-                scr.write('XREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(
-                    folder_path + '/' + new_obj + '.dwg'))
-        if del_objs:
-            scr.write('XREF\nd\n{}'.format(','.join(del_objs)))
-            for f in [folder_path + '/' + del_obj + '.dwg' 
-                    for del_obj in del_objs]:
-                os.remove(f)
-    scr.close()
+                scr.write('XREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(new_obj))
+        scr.close()
 
 def get_render_args():
     ''' Get cameras and object based on args or selection '''
     selection = bpy.context.selected_objects
-    render_args = []
     cams = []
     objs = []
-    marker_index = -1
-    for i, arg in enumerate(ARGS):
-        if arg == FACTOR_MARKER:
-            marker_index = i + 1
-        elif i == marker_index:
-            continue
-        else:
-            render_args.append(arg)
 
-    for arg in render_args:
+    ## Check arguments first
+    for arg in RENDERABLE_ARGS:
         try:
             item = bpy.data.objects[arg]
             if item.type == "CAMERA":
                 cams.append(item)
-            elif item.type == "MESH":
+            elif item.type in RENDERABLES:
                 objs.append(item)
         except:
             print(arg, 'not present')
             continue
 
+    ## Get selected cams or objs if no arguments are provided
     if not cams:
         cams = [obj for obj in selection if obj.type == 'CAMERA']
     if not objs:
-        objs = [obj for obj in selection if obj.type in ['MESH', 'CURVE']]
+        objs = [obj for obj in selection if obj.type in RENDERABLES]
     return {'cams': cams, 'objs': objs}
 
-def prepare_files(path, folder_path, cam_name):
+def prepare_files(listdir, folder_path, cam_name):
     ''' Prepare files and folder to receive new renders '''
-    files_list = []
-    if cam_name not in os.listdir(path):
+    existing_files = []
+    if cam_name not in listdir:
         print('Create', folder_path)
         os.mkdir(folder_path)
+        for fs in FREESTYLE_SETS:
+            os.mkdir(folder_path + '/' + fs)
     else:
-        ## Folder already exists. Get the dwg inside it
-        files_list = [os.path.splitext(ob)[0] for ob in os.listdir(folder_path) 
-                if os.path.splitext(ob)[1] == '.dwg' ]
-        print(folder_path, 'exists and contains:\n', files_list)
+        ## Folder already exists. Get the dwgs inside it
+        existing_files = [str(fi) for fi in list(Path(folder_path).rglob('*.dwg'))]
+        print(folder_path, 'exists and contains:\n', existing_files)
 
     ## If dwg doesn't exist, copy it from blank template
-    if cam_name + '.dwg' not in os.listdir(path):
-        print('Create', cam_name + '.dwg')
-        copyfile(BLANK_CAD, cam_name + '.dwg')
-    else: print(cam_name + '.dwg exists')
+    if cam_name + '.dwg' not in listdir:
+        print('Create', folder_path + '.dwg')
+        copyfile(BLANK_CAD, folder_path + '.dwg')
+    else: 
+        print(cam_name + '.dwg exists')
 
-    return files_list
+    return existing_files
 
 def main():
     path = bpy.context.scene.render.filepath
-    #active = bpy.context.view_layer.objects.active
 
     bpy.context.scene.render.resolution_x = RENDER_FACTOR * 1000
     bpy.context.scene.render.resolution_y = RENDER_FACTOR * 1000
 
-    cams = get_render_args()['cams']
-    objs = get_render_args()['objs']
+    render_args = get_render_args()
+    cams = render_args['cams']
+    objs = render_args['objs']
 
     tmp_name = create_tmp_collection()
     fs_linesets = set_freestyle(tmp_name)
-    ## TODO set freestyle for back view
 
     for cam in cams:
         cam_name = undotted(cam.name)
         folder_path = path + cam_name
         objects = get_objects(cam) if not objs else objs
-        print('Objects to render are:\n', [undotted(ob.name) for ob in objects])
+        print('Objects to render are:\n', [ob.name for ob in objects])
 
-        files_list = prepare_files(path, folder_path, cam_name)
+        existing_files = prepare_files(os.listdir(path), folder_path, cam_name)
 
         render_cam(cam, folder_path, objects, tmp_name, fs_linesets)
 
-        dwg_raw_list = []
-        drawings = [os.path.splitext(ob)[0] for ob in os.listdir(folder_path) 
-                if os.path.splitext(ob)[1] == '.svg' ]
-        for drawing in drawings:
-            dwg_raw_list.append(svg2dwg(folder_path, drawing))
+        svgs = [str(fi) for fi in list(Path(folder_path).rglob('*.svg'))]
+        dxfs = list(filter(None, [svg2dxf(folder_path, svg_f) for svg_f in svgs]))
 
-        dwgs = [d for d in dwg_raw_list if d]
+        subprocess.run([ODA_FILE_CONVERTER, folder_path, folder_path, 'ACAD2010', 
+            'DWG', '1', '1', '*.dxf'])
+        for d in dxfs:
+            os.remove(d)
 
-        create_cad_script(dwgs, files_list, folder_path)
+        dwgs = [re.sub('\.dxf$', '.dwg', dxf) for dxf in dxfs]
+        create_cad_script(dwgs, existing_files, folder_path)
 
 main()
