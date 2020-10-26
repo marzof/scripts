@@ -130,7 +130,7 @@ def set_back(cam):
     bpy.context.view_layer.objects.active = cam
 
     bpy.ops.transform.resize(value=(1,1,-1), orient_type='LOCAL')
-    bpy.ops.transform.translate(value=(0,0,-2*cam.data.clip_start), 
+    bpy.ops.transform.translate(value=(0,0,2*cam.data.clip_start), 
             orient_type='LOCAL')
 
 def render_cam(cam, folder_path, objects, tmp_name, fs_linesets):
@@ -209,7 +209,7 @@ def svg2dxf(folder_path, svg_file):
 
         return dxf
 
-def create_cad_script(dwgs, existing_files, folder_path):
+def create_cad_script(dwgs, existing_files, folder_path, path):
     ''' Create script to run on cad file '''
     print('dwgs:', dwgs)
     print('existing files:', existing_files)
@@ -219,7 +219,8 @@ def create_cad_script(dwgs, existing_files, folder_path):
         with open(folder_path + '/' + SCRIPT_NAME, 'w') as scr:
             ## Add new files only to script
             for new_obj in new_objs:
-                scr.write('XREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(new_obj))
+                rel_obj = new_obj[len(path):]
+                scr.write('XREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(rel_obj))
         scr.close()
 
 def get_render_args():
@@ -301,6 +302,6 @@ def main():
             os.remove(d)
 
         dwgs = [re.sub('\.dxf$', '.dwg', dxf) for dxf in dxfs]
-        create_cad_script(dwgs, existing_files, folder_path)
+        create_cad_script(dwgs, existing_files, folder_path, path)
 
 main()
