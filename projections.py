@@ -51,6 +51,7 @@ LARGE_RENDER_FACTOR = int(ARGS[ARGS.index(FACTOR_MARKER) + 1]) \
         if FACTOR_MARKER in ARGS else 1
 RENDERABLE_ARGS = list(set(ARGS) - set(FLAGS) - 
         set([str(LARGE_RENDER_FACTOR) * (FACTOR_MARKER in ARGS)]))
+RENDERABLE_OBJS = {obj.name: obj.hide_render for obj in bpy.data.objects}
 BASE_ORTHO_SCALE = RENDER_FACTOR * LARGE_RENDER_FACTOR * 254.0/96.0
 RENDERABLES = ['MESH', 'CURVE', 'EMPTY']
 FREESTYLE_SETS = {
@@ -64,7 +65,8 @@ FREESTYLE_SETS = {
             'contour': True, 'crease': True },
         }
 RENDERABLE_STYLES = [LINESTYLE_MARKER[lm] for lm in LINESTYLE_MARKER 
-        if lm in list(''.join(FLAGS))]
+        if lm in list(''.join(FLAGS))] 
+## TODO set all styles if not specified
 
 undotted = lambda x: x.replace('.', '_')
 void_svg = lambda x: False if '<path' in x else True
@@ -98,6 +100,7 @@ def set_freestyle(tmp_name):
     ## Create dedicated linesets
     linesets = {}
     for ls in [fs for fs in FREESTYLE_SETS if fs in RENDERABLE_STYLES]:
+        print('ls', ls)
         linesets[ls] = fs_settings.linesets.new(tmp_name + '_' + ls)
         linesets[ls].show_render = False
         linesets[ls].select_by_collection = True
@@ -135,6 +138,7 @@ def set_back(cam):
 
 def render_cam(cam, folder_path, objects, tmp_name, fs_linesets):
     ''' Execute render for every object and save them as svg '''
+    ## TODO clean up avoiding repetitions and use cam_data
 
     ## 100% if cam ortho scale == base ortho scale
     render_scale = round(100 * cam.data.ortho_scale/BASE_ORTHO_SCALE)
@@ -142,27 +146,32 @@ def render_cam(cam, folder_path, objects, tmp_name, fs_linesets):
     cam_name = undotted(cam.name)
 
     for obj in objects:
+        ## Get the renderable condition
+        render_in_viewport = obj.hide_render
+        obj.hide_render = False
         bpy.data.collections[tmp_name].objects.link(obj)
         bpy.context.scene.camera = cam
+        print('obj', obj.name)
 
         for ls in fs_linesets:
+            print('linestyle', ls)
+            print('fs_linestyle', fs_linesets)
             render_name = folder_path  + '/' + ls + '/' + cam_name + '-' + \
                     undotted(obj.name) + '_' + ls
             print('Render name:', render_name)
             fs_linesets[ls].show_render = True
             bpy.context.scene.render.filepath = render_name
-            if ls == 'bak':
-                set_back(cam)
-                bpy.ops.render.render()
-                set_back(cam)
-            else:
-                bpy.ops.render.render()
+            bpy.ops.render.render()
             fs_linesets[ls].show_render = False
 
             ## Rename svg to remove frame counting
             os.rename(render_name + FRAME + '.svg', render_name + '.svg')
         
         bpy.data.collections[tmp_name].objects.unlink(obj)
+        ## Reset to original renderable condition
+        obj.hide_render = render_in_viewport
+
+
 
 def get_file_content(f):
     f = open(f, 'r')
@@ -271,6 +280,7 @@ def prepare_files(listdir, folder_path, cam_name):
     return existing_files
 
 def main():
+    ## TODO use workbench render engine
     path = bpy.context.scene.render.filepath
 
     bpy.context.scene.render.resolution_x = RENDER_FACTOR * 1000
@@ -282,26 +292,62 @@ def main():
 
     tmp_name = create_tmp_collection()
     fs_linesets = set_freestyle(tmp_name)
+    print('fs_linesets', fs_linesets)
+
+    cams_data = []
 
     for cam in cams:
         cam_name = undotted(cam.name)
         folder_path = path + cam_name
-        objects = get_objects(cam) if not objs else objs
-        print('Objects to render are:\n', [ob.name for ob in objects])
 
-        existing_files = prepare_files(os.listdir(path), folder_path, cam_name)
+        cam_data = {
+                'cam_name': undotted(cam.name),
+                'folder_path': folder_path,
+                'objects': get_objects(cam) if not objs else objs,
+                'existing_files': prepare_files(os.listdir(path), folder_path, 
+                    cam_name)
+                }
+        print('Objects to render are:\n', [ob.name for ob in cam_data['objects']])
 
-        render_cam(cam, folder_path, objects, tmp_name, fs_linesets)
+        ## TODO pass cam_data, not content of it
+        render_cam(cam, cam_data['folder_path'], cam_data['objects'], tmp_name, 
+                {fs_ls:fs_linesets[fs_ls] for fs_ls in fs_linesets if fs_ls != 'bak'})
+        cams_data.append(cam_data)
 
-        svgs = [str(fi) for fi in list(Path(folder_path).rglob('*.svg'))]
-        dxfs = list(filter(None, [svg2dxf(folder_path, svg_f) for svg_f in svgs]))
+    ## Render back views
+    for cam in cams:
+        for cd in cams_data:
+            if cd['cam_name'] == undotted(cam.name):
+                cam_data = cd 
+                break
 
-        subprocess.run([ODA_FILE_CONVERTER, folder_path, folder_path, 'ACAD2010', 
-            'DWG', '1', '1', '*.dxf'])
+        ## For back render turn the cam and switch off renderability
+        set_back(cam)
+        for obj in bpy.data.objects:
+            obj.hide_render = True
+        ## TODO pass cam_data, not content of it
+        print('filter', [fs_ls for fs_ls in fs_linesets if fs_ls == 'bak'])
+        render_cam(cam, cam_data['folder_path'], cam_data['objects'], tmp_name, 
+                {fs_ls:fs_linesets[fs_ls] for fs_ls in fs_linesets if fs_ls == 'bak'})
+        set_back(cam)
+
+    ## Reset to original rendering condition
+    for obj in bpy.data.objects:
+        obj.hide_render = RENDERABLE_OBJS[obj.name]
+    
+    for cd in cams_data:
+        svgs = [str(fi) for fi in list(Path(cd['folder_path']).rglob('*.svg'))]
+        dxfs = list(filter(None, 
+            [svg2dxf(cd['folder_path'], svg_f) for svg_f in svgs]))
+
+        subprocess.run([ODA_FILE_CONVERTER, cd['folder_path'], 
+            cd['folder_path'], 'ACAD2010', 'DWG', '1', '1', '*.dxf'])
         for d in dxfs:
             os.remove(d)
 
         dwgs = [re.sub('\.dxf$', '.dwg', dxf) for dxf in dxfs]
-        create_cad_script(dwgs, existing_files, folder_path, path)
+        ## TODO pass cam_data, not content of it
+        ## TODO bak are not added to script
+        create_cad_script(dwgs, cd['existing_files'], cd['folder_path'], path)
 
 main()
