@@ -211,6 +211,23 @@ def get_objects(cam):
     ## TODO set to just viewed objects
     ## TODO cut render only for actual cut objects
     ## TODO bak render only for actual rear objects
+    ## 
+    ## Try with this:
+
+    ## def in_out (cam, objs):
+    ##     for obj in objs:
+    ##         mat = obj.matrix_world
+    ##         last = False
+    ##         for v in obj.bound_box:
+    ##             x, y, z = world_to_camera_view(bpy.context.scene, cam, mat @ Vector(v))
+    ##             if 1 >= x >= 0 and 1 >= y >= 0:
+    ##                 print(obj.name, "is IN! (", x, y, z, ")")
+    ##                 last = True
+    ##                 break
+    ##         if not last:
+    ##             print(obj.name, "is OUT!")
+    ## 
+    ## in_out(bpy.context.scene.camera, bpy.context.selectable_objects)
 
     objs = []
     for obj in bpy.context.selectable_objects:
