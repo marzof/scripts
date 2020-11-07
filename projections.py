@@ -285,7 +285,7 @@ def get_render_args():
 def prepare_files(folder_path, cam_name):
     ''' Prepare files and folder to receive new renders '''
     existing_files = []
-    if cam_name not in os.listdir(RENDER_PATH):
+    if cam_name not in os.listdir(os.path.realpath(RENDER_PATH)):
         print('Create', folder_path)
         os.mkdir(folder_path)
         for fs in FREESTYLE_SETS:
@@ -297,7 +297,7 @@ def prepare_files(folder_path, cam_name):
         print(folder_path, 'exists and contains:\n', existing_files)
 
     ## If dwg doesn't exist, copy it from blank template
-    if cam_name + '.dwg' not in os.listdir(RENDER_PATH):
+    if cam_name + '.dwg' not in os.listdir(os.path.realpath(RENDER_PATH)):
         print('Create', folder_path + '.dwg')
         copyfile(BLANK_CAD, folder_path + '.dwg')
     else: 
@@ -324,7 +324,7 @@ def main():
     ## Create Cam objetcs
     for cam in render_args['cams']:
         cam_name = undotted(cam.name)
-        folder_path = RENDER_PATH + os.sep + cam_name
+        folder_path = (RENDER_PATH + os.sep + cam_name).strip(os.sep)
         print(folder_path)
         cams.append(Cam(
             cam, cam_name, folder_path, 
