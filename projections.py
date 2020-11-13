@@ -46,7 +46,7 @@ ODA_FILE_CONVERTER = '/usr/bin/ODAFileConverter'
 LINEWEIGHT_RE = r'\n\s*100\n\s*AcDbLine\n'
 LINESTYLE_LAYER_RE = r'.*(_.*)\.dwg'
 FACTOR_MARKER = '-f'
-SCRIPT_NAME = 'script.scr'
+SCRIPT_NAMES = ['xrefs.scr', 'last_xrefs.scr']
 FRAME = "{:04d}".format(bpy.context.scene.frame_current)
 RENDER_FACTOR = 2 ## Multiply this value by 1000 to get render resolution
 LARGE_RENDER_FACTOR = int(ARGS[ARGS.index(FACTOR_MARKER) + 1]) \
@@ -78,13 +78,17 @@ BOUNDING_BOX_EDGES = ((0, 1), (0, 3), (0, 4), (1, 2),
 
 print('\n\n\n###################################\n\n\n')
 
+print('Render factor', LARGE_RENDER_FACTOR)
+print('Renderable styles', RENDERABLE_STYLES)
 
 class Cam():
     def __init__(self, obj, name, folder_path, existing_files, objects):
         self.obj = obj
         self.name = name
         self.folder_path = folder_path
-        self.script = self.folder_path + os.sep + SCRIPT_NAME
+        self.scripts = [self.folder_path + os.sep + SCRIPT_NAMES[0], 
+                self.folder_path + os.sep + SCRIPT_NAMES[1]]
+        self.write_mode = ['a', 'w']
         self.existing_files = existing_files
         self.objects = objects
         self.svgs = []
@@ -158,16 +162,19 @@ class Cam():
         if new_objs:
             self.__create_cad_script(new_objs)
 
+    def __write_script(self, scr, new_objs):
+        for new_obj in new_objs:
+            rel_obj = new_obj.replace(RENDER_PATH,'').strip(os.sep)
+            layer_name = re.search(LINESTYLE_LAYER_RE, rel_obj).group(1)
+            scr.write('LAYER\nMA\n{}\n\nXREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(
+                layer_name, rel_obj))
+
     def __create_cad_script(self, new_objs):
         ''' Create script to run on cad file '''
-        with open(self.script, 'a') as scr:
-            ## Add new files only to script
-            for new_obj in new_objs:
-                rel_obj = new_obj.replace(RENDER_PATH,'').strip(os.sep)
-                layer_name = re.search(LINESTYLE_LAYER_RE, rel_obj).group(1)
-                scr.write('LAYER\nMA\n{}\n\nXREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(
-                    layer_name, rel_obj))
-        scr.close()
+        for i, script in enumerate(self.scripts):
+            with open(script, self.write_mode[i]) as scr:
+                self.__write_script(scr, new_objs)
+            scr.close()
 
 def create_tmp_collection():
     """ Create a tmp collection and link it to the actual scene """
@@ -191,6 +198,8 @@ def set_freestyle(tmp_name):
     bpy.context.scene.render.use_freestyle = True
     bpy.context.scene.svg_export.use_svg_export = True
     fs_settings = bpy.context.window.view_layer.freestyle_settings
+    fs_settings.crease_angle = 2.6179938316345215 ## 150°
+    fs_settings.use_smoothness = True
     ## Disable existing linesets
     for ls in fs_settings.linesets:
         ls.show_render = False
