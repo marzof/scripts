@@ -57,9 +57,15 @@ DISABLED_OBJS = {obj for obj in bpy.data.objects if obj.hide_render}
 RESOLUTION_RATIO = 254.0/96.0
 BASE_ORTHO_SCALE = RENDER_FACTOR * LARGE_RENDER_FACTOR * RESOLUTION_RATIO
 RENDERABLES = ['MESH', 'CURVE', 'EMPTY']
+FREESTYLE_SETTINGS = bpy.context.window.view_layer.freestyle_settings
+## Set by UI
+## FREESTYLE_CREASE_ANGLE = 2.6179938316345215 ## 150°
+## FREESTYLE_USE_SMOOTHNESS = True 
+## FREESTYLE_SETTINGS.crease_angle = FREESTYLE_CREASE_ANGLE
+## FREESTYLE_SETTINGS.use_smoothness = FREESTYLE_USE_SMOOTHNESS
 FREESTYLE_SETS = {
         'prj': { 'flag': 'p', 'visibility': 'VISIBLE', 'silhouette': True, 
-            'border': False, 'contour': True, 'crease': True },
+            'border': True, 'contour': True, 'crease': True },
         'cut': { 'flag': 'c', 'visibility': 'VISIBLE', 'silhouette': False, 
             'border': True, 'contour': False, 'crease': False },
         'hid': { 'flag': 'h', 'visibility': 'HIDDEN', 'silhouette': True, 
@@ -197,18 +203,15 @@ def set_freestyle(tmp_name):
     ''' Enable Freestyle and set lineset and style for rendering '''
     bpy.context.scene.render.use_freestyle = True
     bpy.context.scene.svg_export.use_svg_export = True
-    fs_settings = bpy.context.window.view_layer.freestyle_settings
-    fs_settings.crease_angle = 2.6179938316345215 ## 150°
-    fs_settings.use_smoothness = True
     ## Disable existing linesets
-    for ls in fs_settings.linesets:
+    for ls in FREESTYLE_SETTINGS.linesets:
         ls.show_render = False
 
     ## Create dedicated linesets
     linesets = {}
     for ls in [fs for fs in FREESTYLE_SETS if fs in RENDERABLE_STYLES]:
         print('ls', ls)
-        linesets[ls] = fs_settings.linesets.new(tmp_name + '_' + ls)
+        linesets[ls] = FREESTYLE_SETTINGS.linesets.new(tmp_name + '_' + ls)
         linesets[ls].show_render = False
         linesets[ls].select_by_collection = True
         linesets[ls].collection = bpy.data.collections[tmp_name]
