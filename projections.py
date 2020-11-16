@@ -31,6 +31,7 @@ import subprocess, shlex
 from shutil import copyfile
 from pathlib import Path
 from mathutils import Vector
+from mathutils import geometry
 from bpy_extras.object_utils import world_to_camera_view
 
 check_list = lambda x, alt: x if x else alt
@@ -81,6 +82,8 @@ RENDER_PATH = norm_path(bpy.context.scene.render.filepath)
 BOUNDING_BOX_EDGES = ((0, 1), (0, 3), (0, 4), (1, 2), 
                     (1, 5), (2, 3), (2, 6), (3, 7), 
                     (4, 5), (4, 7), (5, 6), (6, 7))
+
+FRAME_EDGES = (Vector((0,0)), Vector((1,0)), Vector((1,1)), Vector((0,1)))
 
 print('\n\n\n###################################\n\n\n')
 
@@ -223,90 +226,43 @@ def set_freestyle(tmp_name):
 
     return linesets
 
-def pass_through_frame(p1, p2):
-    ''' Check if edge(p1, p2)  pass through the frame '''
-    ## Get edge values at intersection with frame
-    x_diff = p2[0] - p1[0]
-    y_diff = p2[1] - p1[1]
+def in_frame (cam, obj):
+    ''' Filter objs and return just those viewed from cam '''
+    print('Check visibility for', obj.name)
+    matrix = obj.matrix_world
+    box = [matrix @ Vector(v) for v in obj.bound_box]
 
-    if not y_diff:  ## Horizontal edge: no x value for f_y[0] or f_y[1]
-        x_y = [-1, -1]
-    else:           ## Get x values at y[0] and y[1]
-        f_y = [-p1[1] / y_diff, (1 - p1[1]) / y_diff]
-        x_y = [p1[0] + f_y[0] * x_diff, p1[0] + f_y[1] * x_diff]
+    ## If a vertex is in camera_view then object is in
+    for v in box:
+        x, y, z = world_to_camera_view(bpy.context.scene, cam, v)
+        if 1 >= x >= 0 and 1 >= y >= 0:
+            print(obj.name, "is IN! (in vertex", v, ")")
+            return True
 
-    if not x_diff:  ## Vertical edge: no x value for f_x[0] or f_x[1]
-        y_x = [-1, -1]
-    else:           ## Get y values at x[0] and x[1]
-        f_x = [-p1[0] / x_diff, (1 - p1[0]) / x_diff]
-        y_x = [p1[1] + f_x[0] * y_diff, p1[1] + f_x[1] * y_diff]
-    
-        ## max(p1[1], p2[1]) >= y_x[0] >= min(p1[1], p2[1])
-        ##      intersection with horizontal sides of frame is on the bounding 
-        ##      box edge (is not an extension of edge)
-        ## 1 >= y_x[0] >= 0 
-        ##      intersection with horizontal sides of frame is on the frame
-        ##      (is not an extension of frame side)
-        ## 1 >= p1[0] >= 0 or 1 >= p2[0] >= 0
-        ##       
-    if any([
-        (max(p1[1], p2[1]) >= y_x[0] >= min(p1[1], p2[1]) and 1 >= y_x[0] >= 0 
-            and (1 >= p1[0] >= 0 or 1 >= p2[0] >= 0)),
-        (max(p1[1], p2[1]) >= y_x[1] >= min(p1[1], p2[1]) and 1 >= y_x[1] >= 0 
-            and (1 >= p1[0] >= 0 or 1 >= p2[0] >= 0)),
-        (max(p1[0], p2[0]) >= x_y[0] >= min(p1[0], p2[0]) and 1 >= x_y[0] >= 0 
-            and (1 >= p1[1] >= 0 or 1 >= p2[1] >= 0)),
-        (max(p1[0], p2[0]) >= x_y[1] >= min(p1[0], p2[0]) and 1 >= x_y[1] >= 0 
-            and (1 >= p1[1] >= 0 or 1 >= p2[1] >= 0))
-        ]):
-        return True
+    ## If an edge intersects camera frame then obj is in
+    for e in BOUNDING_BOX_EDGES:
+        box_edge = [Vector(world_to_camera_view(bpy.context.scene, cam, box[e[0]])[:2]),
+            Vector(world_to_camera_view(bpy.context.scene, cam, box[e[1]])[:2])]
+        for i in range(4):
+            intersect = geometry.intersect_line_line_2d(
+                box_edge[0], box_edge[1], FRAME_EDGES[i], FRAME_EDGES[(i+1)%4])
+            #print('intersect in', intersect)
+            if intersect:
+                print(obj.name, "is IN! (intersects in", intersect, ")")
+                return True
+
+    print(obj.name, "is OUT!")
     return False
 
-def in_frame (cam, objs):
-    ''' Filter objs and return just those viewed from cam '''
-    ## TODO Try simplify with mathutils.geometry.intersect_line_line_2d()
-    ## or mathutils.geometry.intersect_line_line()
-    ## https://docs.blender.org/api/current/mathutils.geometry.html
-    ## and intersect object bouding box with camera frame (excluding z coord)
-
-    in_frame_objs = []
-    for obj in objs:
-        matrix = obj.matrix_world
-        box = [matrix @ Vector(v) for v in obj.bound_box]
-        last = False
-        ## If a vertex is in camera_view then object is in
-        for v in box:
-            x, y, z = world_to_camera_view(bpy.context.scene, cam, v)
-            if 1 >= x >= 0 and 1 >= y >= 0:
-                print(obj.name, "is IN! (", x, y, z, ")")
-                in_frame_objs.append(obj)
-                last = True
-                break
-        ## If an edge is in camera_view then obj is in
-        if not last:
-            for e in edges:
-                print('Processing edge', e)
-                e0 = world_to_camera_view(bpy.context.scene, cam, box[e[0]])
-                e1 = world_to_camera_view(bpy.context.scene, cam, box[e[1]])
-                if pass_through_frame(e0, e1):
-                    print(obj.name, "is IN! (edge", e, ")")
-                    in_frame_objs.append(obj)
-                    last = True
-                    break
-        if not last:
-            print(obj.name, "is OUT!")
-    return in_frame_objs
-
-def get_objects(cam):
+def viewed_objects(cam, objs):
     """ Filter objects to collect """
     ## TODO cut render only for actual cut objects
     ## TODO bak render only for actual rear objects
 
-    objs = []
-    for obj in bpy.context.selectable_objects:
-        if obj.type in RENDERABLES:
-            objs.append(obj)
-    return in_frame(cam, objs)
+    objs = objs if len(objs) else bpy.context.selectable_objects 
+    viewed_objs = [obj for obj in objs
+            if obj.type in RENDERABLES and in_frame(cam, obj)]
+    return viewed_objs
 
 def get_file_content(f):
     f = open(f, 'r')
@@ -419,8 +375,8 @@ def main():
         cams.append(Cam(
             cam, cam_name, folder_path, 
             prepare_files(folder_path, cam_name),
-            get_objects(cam) if not objs else objs
-            ))
+            viewed_objects(cam, objs)))
+        print('objects are', cams[-1].objects)
 
     for cam in cams:
         print('Objects to render are:\n', [ob.name for ob in cam.objects])
