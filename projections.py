@@ -99,7 +99,9 @@ class Cam():
                 self.folder_path + os.sep + SCRIPT_NAMES[1]]
         self.write_mode = ['a', 'w']
         self.existing_files = existing_files
-        self.objects = objects
+        self.objects = objects['all']
+        self.frontal_objects = objects['frontal']
+        self.behind_objects = objects['behind']
         self.svgs = []
         self.dxfs = []
         self.dwgs = []
@@ -132,6 +134,10 @@ class Cam():
         print('obj', obj.name)
 
         for ls in fs_linesets:
+            ## Cut render only for actual cut objects
+            if ls == 'cut' and (obj not in self.frontal_objects or 
+                    obj not in self.behind_objects):
+                continue
             render_name = self.folder_path  + os.sep + ls + os.sep + \
                     self.name + '-' + undotted(obj.name) + '_' + ls
             print('Render name:', render_name)
@@ -231,13 +237,22 @@ def in_frame (cam, obj):
     print('Check visibility for', obj.name)
     matrix = obj.matrix_world
     box = [matrix @ Vector(v) for v in obj.bound_box]
+    frontal = False
+    behind = False
+    framed = False
 
     ## If a vertex is in camera_view then object is in
     for v in box:
         x, y, z = world_to_camera_view(bpy.context.scene, cam, v)
+        if z >= cam.data.clip_start:
+            frontal = True
+        else:
+            behind = True
         if 1 >= x >= 0 and 1 >= y >= 0:
-            print(obj.name, "is IN! (in vertex", v, ")")
-            return True
+            print(obj.name, "is FRAMED! (in vertex", v, ")")
+            framed = True
+    if framed:
+        return {'framed': framed, 'frontal': frontal, 'behind': behind}
 
     ## If an edge intersects camera frame then obj is in
     for e in BOUNDING_BOX_EDGES:
@@ -248,21 +263,29 @@ def in_frame (cam, obj):
                 box_edge[0], box_edge[1], FRAME_EDGES[i], FRAME_EDGES[(i+1)%4])
             #print('intersect in', intersect)
             if intersect:
-                print(obj.name, "is IN! (intersects in", intersect, ")")
-                return True
+                print(obj.name, "is FRAMED! (intersects in", intersect, ")")
+                framed = True
+                return {'framed': framed, 'frontal': frontal, 'behind': behind}
 
-    print(obj.name, "is OUT!")
-    return False
+    print(obj.name, "is NOT FRAMED!")
+    return {'framed': framed, 'frontal': frontal, 'behind': behind}
 
 def viewed_objects(cam, objs):
     """ Filter objects to collect """
-    ## TODO cut render only for actual cut objects
-    ## TODO bak render only for actual rear objects
-
+    objects = []
+    frontal_objs = []
+    behind_objs = []
     objs = objs if len(objs) else bpy.context.selectable_objects 
-    viewed_objs = [obj for obj in objs
-            if obj.type in RENDERABLES and in_frame(cam, obj)]
-    return viewed_objs
+    for obj in objs:
+        if obj.type in RENDERABLES:
+            framed = in_frame(cam, obj)
+            if framed['framed']:
+                objects.append(obj)
+                if framed['frontal']:
+                    frontal_objs.append(obj)
+                if framed['behind']:
+                    behind_objs.append(obj)
+    return {'all': objects, 'frontal': frontal_objs, 'behind': behind_objs}
 
 def get_file_content(f):
     f = open(f, 'r')
@@ -380,8 +403,10 @@ def main():
 
     for cam in cams:
         print('Objects to render are:\n', [ob.name for ob in cam.objects])
+        print('Frontal are:\n', [ob.name for ob in cam.frontal_objects])
+        print('Behind are:\n', [ob.name for ob in cam.behind_objects])
         cam.set_resolution()
-        for obj in [ob for ob in cam.objects if ob not in DISABLED_OBJS]:
+        for obj in [ob for ob in cam.frontal_objects if ob not in DISABLED_OBJS]:
             cam.render(tmp_name, {fs_ls:fs_linesets[fs_ls] 
                 for fs_ls in fs_linesets if fs_ls != 'bak'}, obj)
 
@@ -392,7 +417,7 @@ def main():
     for cam in cams:
         cam.set_resolution()
         cam.set_back()
-        for obj in [ob for ob in cam.objects if ob not in DISABLED_OBJS]:
+        for obj in [ob for ob in cam.behind_objects if ob not in DISABLED_OBJS]:
             cam.render(tmp_name, {fs_ls:fs_linesets[fs_ls] 
                 for fs_ls in fs_linesets if fs_ls == 'bak'}, obj)
         cam.set_back()
