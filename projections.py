@@ -24,6 +24,7 @@
 # - Inkscape
 # - pstoedit
 
+
 import bpy
 import os, sys
 import re, random
@@ -66,17 +67,18 @@ FREESTYLE_SETTINGS = bpy.context.window.view_layer.freestyle_settings
 ## FREESTYLE_SETTINGS.use_smoothness = FREESTYLE_USE_SMOOTHNESS
 FREESTYLE_SETS = {
         'prj': { 'flag': 'p', 'visibility': 'VISIBLE', 'silhouette': True, 
-            'border': True, 'contour': True, 'crease': True },
+            'border': True, 'contour': True, 'crease': True, 'mark': True },
         'cut': { 'flag': 'c', 'visibility': 'VISIBLE', 'silhouette': False, 
-            'border': True, 'contour': False, 'crease': False },
+            'border': True, 'contour': False, 'crease': False, 'mark': False },
         'hid': { 'flag': 'h', 'visibility': 'HIDDEN', 'silhouette': True, 
-            'border': True, 'contour': True, 'crease': True },
+            'border': True, 'contour': True, 'crease': True, 'mark': True },
         'bak': { 'flag': 'b', 'visibility': 'VISIBLE', 'silhouette': True, 
-            'border': False, 'contour': True, 'crease': True },
+            'border': True, 'contour': True, 'crease': True, 'mark': True },
         }
+FREESTYLE_SETS_DEFAULT = ['prj', 'cut']
 RENDERABLE_STYLES = check_list([ls for ls in FREESTYLE_SETS if 
     FREESTYLE_SETS[ls]['flag'] in list(''.join(FLAGS))], 
-    [ls for ls in FREESTYLE_SETS])
+    [ls for ls in FREESTYLE_SETS_DEFAULT])
 RENDER_PATH = norm_path(bpy.context.scene.render.filepath)
 
 BOUNDING_BOX_EDGES = ((0, 1), (0, 3), (0, 4), (1, 2), 
@@ -127,6 +129,7 @@ class Cam():
 
     def render(self, tmp_name, fs_linesets, obj):
         ''' Execute render for obj and save it as svg '''
+        pass
         bpy.data.collections[tmp_name].objects.link(obj)
         bpy.context.scene.camera = self.obj
         render_condition = obj.hide_render
@@ -163,11 +166,12 @@ class Cam():
 
     def finalize(self):    
         self.dxfs = list(filter(None, 
-            [svg2dxf(self.folder_path, svg_f) for svg_f in self.svgs]))
+            [svg2dxf(svg_f) for svg_f in self.svgs]))
         subprocess.run([ODA_FILE_CONVERTER, self.folder_path, self.folder_path, 
             'ACAD2010', 'DWG', '1', '1', '*.dxf'])
         for d in self.dxfs:
-            os.remove(d)
+            if os.path.exists(d):
+                os.remove(d)
         self.dwgs = [re.sub('\.dxf$', '.dwg', dxf) for dxf in self.dxfs]
         
         print('dwgs:', self.dwgs)
@@ -181,8 +185,9 @@ class Cam():
         for new_obj in new_objs:
             rel_obj = new_obj.replace(RENDER_PATH,'').strip(os.sep)
             layer_name = re.search(LINESTYLE_LAYER_RE, rel_obj).group(1)
-            scr.write('LAYER\nMA\n{}\n\nXREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(
+            scr.write('LAYER\nM\n{}\n\nXREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(
                 layer_name, rel_obj))
+        scr.write('LAYER\nM\n0\n\n')
 
     def __create_cad_script(self, new_objs):
         ''' Create script to run on cad file '''
@@ -229,13 +234,14 @@ def set_freestyle(tmp_name):
         linesets[ls].select_border = FREESTYLE_SETS[ls]['border']
         linesets[ls].select_contour = FREESTYLE_SETS[ls]['contour']
         linesets[ls].select_crease = FREESTYLE_SETS[ls]['crease']
+        linesets[ls].select_edge_mark = FREESTYLE_SETS[ls]['mark']
 
     return linesets
 
-def in_frame (cam, obj):
+def in_frame(cam, obj, container):
     ''' Filter objs and return just those viewed from cam '''
     print('Check visibility for', obj.name)
-    matrix = obj.matrix_world
+    matrix = container.matrix_world
     box = [matrix @ Vector(v) for v in obj.bound_box]
     frontal = False
     behind = False
@@ -275,16 +281,24 @@ def viewed_objects(cam, objs):
     objects = []
     frontal_objs = []
     behind_objs = []
+    referenced_objs = {}
+    ## Use indicate objects (as args or selected) if any. Else use selectable
     objs = objs if len(objs) else bpy.context.selectable_objects 
     for obj in objs:
         if obj.type in RENDERABLES:
-            framed = in_frame(cam, obj)
+            if obj.type == 'EMPTY' and obj.instance_collection:
+                referenced_objs[obj] = obj.instance_collection.all_objects
+            elif obj.type != 'EMPTY':
+                referenced_objs[obj] = [obj]
+    for ref_obj in referenced_objs:
+        for obj in referenced_objs[ref_obj]:
+            framed = in_frame(cam, obj, ref_obj)
             if framed['framed']:
-                objects.append(obj)
+                objects.append(ref_obj)
                 if framed['frontal']:
-                    frontal_objs.append(obj)
+                    frontal_objs.append(ref_obj)
                 if framed['behind']:
-                    behind_objs.append(obj)
+                    behind_objs.append(ref_obj)
     return {'all': objects, 'frontal': frontal_objs, 'behind': behind_objs}
 
 def get_file_content(f):
@@ -293,7 +307,7 @@ def get_file_content(f):
     f.close()
     return f_content
 
-def svg2dxf(folder_path, svg):
+def svg2dxf(svg):
     ''' Convert svg to dxf '''
     render_path = os.path.splitext(svg)[0]
     eps = render_path + '.eps'
@@ -305,13 +319,15 @@ def svg2dxf(folder_path, svg):
 
     ## Run with Inkscape 0.92
     subprocess.run(['inkscape', '-f', svg, '-C', '-E', eps])
-    os.remove(svg)
+    if os.path.exists(svg):
+        os.remove(svg)
 
     ## Run with Inkscape 1.0
     ## subprocess.run(['inkscape', svg, '-C', '-o', eps])
 
     subprocess.run(eps2dxf, shell=True) 
-    os.remove(eps)
+    if os.path.exists(eps):
+        os.remove(eps)
 
     ## Change continuous lines and lineweight to ByBlock in dxfs
     dxf_content = get_file_content(dxf)
@@ -411,18 +427,17 @@ def main():
                 for fs_ls in fs_linesets if fs_ls != 'bak'}, obj)
 
     ## Disable renderability for all objects to perform back renderings
-    for obj in bpy.data.objects:
+    for obj in bpy.context.selectable_objects:
         obj.hide_render = True
     ## Render back views
     for cam in cams:
         cam.set_resolution()
         cam.set_back()
         for obj in [ob for ob in cam.behind_objects if ob not in DISABLED_OBJS]:
-            cam.render(tmp_name, {fs_ls:fs_linesets[fs_ls] 
-                for fs_ls in fs_linesets if fs_ls == 'bak'}, obj)
+            cam.render(tmp_name, {'bak':fs_linesets['bak']}, obj)
         cam.set_back()
     ## Reset to original rendering condition
-    for obj in bpy.data.objects:
+    for obj in bpy.context.selectable_objects:
         obj.hide_render = False if obj not in DISABLED_OBJS else True
     
     for cam in cams:
