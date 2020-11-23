@@ -430,12 +430,13 @@ def main():
     for obj in bpy.context.selectable_objects:
         obj.hide_render = True
     ## Render back views
-    for cam in cams:
-        cam.set_resolution()
-        cam.set_back()
-        for obj in [ob for ob in cam.behind_objects if ob not in DISABLED_OBJS]:
-            cam.render(tmp_name, {'bak':fs_linesets['bak']}, obj)
-        cam.set_back()
+    if 'bak' in fs_linesets.keys():
+        for cam in cams:
+            cam.set_resolution()
+            cam.set_back()
+            for obj in [ob for ob in cam.behind_objects if ob not in DISABLED_OBJS]:
+                cam.render(tmp_name, {'bak':fs_linesets['bak']}, obj)
+            cam.set_back()
     ## Reset to original rendering condition
     for obj in bpy.context.selectable_objects:
         obj.hide_render = False if obj not in DISABLED_OBJS else True
