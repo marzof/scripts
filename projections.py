@@ -28,6 +28,7 @@
 import bpy
 import os, sys
 import re, random
+import collections
 import subprocess, shlex
 from shutil import copyfile
 from pathlib import Path
@@ -240,7 +241,7 @@ def set_freestyle(tmp_name):
 
 def in_frame(cam, obj, container):
     ''' Filter objs and return just those viewed from cam '''
-    print('Check visibility for', obj.name)
+    #print('Check visibility for', obj.name)
     matrix = container.matrix_world
     box = [matrix @ Vector(v) for v in obj.bound_box]
     frontal = False
@@ -255,7 +256,7 @@ def in_frame(cam, obj, container):
         else:
             behind = True
         if 1 >= x >= 0 and 1 >= y >= 0:
-            print(obj.name, "is FRAMED! (in vertex", v, ")")
+            #print(obj.name, "is FRAMED! (in vertex", v, ")")
             framed = True
     if framed:
         return {'framed': framed, 'frontal': frontal, 'behind': behind}
@@ -269,12 +270,32 @@ def in_frame(cam, obj, container):
                 box_edge[0], box_edge[1], FRAME_EDGES[i], FRAME_EDGES[(i+1)%4])
             #print('intersect in', intersect)
             if intersect:
-                print(obj.name, "is FRAMED! (intersects in", intersect, ")")
+                #print(obj.name, "is FRAMED! (intersects in", intersect, ")")
                 framed = True
                 return {'framed': framed, 'frontal': frontal, 'behind': behind}
 
-    print(obj.name, "is NOT FRAMED!")
+    #print(obj.name, "is NOT FRAMED!")
     return {'framed': framed, 'frontal': frontal, 'behind': behind}
+
+def check_non_case_sensitive(cam):
+    same_name = [item for item, count in collections.Counter(
+        [ob.name.lower() for ob in cam.objects]).items() if count > 1]
+    if same_name:
+        return same_name
+    else:
+        existing_file_objects = []
+        for f in cam.existing_files:
+            ## Based on render_name of Cam.render()
+            start_index = f.rfind(cam.name) + len(cam.name + '-')
+            end_index = f.rfind('_')
+            existing_file_objects.append(f[start_index: end_index])
+        lower_exist_file_objs = [fo.lower() for fo in existing_file_objects]
+        for ob in cam.objects:
+            ## Get objects with same name but different in upper and lower-case
+            if ob.name.lower() in lower_exist_file_objs and \
+                    ob.name not in existing_file_objects:
+                        same_name.append(ob.name + ' (check files)')
+    return same_name
 
 def viewed_objects(cam, objs):
     """ Filter objects to collect """
@@ -293,8 +314,9 @@ def viewed_objects(cam, objs):
     for ref_obj in referenced_objs:
         for obj in referenced_objs[ref_obj]:
             framed = in_frame(cam, obj, ref_obj)
-            if framed['framed']:
-                objects.append(ref_obj)
+            if ref_obj not in objects:
+                if framed['framed']:
+                    objects.append(ref_obj)
                 if framed['frontal']:
                     frontal_objs.append(ref_obj)
                 if framed['behind']:
@@ -418,6 +440,12 @@ def main():
         print('objects are', cams[-1].objects)
 
     for cam in cams:
+        same_name_objects = check_non_case_sensitive(cam)
+        if same_name_objects:
+            print('The following objects have the same name for non ' + \
+                    'case-sensitive os. \nPlease fix it before continuing')
+            print(same_name_objects)
+            return
         print('Objects to render are:\n', [ob.name for ob in cam.objects])
         print('Frontal are:\n', [ob.name for ob in cam.frontal_objects])
         print('Behind are:\n', [ob.name for ob in cam.behind_objects])
