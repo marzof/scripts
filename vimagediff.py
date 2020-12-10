@@ -53,6 +53,9 @@ def get_instructions():
     print('## Simple example:\n')
     print('# Get the differences between the 2 files\n')
     print('\tvimagediff A.pdf B.png\n')
+    print('# Get the differences between the 2 files with a resolution ' + \
+            'bigger than 72dpi\n')
+    print('\tvimagediff -r 200 A.pdf B.pdf\n')
     print('## Versioning (git) usage:\n')
     print('# Get the diffs between current A.pdf and the last committed ' + \
             'version (HEAD:A.pdf)\n')
