@@ -24,6 +24,8 @@
 # - Inkscape
 # - pstoedit
 
+# TODO
+# - add option "add to last_xref" (at the begin of the file to maintain layer order)
 
 import bpy
 import os, sys
@@ -297,6 +299,7 @@ def check_non_case_sensitive(cam):
                         same_name.append(ob.name + ' (check files)')
     return same_name
 
+
 def viewed_objects(cam, objs):
     """ Filter objects to collect """
     objects = []
@@ -314,13 +317,16 @@ def viewed_objects(cam, objs):
     for ref_obj in referenced_objs:
         for obj in referenced_objs[ref_obj]:
             framed = in_frame(cam, obj, ref_obj)
-            if ref_obj not in objects:
-                if framed['framed']:
-                    objects.append(ref_obj)
-                if framed['frontal']:
-                    frontal_objs.append(ref_obj)
-                if framed['behind']:
-                    behind_objs.append(ref_obj)
+            if framed['framed'] and ref_obj not in objects:
+                objects.append(ref_obj)
+            if framed['frontal'] and ref_obj not in frontal_objs:
+                frontal_objs.append(ref_obj)
+            if framed['behind'] and ref_obj not in behind_objs:
+                behind_objs.append(ref_obj)
+            if ref_obj in objects and \
+                    ref_obj in frontal_objs and \
+                    ref_obj in behind_objs:
+                        break
     return {'all': objects, 'frontal': frontal_objs, 'behind': behind_objs}
 
 def get_file_content(f):
