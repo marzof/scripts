@@ -34,6 +34,7 @@ import collections
 import subprocess, shlex
 from shutil import copyfile
 from pathlib import Path
+import mathutils
 from mathutils import Vector
 from mathutils import geometry
 from bpy_extras.object_utils import world_to_camera_view
@@ -107,9 +108,46 @@ class Cam():
         self.objects = objects['all']
         self.frontal_objects = objects['frontal']
         self.behind_objects = objects['behind']
+        self.cut_objects = {}
         self.svgs = []
         self.dxfs = []
         self.dwgs = []
+        self.frame = [obj.matrix_world @ v for v in obj.data.view_frame()]
+        self.dir = mathutils.geometry.normal(self.frame[:3])
+        self.loc = (self.frame[0] + self.frame[2]) / 2
+
+    def create_cut(self):
+        ''' Duplicate, bisect and extrude cut objects '''
+        bpy.ops.object.select_all(action='DESELECT')
+        cut_objs = [ob for ob in self.frontal_objects if ob in self.behind_objects]
+        for ob in [co for co in cut_objs if co.type == 'MESH']:
+            ob.select_set(True)
+            bpy.context.view_layer.objects.active = ob
+            bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
+            new_ob = bpy.context.selected_objects[0]
+            print('duplicate', ob.name, 'to', new_ob.name)
+            self.cut_objects[ob] = new_ob
+
+            bpy.ops.object.editmode_toggle()
+            bpy.ops.mesh.select_all(action='SELECT')
+                    
+            bpy.ops.mesh.bisect(plane_co=self.loc, plane_no=self.dir,
+                use_fill=True, clear_inner=True, clear_outer=True)
+
+            bpy.ops.mesh.extrude_region_move(
+                MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
+                TRANSFORM_OT_translate={"value":self.dir})
+
+            bpy.ops.object.editmode_toggle()
+            new_ob.select_set(False)
+
+    def delete_cut(self):
+        ''' Remove created cut object '''
+        for ob in self.cut_objects:
+            actual_obj = self.cut_objects[ob]
+            actual_obj.select_set(True)
+            bpy.context.view_layer.objects.active = actual_obj
+            bpy.data.objects.remove(actual_obj, do_unlink=True) 
 
     def set_resolution(self):
         ''' Set resolution for camera '''
@@ -132,18 +170,19 @@ class Cam():
 
     def render(self, tmp_name, fs_linesets, obj):
         ''' Execute render for obj and save it as svg '''
-        pass
-        bpy.data.collections[tmp_name].objects.link(obj)
         bpy.context.scene.camera = self.obj
-        render_condition = obj.hide_render
-        obj.hide_render = False
         print('obj', obj.name)
 
         for ls in fs_linesets:
             ## Cut render only for actual cut objects
-            if ls == 'cut' and (obj not in self.frontal_objects or 
-                    obj not in self.behind_objects):
-                continue
+            actual_obj = obj
+            if ls == 'cut' and obj in self.cut_objects:
+                actual_obj = self.cut_objects[obj]
+
+            bpy.data.collections[tmp_name].objects.link(actual_obj)
+            render_condition = actual_obj.hide_render
+            actual_obj.hide_render = False
+
             render_name = self.folder_path  + os.sep + ls + os.sep + \
                     self.name + '-' + undotted(obj.name) + '_' + ls
             print('Render name:', render_name)
@@ -154,8 +193,8 @@ class Cam():
 
             self.__handle_svg(render_name)
         
-        bpy.data.collections[tmp_name].objects.unlink(obj)
-        obj.hide_render = render_condition
+            bpy.data.collections[tmp_name].objects.unlink(actual_obj)
+            actual_obj.hide_render = render_condition
 
     def set_back(self):
         ''' Invert cam direction to render back view '''
@@ -456,9 +495,11 @@ def main():
         print('Frontal are:\n', [ob.name for ob in cam.frontal_objects])
         print('Behind are:\n', [ob.name for ob in cam.behind_objects])
         cam.set_resolution()
+        cam.create_cut()
         for obj in [ob for ob in cam.frontal_objects if ob not in DISABLED_OBJS]:
             cam.render(tmp_name, {fs_ls:fs_linesets[fs_ls] 
                 for fs_ls in fs_linesets if fs_ls != 'bak'}, obj)
+        cam.delete_cut()
 
     ## Disable renderability for all objects to perform back renderings
     for obj in bpy.context.selectable_objects:
@@ -474,7 +515,7 @@ def main():
     ## Reset to original rendering condition
     for obj in bpy.context.selectable_objects:
         obj.hide_render = False if obj not in DISABLED_OBJS else True
-    
+
     for cam in cams:
         cam.finalize()
 
