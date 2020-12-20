@@ -25,7 +25,9 @@
 # - pstoedit
 
 # TODO
-# - add option "add to last_xref" (at the begin of the file to maintain layer order)
+# - add some instructions
+# - fix how object occluded by cut surfaces are rendered if cut object 
+#   are not included in rendering
 
 import bpy
 import os, sys
@@ -52,7 +54,10 @@ ODA_FILE_CONVERTER = '/usr/bin/ODAFileConverter'
 LINEWEIGHT_RE = r'\n\s*100\n\s*AcDbLine\n'
 LINESTYLE_LAYER_RE = r'.*(_.*)\.dwg'
 FACTOR_MARKER = '-f'
-SCRIPT_NAMES = ['xrefs.scr', 'last_xrefs.scr']
+SCRIPT_MODE = 'a' if '-a' in FLAGS else 'w'
+print('flags', FLAGS)
+SCRIPTS = [{'name': 'xrefs.scr', 'mode': 'a'}, 
+        {'name': 'last_xrefs.scr', 'mode': SCRIPT_MODE}]
 FRAME = "{:04d}".format(bpy.context.scene.frame_current)
 RENDER_FACTOR = 2 ## Multiply this value by 1000 to get render resolution
 LARGE_RENDER_FACTOR = int(ARGS[ARGS.index(FACTOR_MARKER) + 1]) \
@@ -101,9 +106,8 @@ class Cam():
         self.obj = obj
         self.name = name
         self.folder_path = folder_path
-        self.scripts = [self.folder_path + os.sep + SCRIPT_NAMES[0], 
-                self.folder_path + os.sep + SCRIPT_NAMES[1]]
-        self.write_mode = ['a', 'w']
+        self.scripts = [self.folder_path + os.sep + SCRIPTS[0]['name'], 
+                self.folder_path + os.sep + SCRIPTS[1]['name']]
         self.existing_files = existing_files
         self.objects = objects['all']
         self.frontal_objects = objects['frontal']
@@ -119,14 +123,52 @@ class Cam():
     def create_cut(self):
         ''' Duplicate, bisect and extrude cut objects '''
         bpy.ops.object.select_all(action='DESELECT')
-        cut_objs = [ob for ob in self.frontal_objects if ob in self.behind_objects]
-        for ob in [co for co in cut_objs if co.type == 'MESH']:
+        cut_objs = [ob for ob in self.frontal_objects 
+                if ob in self.behind_objects]
+        for ob in cut_objs:
             ob.select_set(True)
             bpy.context.view_layer.objects.active = ob
+            if ob.type == 'CURVE':
+                bpy.ops.object.convert(target='MESH')
+            if ob.type == 'EMPTY':
+                bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
+                bpy.ops.object.duplicates_make_real(use_base_parent=False, 
+                        use_hierarchy=False)
+                all_objects = bpy.context.selected_objects
+                to_delete = []
+                to_join = []
+                for r_ob in all_objects:
+                    bpy.ops.object.make_local(type='SELECT_OBDATA')
+                    framed = in_frame(self.obj, r_ob, r_ob)
+                    if framed['framed'] and framed['frontal'] and framed['behind']:
+                        print('to keep', r_ob.name)
+                        to_join.append(r_ob)
+                        bpy.context.view_layer.objects.active = r_ob
+                        for mod in r_ob.modifiers:
+                            bpy.ops.object.modifier_apply(apply_as='DATA', 
+                                modifier=mod.name)
+                    else:
+                        print('to delete', r_ob.name)
+                        to_delete.append(r_ob)
+                bpy.ops.object.select_all(action='DESELECT')
+                for r_ob in to_delete:
+                    r_ob.select_set(True)
+                    bpy.context.view_layer.objects.active = r_ob
+                    bpy.ops.object.delete(use_global=False)
+                bpy.ops.object.select_all(action='DESELECT')
+                for r_ob in to_join: 
+                    r_ob.select_set(True)
+                bpy.context.view_layer.objects.active = to_join[0]
+                bpy.ops.object.join()
+
             bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
             new_ob = bpy.context.selected_objects[0]
             print('duplicate', ob.name, 'to', new_ob.name)
             self.cut_objects[ob] = new_ob
+
+            for mod in ob.modifiers:
+                bpy.ops.object.modifier_apply(apply_as='DATA', 
+                    modifier=mod.name)
 
             bpy.ops.object.editmode_toggle()
             bpy.ops.mesh.select_all(action='SELECT')
@@ -136,10 +178,15 @@ class Cam():
 
             bpy.ops.mesh.extrude_region_move(
                 MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
-                TRANSFORM_OT_translate={"value":self.dir})
+                TRANSFORM_OT_translate={"value":self.dir * .01})
+            bpy.ops.mesh.select_all(action='INVERT')
+            bpy.ops.mesh.extrude_region_move(
+                MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
+                TRANSFORM_OT_translate={"value":-self.dir * .01})
 
             bpy.ops.object.editmode_toggle()
             new_ob.select_set(False)
+            bpy.ops.object.select_all(action='DESELECT')
 
     def delete_cut(self):
         ''' Remove created cut object '''
@@ -156,7 +203,6 @@ class Cam():
         bpy.context.scene.render.resolution_percentage = render_scale
 
     def __handle_svg(self, render_name):
-
         ## Rename svg to remove frame counting
         svg = render_name + '.svg'
         os.rename(render_name + FRAME + '.svg', svg)
@@ -234,7 +280,7 @@ class Cam():
     def __create_cad_script(self, new_objs):
         ''' Create script to run on cad file '''
         for i, script in enumerate(self.scripts):
-            with open(script, self.write_mode[i]) as scr:
+            with open(script, SCRIPTS[i]['mode']) as scr:
                 self.__write_script(scr, new_objs)
             scr.close()
 
@@ -337,7 +383,6 @@ def check_non_case_sensitive(cam):
                     ob.name not in existing_file_objects:
                         same_name.append(ob.name + ' (check files)')
     return same_name
-
 
 def viewed_objects(cam, objs):
     """ Filter objects to collect """
