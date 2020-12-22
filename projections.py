@@ -144,9 +144,9 @@ class Cam():
                         print('to keep', r_ob.name)
                         to_join.append(r_ob)
                         bpy.context.view_layer.objects.active = r_ob
-                        for mod in r_ob.modifiers:
-                            bpy.ops.object.modifier_apply(apply_as='DATA', 
-                                modifier=mod.name)
+                        e_solidify_mod = [mod for mod in ob.modifiers if mod.type == 'SOLIDIFY']
+                        for mod in e_solidify_mod:
+                            bpy.ops.object.modifier_apply(modifier=mod.name)
                     else:
                         print('to delete', r_ob.name)
                         to_delete.append(r_ob)
@@ -166,9 +166,9 @@ class Cam():
             print('duplicate', ob.name, 'to', new_ob.name)
             self.cut_objects[ob] = new_ob
 
-            for mod in ob.modifiers:
-                bpy.ops.object.modifier_apply(apply_as='DATA', 
-                    modifier=mod.name)
+            solidify_mod = [mod for mod in ob.modifiers if mod.type == 'SOLIDIFY']
+            for mod in solidify_mod:
+                bpy.ops.object.modifier_apply(modifier=mod.name)
 
             bpy.ops.object.editmode_toggle()
             bpy.ops.mesh.select_all(action='SELECT')
@@ -176,13 +176,15 @@ class Cam():
             bpy.ops.mesh.bisect(plane_co=self.loc, plane_no=self.dir,
                 use_fill=True, clear_inner=True, clear_outer=True)
 
+            bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, 
+                    type='VERT')
             bpy.ops.mesh.extrude_region_move(
                 MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
-                TRANSFORM_OT_translate={"value":self.dir * .01})
+                TRANSFORM_OT_translate={"value":self.dir * 1})
             bpy.ops.mesh.select_all(action='INVERT')
             bpy.ops.mesh.extrude_region_move(
                 MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
-                TRANSFORM_OT_translate={"value":-self.dir * .01})
+                TRANSFORM_OT_translate={"value":-self.dir * 1})
 
             bpy.ops.object.editmode_toggle()
             new_ob.select_set(False)
@@ -263,9 +265,9 @@ class Cam():
         self.dwgs = [re.sub('\.dxf$', '.dwg', dxf) for dxf in self.dxfs]
         
         print('dwgs:', self.dwgs)
-        print('existing files:', self.existing_files)
+        #print('existing files:', self.existing_files)
         new_objs = list(set(self.dwgs) - set(self.existing_files))
-        print('new files:', new_objs)
+        print('\n\nnew files:', new_objs)
         if new_objs:
             self.__create_cad_script(new_objs)
 
@@ -364,26 +366,6 @@ def in_frame(cam, obj, container):
     #print(obj.name, "is NOT FRAMED!")
     return {'framed': framed, 'frontal': frontal, 'behind': behind}
 
-def check_non_case_sensitive(cam):
-    same_name = [item for item, count in collections.Counter(
-        [ob.name.lower() for ob in cam.objects]).items() if count > 1]
-    if same_name:
-        return same_name
-    else:
-        existing_file_objects = []
-        for f in cam.existing_files:
-            ## Based on render_name of Cam.render()
-            start_index = f.rfind(cam.name) + len(cam.name + '-')
-            end_index = f.rfind('_')
-            existing_file_objects.append(f[start_index: end_index])
-        lower_exist_file_objs = [fo.lower() for fo in existing_file_objects]
-        for ob in cam.objects:
-            ## Get objects with same name but different in upper and lower-case
-            if ob.name.lower() in lower_exist_file_objs and \
-                    ob.name not in existing_file_objects:
-                        same_name.append(ob.name + ' (check files)')
-    return same_name
-
 def viewed_objects(cam, objs):
     """ Filter objects to collect """
     objects = []
@@ -412,6 +394,26 @@ def viewed_objects(cam, objs):
                     ref_obj in behind_objs:
                         break
     return {'all': objects, 'frontal': frontal_objs, 'behind': behind_objs}
+
+def check_non_case_sensitive(cam):
+    same_name = [item for item, count in collections.Counter(
+        [ob.name.lower() for ob in cam.objects]).items() if count > 1]
+    if same_name:
+        return same_name
+    else:
+        existing_file_objects = []
+        for f in cam.existing_files:
+            ## Based on render_name of Cam.render()
+            start_index = f.rfind(cam.name) + len(cam.name + '-')
+            end_index = f.rfind('_')
+            existing_file_objects.append(f[start_index: end_index])
+        lower_exist_file_objs = [fo.lower() for fo in existing_file_objects]
+        for ob in cam.objects:
+            ## Get objects with same name but different in upper and lower-case
+            if ob.name.lower() in lower_exist_file_objs and \
+                    ob.name not in existing_file_objects:
+                        same_name.append(ob.name + ' (check files)')
+    return same_name
 
 def get_file_content(f):
     f = open(f, 'r')
