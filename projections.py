@@ -54,8 +54,8 @@ ODA_FILE_CONVERTER = '/usr/bin/ODAFileConverter'
 LINEWEIGHT_RE = r'\n\s*100\n\s*AcDbLine\n'
 LINESTYLE_LAYER_RE = r'.*(_.*)\.dwg'
 FACTOR_MARKER = '-f'
-SCRIPT_MODE = 'a' if '-a' in FLAGS else 'w'
-print('flags', FLAGS)
+ADD_SCRIPT_MARKER = '-add'
+SCRIPT_MODE = 'a' if ADD_SCRIPT_MARKER in FLAGS else 'w'
 SCRIPTS = [{'name': 'xrefs.scr', 'mode': 'a'}, 
         {'name': 'last_xrefs.scr', 'mode': SCRIPT_MODE}]
 FRAME = "{:04d}".format(bpy.context.scene.frame_current)
@@ -95,9 +95,12 @@ BOUNDING_BOX_EDGES = ((0, 1), (0, 3), (0, 4), (1, 2),
                     (4, 5), (4, 7), (5, 6), (6, 7))
 
 FRAME_EDGES = (Vector((0,0)), Vector((1,0)), Vector((1,1)), Vector((0,1)))
+EXTRUDE_CUT_FACTOR = .1
 
 print('\n\n\n###################################\n\n\n')
 
+print('flags', FLAGS)
+print('script mode', SCRIPT_MODE)
 print('Render factor', LARGE_RENDER_FACTOR)
 print('Renderable styles', RENDERABLE_STYLES)
 
@@ -180,11 +183,11 @@ class Cam():
                     type='VERT')
             bpy.ops.mesh.extrude_region_move(
                 MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
-                TRANSFORM_OT_translate={"value":self.dir * 1})
+                TRANSFORM_OT_translate={"value":self.dir * EXTRUDE_CUT_FACTOR})
             bpy.ops.mesh.select_all(action='INVERT')
             bpy.ops.mesh.extrude_region_move(
                 MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
-                TRANSFORM_OT_translate={"value":-self.dir * 1})
+                TRANSFORM_OT_translate={"value":-self.dir * EXTRUDE_CUT_FACTOR})
 
             bpy.ops.object.editmode_toggle()
             new_ob.select_set(False)
