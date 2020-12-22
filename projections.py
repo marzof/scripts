@@ -121,6 +121,7 @@ class Cam():
         self.loc = (self.frame[0] + self.frame[2]) / 2
 
     def make_local(self, obj, cut):
+        bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
         bpy.ops.object.duplicates_make_real(use_base_parent=False, 
                 use_hierarchy=False)
@@ -132,7 +133,7 @@ class Cam():
             framed = in_frame(self.obj, r_ob, r_ob)
             if cut:
                 if framed['framed'] and framed['frontal'] and framed['behind']:
-                    print('to keep', r_ob.name)
+                    print('cut: to keep', r_ob.name)
                     to_join.append(r_ob)
                     bpy.context.view_layer.objects.active = r_ob
                     e_solidify_mod = [mod for mod in obj.modifiers if mod.type == 'SOLIDIFY']
@@ -173,7 +174,7 @@ class Cam():
                 bpy.ops.object.convert(target='MESH')
             if ob.type == 'EMPTY':
                 bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
-                self.make_local(bpy.context.object, True).select_set(True)
+                self.make_local(ob, True).select_set(True)
 
             bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
             new_ob = bpy.context.selected_objects[0]
@@ -236,7 +237,7 @@ class Cam():
         print('obj', obj.name)
 
         actual_obj = obj
-        if obj.type == 'EMPTY' and obj.instance_collection:
+        if obj.type == 'EMPTY':
             actual_obj = self.make_local(obj, False)
 
         for ls in fs_linesets:
