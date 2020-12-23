@@ -123,6 +123,48 @@ class Cam():
         self.dir = mathutils.geometry.normal(self.frame[:3])
         self.loc = (self.frame[0] + self.frame[2]) / 2
 
+    def make_local(self, obj, cut):
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        bpy.ops.object.duplicates_make_real(use_base_parent=False, 
+                use_hierarchy=False)
+        all_objects = bpy.context.selected_objects
+        to_delete = []
+        to_join = []
+        for r_ob in all_objects:
+            bpy.ops.object.make_local(type='SELECT_OBDATA')
+            framed = in_frame(self.obj, r_ob, r_ob)
+            if cut:
+                if framed['framed'] and framed['frontal'] and framed['behind']:
+                    print('cut: to keep', r_ob.name)
+                    to_join.append(r_ob)
+                    bpy.context.view_layer.objects.active = r_ob
+                    e_solidify_mod = [mod for mod in obj.modifiers if mod.type == 'SOLIDIFY']
+                    for mod in e_solidify_mod:
+                        bpy.ops.object.modifier_apply(modifier=mod.name)
+                else:
+                    print('to delete', r_ob.name)
+                    to_delete.append(r_ob)
+            else:
+                print('to keep', r_ob.name)
+                to_join.append(r_ob)
+                bpy.context.view_layer.objects.active = r_ob
+                e_solidify_mod = [mod for mod in obj.modifiers if mod.type == 'SOLIDIFY']
+                for mod in e_solidify_mod:
+                    bpy.ops.object.modifier_apply(modifier=mod.name)
+        bpy.ops.object.select_all(action='DESELECT')
+        for r_ob in to_delete:
+            r_ob.select_set(True)
+            bpy.context.view_layer.objects.active = r_ob
+            bpy.ops.object.delete(use_global=False)
+        bpy.ops.object.select_all(action='DESELECT')
+        for r_ob in to_join: 
+            r_ob.select_set(True)
+        bpy.context.view_layer.objects.active = to_join[0]
+        if len(to_join) > 0:
+            bpy.ops.object.join()
+        return bpy.context.object
+
     def create_cut(self):
         ''' Duplicate, bisect and extrude cut objects '''
         bpy.ops.object.select_all(action='DESELECT')
@@ -135,34 +177,7 @@ class Cam():
                 bpy.ops.object.convert(target='MESH')
             if ob.type == 'EMPTY':
                 bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
-                bpy.ops.object.duplicates_make_real(use_base_parent=False, 
-                        use_hierarchy=False)
-                all_objects = bpy.context.selected_objects
-                to_delete = []
-                to_join = []
-                for r_ob in all_objects:
-                    bpy.ops.object.make_local(type='SELECT_OBDATA')
-                    framed = in_frame(self.obj, r_ob, r_ob)
-                    if framed['framed'] and framed['frontal'] and framed['behind']:
-                        print('to keep', r_ob.name)
-                        to_join.append(r_ob)
-                        bpy.context.view_layer.objects.active = r_ob
-                        e_solidify_mod = [mod for mod in ob.modifiers if mod.type == 'SOLIDIFY']
-                        for mod in e_solidify_mod:
-                            bpy.ops.object.modifier_apply(modifier=mod.name)
-                    else:
-                        print('to delete', r_ob.name)
-                        to_delete.append(r_ob)
-                bpy.ops.object.select_all(action='DESELECT')
-                for r_ob in to_delete:
-                    r_ob.select_set(True)
-                    bpy.context.view_layer.objects.active = r_ob
-                    bpy.ops.object.delete(use_global=False)
-                bpy.ops.object.select_all(action='DESELECT')
-                for r_ob in to_join: 
-                    r_ob.select_set(True)
-                bpy.context.view_layer.objects.active = to_join[0]
-                bpy.ops.object.join()
+                self.make_local(ob, True).select_set(True)
 
             bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
             new_ob = bpy.context.selected_objects[0]
@@ -224,9 +239,12 @@ class Cam():
         bpy.context.scene.camera = self.obj
         print('obj', obj.name)
 
+        actual_obj = obj
+        if obj.type == 'EMPTY':
+            actual_obj = self.make_local(obj, False)
+
         for ls in fs_linesets:
             ## Cut render only for actual cut objects
-            actual_obj = obj
             if ls == 'cut' and obj in self.cut_objects:
                 actual_obj = self.cut_objects[obj]
 
