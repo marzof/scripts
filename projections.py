@@ -95,7 +95,7 @@ BOUNDING_BOX_EDGES = ((0, 1), (0, 3), (0, 4), (1, 2),
                     (4, 5), (4, 7), (5, 6), (6, 7))
 
 FRAME_EDGES = (Vector((0,0)), Vector((1,0)), Vector((1,1)), Vector((0,1)))
-EXTRUDE_CUT_FACTOR = .1
+EXTRUDE_CUT_FACTOR = .005
 
 print('\n\n\n###################################\n\n\n')
 
@@ -119,9 +119,11 @@ class Cam():
         self.svgs = []
         self.dxfs = []
         self.dwgs = []
-        self.frame = [obj.matrix_world @ v for v in obj.data.view_frame()]
+        self.view_frame = [v * Vector((1,1,obj.data.clip_start)) 
+                for v in obj.data.view_frame()]
+        self.frame = [obj.matrix_world @ v for v in self.view_frame]
         self.dir = mathutils.geometry.normal(self.frame[:3])
-        self.loc = (self.frame[0] + self.frame[2]) / 2
+        self.frame_loc = (self.frame[0] + self.frame[2]) / 2
 
     def make_local(self, obj, cut):
         bpy.ops.object.select_all(action='DESELECT')
@@ -191,11 +193,12 @@ class Cam():
             bpy.ops.object.editmode_toggle()
             bpy.ops.mesh.select_all(action='SELECT')
                     
-            bpy.ops.mesh.bisect(plane_co=self.loc, plane_no=self.dir,
+            bpy.ops.mesh.bisect(plane_co=self.frame_loc, plane_no=self.dir,
                 use_fill=True, clear_inner=True, clear_outer=True)
 
             bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, 
                     type='VERT')
+            bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.mesh.extrude_region_move(
                 MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
                 TRANSFORM_OT_translate={"value":self.dir * EXTRUDE_CUT_FACTOR})
