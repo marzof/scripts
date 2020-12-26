@@ -125,47 +125,11 @@ class Cam():
         self.dir = mathutils.geometry.normal(self.frame[:3])
         self.frame_loc = (self.frame[0] + self.frame[2]) / 2
 
-    def make_local(self, obj, cut):
-        bpy.ops.object.select_all(action='DESELECT')
-        obj.select_set(True)
-        bpy.ops.object.duplicates_make_real(use_base_parent=False, 
-                use_hierarchy=False)
-        all_objects = bpy.context.selected_objects
-        to_delete = []
-        to_join = []
-        for r_ob in all_objects:
-            bpy.ops.object.make_local(type='SELECT_OBDATA')
-            framed = in_frame(self.obj, r_ob, r_ob)
-            if cut:
-                if framed['framed'] and framed['frontal'] and framed['behind']:
-                    print('cut: to keep', r_ob.name)
-                    to_join.append(r_ob)
-                    bpy.context.view_layer.objects.active = r_ob
-                    e_solidify_mod = [mod for mod in obj.modifiers if mod.type == 'SOLIDIFY']
-                    for mod in e_solidify_mod:
-                        bpy.ops.object.modifier_apply(modifier=mod.name)
-                else:
-                    print('to delete', r_ob.name)
-                    to_delete.append(r_ob)
-            else:
-                print('to keep', r_ob.name)
-                to_join.append(r_ob)
-                bpy.context.view_layer.objects.active = r_ob
-                e_solidify_mod = [mod for mod in obj.modifiers if mod.type == 'SOLIDIFY']
-                for mod in e_solidify_mod:
-                    bpy.ops.object.modifier_apply(modifier=mod.name)
-        bpy.ops.object.select_all(action='DESELECT')
-        for r_ob in to_delete:
-            r_ob.select_set(True)
-            bpy.context.view_layer.objects.active = r_ob
-            bpy.ops.object.delete(use_global=False)
-        bpy.ops.object.select_all(action='DESELECT')
-        for r_ob in to_join: 
-            r_ob.select_set(True)
-        bpy.context.view_layer.objects.active = to_join[0]
-        if len(to_join) > 0:
-            bpy.ops.object.join()
-        return bpy.context.object
+    def set_resolution(self):
+        ''' Set resolution for camera '''
+        ## 100% if cam ortho scale == base ortho scale
+        render_scale = round(100 * self.obj.data.ortho_scale/BASE_ORTHO_SCALE)
+        bpy.context.scene.render.resolution_percentage = render_scale
 
     def create_cut(self):
         ''' Duplicate, bisect and extrude cut objects '''
@@ -175,85 +139,107 @@ class Cam():
         for ob in cut_objs:
             ob.select_set(True)
             bpy.context.view_layer.objects.active = ob
-            if ob.type == 'CURVE':
-                bpy.ops.object.convert(target='MESH')
-            if ob.type == 'EMPTY':
-                bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
-                self.make_local(ob, True).select_set(True)
-
+            print('duplicate', ob.name, 'for cutting object')
             bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
-            new_ob = bpy.context.selected_objects[0]
-            print('duplicate', ob.name, 'to', new_ob.name)
+            if ob.type == 'EMPTY':
+                contained_objects = make_local(bpy.context.object)
+                cleaned_objects = self.__clean_and_prepare(contained_objects, ob)
+            elif ob.type == 'CURVE':
+                bpy.ops.object.convert(target='MESH')
+                apply_mod(ob, type='SOLIDIFY')
+            else:
+                apply_mod(ob, type='SOLIDIFY')
+
+            new_ob = bpy.context.selected_objects
             self.cut_objects[ob] = new_ob
-
-            solidify_mod = [mod for mod in ob.modifiers if mod.type == 'SOLIDIFY']
-            for mod in solidify_mod:
-                bpy.ops.object.modifier_apply(modifier=mod.name)
-
-            bpy.ops.object.editmode_toggle()
-            bpy.ops.mesh.select_all(action='SELECT')
-                    
-            bpy.ops.mesh.bisect(plane_co=self.frame_loc, plane_no=self.dir,
-                use_fill=True, clear_inner=True, clear_outer=True)
-
-            bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, 
-                    type='VERT')
-            bpy.ops.mesh.select_all(action='SELECT')
-            bpy.ops.mesh.extrude_region_move(
-                MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
-                TRANSFORM_OT_translate={"value":self.dir * EXTRUDE_CUT_FACTOR})
-            bpy.ops.mesh.select_all(action='INVERT')
-            bpy.ops.mesh.extrude_region_move(
-                MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
-                TRANSFORM_OT_translate={"value":-self.dir * EXTRUDE_CUT_FACTOR})
-
-            bpy.ops.object.editmode_toggle()
-            new_ob.select_set(False)
+            self.__bisect_and_extrude()
+            for sel_ob in new_ob:
+                sel_ob.select_set(False)
             bpy.ops.object.select_all(action='DESELECT')
+
+    def __clean_and_prepare(self, all_objects, ref_obj):
+        ''' Remove not framed objects, apply modifiers and join the remaining '''
+        to_delete = []
+        to_join = []
+        ## Remove not framed objects from empty
+        for ob in all_objects:
+            framed = in_frame(self.obj, ob, ref_obj)
+            if ob.name == 'Plane.013' or ob.name == 'Plane.024':
+                print(framed)
+            if framed['framed'] and framed['frontal'] and framed['behind']:
+                print('to keep', ob.name)
+                to_join.append(ob)
+                ob.select_set(True)
+                bpy.context.view_layer.objects.active = ob
+                apply_mod(ob, type='SOLIDIFY')
+            else:
+                print('to delete', ob.name)
+                to_delete.append(ob)
+        bpy.ops.object.select_all(action='DESELECT')
+        for ob in to_delete:
+            ob.select_set(True)
+            bpy.context.view_layer.objects.active = ob
+        bpy.ops.object.delete(use_global=False)
+        bpy.ops.object.select_all(action='DESELECT')
+        for ob in to_join: 
+            print('to join', ob.name)
+            ob.select_set(True)
+            bpy.context.view_layer.objects.active = ob
+
+        return bpy.context.selected_objects
+
+    def __bisect_and_extrude(self):
+        ''' Enter in edit mode, bisect by cam frame and extrude front and rear '''
+        bpy.ops.object.editmode_toggle()
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.select_mode(use_extend=False, use_expand=False, 
+                type='VERT')
+                
+        bpy.ops.mesh.bisect(plane_co=self.frame_loc, plane_no=self.dir,
+            use_fill=True, clear_inner=True, clear_outer=True)
+
+        bpy.ops.mesh.extrude_region_move(
+            MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
+            TRANSFORM_OT_translate={"value":self.dir * EXTRUDE_CUT_FACTOR})
+        bpy.ops.mesh.select_all(action='INVERT')
+        bpy.ops.mesh.extrude_region_move(
+            MESH_OT_extrude_region={"use_normal_flip":False, "mirror":False},
+            TRANSFORM_OT_translate={"value":-self.dir * EXTRUDE_CUT_FACTOR})
+
+        bpy.ops.object.editmode_toggle()
 
     def delete_cut(self):
         ''' Remove created cut object '''
         for ob in self.cut_objects:
             actual_obj = self.cut_objects[ob]
-            actual_obj.select_set(True)
-            bpy.context.view_layer.objects.active = actual_obj
-            bpy.data.objects.remove(actual_obj, do_unlink=True) 
-
-    def set_resolution(self):
-        ''' Set resolution for camera '''
-        ## 100% if cam ortho scale == base ortho scale
-        render_scale = round(100 * self.obj.data.ortho_scale/BASE_ORTHO_SCALE)
-        bpy.context.scene.render.resolution_percentage = render_scale
-
-    def __handle_svg(self, render_name):
-        ## Rename svg to remove frame counting
-        svg = render_name + '.svg'
-        os.rename(render_name + FRAME + '.svg', svg)
-
-        ## Remove svg not containing '<path'
-        svg_content = get_file_content(svg)
-        if '<path' not in svg_content:
-            os.remove(svg)
-        else:
-            self.svgs.append(svg)
+            for inner_obj in actual_obj:
+                inner_obj.select_set(True)
+                bpy.context.view_layer.objects.active = inner_obj
+                bpy.data.objects.remove(inner_obj, do_unlink=True) 
 
     def render(self, tmp_name, fs_linesets, obj):
         ''' Execute render for obj and save it as svg '''
         bpy.context.scene.camera = self.obj
-        print('obj', obj.name)
+        print('Start rendering', obj.name)
 
-        actual_obj = obj
-        if obj.type == 'EMPTY':
-            actual_obj = self.make_local(obj, False)
+        actual_obj = [obj]
 
         for ls in fs_linesets:
+            print('with style', ls)
             ## Cut render only for actual cut objects
             if ls == 'cut' and obj in self.cut_objects:
                 actual_obj = self.cut_objects[obj]
 
-            bpy.data.collections[tmp_name].objects.link(actual_obj)
-            render_condition = actual_obj.hide_render
-            actual_obj.hide_render = False
+            elif obj.type == 'EMPTY' and ls != 'cut':
+                obj.select_set(True)
+                bpy.context.view_layer.objects.active = obj
+                bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
+                actual_obj = make_local(bpy.context.object)
+
+            for act_ob in actual_obj:
+                bpy.data.collections[tmp_name].objects.link(act_ob)
+                render_condition = act_ob.hide_render
+                act_ob.hide_render = False
 
             render_name = self.folder_path  + os.sep + ls + os.sep + \
                     self.name + '-' + undotted(obj.name) + '_' + ls
@@ -265,8 +251,23 @@ class Cam():
 
             self.__handle_svg(render_name)
         
-            bpy.data.collections[tmp_name].objects.unlink(actual_obj)
-            actual_obj.hide_render = render_condition
+            for coll_obj in bpy.data.collections[tmp_name].objects:
+                bpy.data.collections[tmp_name].objects.unlink(coll_obj)
+                coll_obj.hide_render = render_condition
+
+    def __handle_svg(self, render_name):
+        ''' Rename and clean up svg '''
+        
+        ## Rename svg to remove frame counting
+        svg = render_name + '.svg'
+        os.rename(render_name + FRAME + '.svg', svg)
+
+        ## Remove svg not containing '<path'
+        svg_content = get_file_content(svg)
+        if '<path' not in svg_content:
+            os.remove(svg)
+        else:
+            self.svgs.append(svg)
 
     def set_back(self):
         ''' Invert cam direction to render back view '''
@@ -279,6 +280,7 @@ class Cam():
                 orient_type='LOCAL')
 
     def finalize(self):    
+        ''' Convert svg to dwg and write script to embed xref to dwg'''
         self.dxfs = list(filter(None, 
             [svg2dxf(svg_f) for svg_f in self.svgs]))
         subprocess.run([ODA_FILE_CONVERTER, self.folder_path, self.folder_path, 
@@ -295,14 +297,6 @@ class Cam():
         if new_objs:
             self.__create_cad_script(new_objs)
 
-    def __write_script(self, scr, new_objs):
-        for new_obj in new_objs:
-            rel_obj = new_obj.replace(RENDER_PATH,'').strip(os.sep)
-            layer_name = re.search(LINESTYLE_LAYER_RE, rel_obj).group(1)
-            scr.write('LAYER\nM\n{}\n\nXREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(
-                layer_name, rel_obj))
-        scr.write('LAYER\nM\n0\n\n')
-
     def __create_cad_script(self, new_objs):
         ''' Create script to run on cad file '''
         for i, script in enumerate(self.scripts):
@@ -310,136 +304,20 @@ class Cam():
                 self.__write_script(scr, new_objs)
             scr.close()
 
-def create_tmp_collection():
-    """ Create a tmp collection and link it to the actual scene """
-    ## Set a random name for the render collection
-    hash_code = random.getrandbits(32)
-    collection_name = '%x' % hash_code
-    ## If collection name exists get a new name
-    while collection_name in [coll.name for coll in bpy.data.collections]:
-        hash_code = random.getrandbits(32)
-        collection_name = '%x' % hash_code
+    def __write_script(self, scr, new_objs):
+        ''' Write script for embedding xref in the right layers '''
+        for new_obj in new_objs:
+            rel_obj = new_obj.replace(RENDER_PATH,'').strip(os.sep)
+            layer_name = re.search(LINESTYLE_LAYER_RE, rel_obj).group(1)
+            scr.write('LAYER\nM\n{}\n\nXREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(
+                layer_name, rel_obj))
+        scr.write('LAYER\nM\n0\n\n')
 
-    ## Create the new collection and link it to the scene
-    render_collection = bpy.data.collections.new(collection_name)
-    bpy.context.scene.collection.children.link(render_collection)
-    print('Created tmp collection', collection_name) 
-    print(render_collection) 
-    return collection_name
 
-def set_freestyle(tmp_name):
-    ''' Enable Freestyle and set lineset and style for rendering '''
-    bpy.context.scene.render.use_freestyle = True
-    bpy.context.scene.svg_export.use_svg_export = True
-    ## Disable existing linesets
-    for ls in FREESTYLE_SETTINGS.linesets:
-        ls.show_render = False
-
-    ## Create dedicated linesets
-    linesets = {}
-    for ls in [fs for fs in FREESTYLE_SETS if fs in RENDERABLE_STYLES]:
-        print('ls', ls)
-        linesets[ls] = FREESTYLE_SETTINGS.linesets.new(tmp_name + '_' + ls)
-        linesets[ls].show_render = False
-        linesets[ls].select_by_collection = True
-        linesets[ls].collection = bpy.data.collections[tmp_name]
-        linesets[ls].visibility = FREESTYLE_SETS[ls]['visibility']
-        linesets[ls].select_silhouette = FREESTYLE_SETS[ls]['silhouette']
-        linesets[ls].select_border = FREESTYLE_SETS[ls]['border']
-        linesets[ls].select_contour = FREESTYLE_SETS[ls]['contour']
-        linesets[ls].select_crease = FREESTYLE_SETS[ls]['crease']
-        linesets[ls].select_edge_mark = FREESTYLE_SETS[ls]['mark']
-
-    return linesets
-
-def in_frame(cam, obj, container):
-    ''' Filter objs and return just those viewed from cam '''
-    #print('Check visibility for', obj.name)
-    matrix = container.matrix_world
-    box = [matrix @ Vector(v) for v in obj.bound_box]
-    frontal = False
-    behind = False
-    framed = False
-
-    ## If a vertex is in camera_view then object is in
-    for v in box:
-        x, y, z = world_to_camera_view(bpy.context.scene, cam, v)
-        if z >= cam.data.clip_start:
-            frontal = True
-        else:
-            behind = True
-        if 1 >= x >= 0 and 1 >= y >= 0:
-            #print(obj.name, "is FRAMED! (in vertex", v, ")")
-            framed = True
-    if framed:
-        return {'framed': framed, 'frontal': frontal, 'behind': behind}
-
-    ## If an edge intersects camera frame then obj is in
-    for e in BOUNDING_BOX_EDGES:
-        box_edge = [Vector(world_to_camera_view(bpy.context.scene, cam, box[e[0]])[:2]),
-            Vector(world_to_camera_view(bpy.context.scene, cam, box[e[1]])[:2])]
-        for i in range(4):
-            intersect = geometry.intersect_line_line_2d(
-                box_edge[0], box_edge[1], FRAME_EDGES[i], FRAME_EDGES[(i+1)%4])
-            #print('intersect in', intersect)
-            if intersect:
-                #print(obj.name, "is FRAMED! (intersects in", intersect, ")")
-                framed = True
-                return {'framed': framed, 'frontal': frontal, 'behind': behind}
-
-    #print(obj.name, "is NOT FRAMED!")
-    return {'framed': framed, 'frontal': frontal, 'behind': behind}
-
-def viewed_objects(cam, objs):
-    """ Filter objects to collect """
-    objects = []
-    frontal_objs = []
-    behind_objs = []
-    referenced_objs = {}
-    ## Use indicate objects (as args or selected) if any. Else use selectable
-    objs = objs if len(objs) else bpy.context.selectable_objects 
-    for obj in objs:
-        if obj.type in RENDERABLES:
-            if obj.type == 'EMPTY' and obj.instance_collection:
-                referenced_objs[obj] = obj.instance_collection.all_objects
-            elif obj.type != 'EMPTY':
-                referenced_objs[obj] = [obj]
-    for ref_obj in referenced_objs:
-        for obj in referenced_objs[ref_obj]:
-            framed = in_frame(cam, obj, ref_obj)
-            if framed['framed'] and ref_obj not in objects:
-                objects.append(ref_obj)
-            if framed['frontal'] and ref_obj not in frontal_objs:
-                frontal_objs.append(ref_obj)
-            if framed['behind'] and ref_obj not in behind_objs:
-                behind_objs.append(ref_obj)
-            if ref_obj in objects and \
-                    ref_obj in frontal_objs and \
-                    ref_obj in behind_objs:
-                        break
-    return {'all': objects, 'frontal': frontal_objs, 'behind': behind_objs}
-
-def check_non_case_sensitive(cam):
-    same_name = [item for item, count in collections.Counter(
-        [ob.name.lower() for ob in cam.objects]).items() if count > 1]
-    if same_name:
-        return same_name
-    else:
-        existing_file_objects = []
-        for f in cam.existing_files:
-            ## Based on render_name of Cam.render()
-            start_index = f.rfind(cam.name) + len(cam.name + '-')
-            end_index = f.rfind('_')
-            existing_file_objects.append(f[start_index: end_index])
-        lower_exist_file_objs = [fo.lower() for fo in existing_file_objects]
-        for ob in cam.objects:
-            ## Get objects with same name but different in upper and lower-case
-            if ob.name.lower() in lower_exist_file_objs and \
-                    ob.name not in existing_file_objects:
-                        same_name.append(ob.name + ' (check files)')
-    return same_name
+##### UTILITIES #####
 
 def get_file_content(f):
+    ''' Get the content from file f '''
     f = open(f, 'r')
     f_content = f.read()
     f.close()
@@ -480,6 +358,108 @@ def svg2dxf(svg):
 
     return dxf
 
+def apply_mod(obj, type = None):
+    ''' Apply modifier of type "type" '''
+    mods = [mod for mod in obj.modifiers if mod.type == type]
+    for mod in mods:
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+
+def make_local(obj):
+    ''' Convert linked object to local object '''
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.duplicates_make_real(use_base_parent=False, 
+            use_hierarchy=False)
+    all_objects = bpy.context.selected_objects
+    print('made local', all_objects)
+    bpy.ops.object.select_all(action='DESELECT')
+    for ob in all_objects:
+        ob.select_set(True)
+        bpy.context.view_layer.objects.active = ob
+        bpy.ops.object.make_local(type='SELECT_OBDATA')
+    return all_objects
+
+def in_frame(cam, obj, container):
+    ''' Filter objs and return just those viewed from cam '''
+    #print('Check visibility for', obj.name)
+    matrix = container.matrix_world
+    box = [obj.matrix_world @ Vector(v) for v in obj.bound_box]
+    frontal = False
+    behind = False
+    framed = False
+
+    ## If a vertex is in camera_view then object is in
+    for v in box:
+        x, y, z = world_to_camera_view(bpy.context.scene, cam, v)
+        if z >= cam.data.clip_start:
+            frontal = True
+        else:
+            behind = True
+        if 1 >= x >= 0 and 1 >= y >= 0:
+            #print(obj.name, "is FRAMED! (in vertex", v, ")")
+            framed = True
+    if framed:
+        return {'framed': framed, 'frontal': frontal, 'behind': behind}
+
+    ## If an edge intersects camera frame then obj is in
+    for e in BOUNDING_BOX_EDGES:
+        box_edge = [Vector(world_to_camera_view(bpy.context.scene, cam, box[e[0]])[:2]),
+            Vector(world_to_camera_view(bpy.context.scene, cam, box[e[1]])[:2])]
+        for i in range(4):
+            intersect = geometry.intersect_line_line_2d(
+                box_edge[0], box_edge[1], FRAME_EDGES[i], FRAME_EDGES[(i+1)%4])
+            #print('intersect in', intersect)
+            if intersect:
+                #print(obj.name, "is FRAMED! (intersects in", intersect, ")")
+                framed = True
+                return {'framed': framed, 'frontal': frontal, 'behind': behind}
+
+    #print(obj.name, "is NOT FRAMED!")
+    return {'framed': framed, 'frontal': frontal, 'behind': behind}
+
+##### OPS #####
+
+def create_tmp_collection():
+    """ Create a tmp collection and link it to the actual scene """
+    ## Set a random name for the render collection
+    hash_code = random.getrandbits(32)
+    collection_name = '%x' % hash_code
+    ## If collection name exists get a new name
+    while collection_name in [coll.name for coll in bpy.data.collections]:
+        hash_code = random.getrandbits(32)
+        collection_name = '%x' % hash_code
+
+    ## Create the new collection and link it to the scene
+    render_collection = bpy.data.collections.new(collection_name)
+    bpy.context.scene.collection.children.link(render_collection)
+    print('Created tmp collection', collection_name) 
+    print(render_collection) 
+    return collection_name
+
+def set_freestyle(tmp_name):
+    ''' Enable Freestyle and set lineset and style for rendering '''
+    ## Disable existing linesets
+    for ls in FREESTYLE_SETTINGS.linesets:
+        ls.show_render = False
+
+    ## Create dedicated linesets
+    linesets = {}
+    for ls in [fs for fs in FREESTYLE_SETS if fs in RENDERABLE_STYLES]:
+        print('ls', ls)
+        linesets[ls] = FREESTYLE_SETTINGS.linesets.new(tmp_name + '_' + ls)
+        linesets[ls].show_render = False
+        linesets[ls].select_by_collection = True
+        linesets[ls].collection = bpy.data.collections[tmp_name]
+        linesets[ls].visibility = FREESTYLE_SETS[ls]['visibility']
+        linesets[ls].select_silhouette = FREESTYLE_SETS[ls]['silhouette']
+        linesets[ls].select_border = FREESTYLE_SETS[ls]['border']
+        linesets[ls].select_contour = FREESTYLE_SETS[ls]['contour']
+        linesets[ls].select_crease = FREESTYLE_SETS[ls]['crease']
+        linesets[ls].select_edge_mark = FREESTYLE_SETS[ls]['mark']
+
+    return linesets
+
 def get_render_args():
     ''' Get cameras and object based on args or selection '''
     selection = bpy.context.selected_objects
@@ -513,42 +493,95 @@ def prepare_files(folder_path, cam_name):
         os.mkdir(folder_path)
         for fs in FREESTYLE_SETS:
             os.mkdir(folder_path + '/' + fs)
+        ## Copy dwg from blank template
+        print('Create', folder_path + '.dwg')
+        copyfile(BLANK_CAD, folder_path + '.dwg')
     else:
         ## Folder already exists. Get the dwgs inside it
         existing_files = [str(fi) for fi in list(
             Path(folder_path).rglob('*.dwg'))]
         print(folder_path, 'exists and contains:\n', existing_files)
-
-    ## If dwg doesn't exist, copy it from blank template
-    if cam_name + '.dwg' not in os.listdir(os.path.realpath(RENDER_PATH)):
-        print('Create', folder_path + '.dwg')
-        copyfile(BLANK_CAD, folder_path + '.dwg')
-    else: 
-        print(cam_name + '.dwg exists')
+        file_in_folder = cam_name + '.dwg' in os.listdir(
+                os.path.realpath(RENDER_PATH))
+        print(cam_name + '.dwg ' + ("NOT " * file_in_folder) + 'in ' + 
+                folder_path)
+        if not file_in_folder:
+            print('Create', folder_path + '.dwg')
+            copyfile(BLANK_CAD, folder_path + '.dwg')
 
     return existing_files
 
+def viewed_objects(cam, objs):
+    """ Filter objects to collect """
+    objects = []
+    frontal_objs = []
+    behind_objs = []
+    referenced_objs = {}
+    ## Use indicate objects (as args or selected) if any. Else use selectable
+    objs = objs if len(objs) else bpy.context.selectable_objects 
+    for obj in objs:
+        if obj.type in RENDERABLES:
+            if obj.type == 'EMPTY' and obj.instance_collection:
+                referenced_objs[obj] = obj.instance_collection.all_objects
+            elif obj.type != 'EMPTY':
+                referenced_objs[obj] = [obj]
+    for ref_obj in referenced_objs:
+        for obj in referenced_objs[ref_obj]:
+            framed = in_frame(cam, obj, ref_obj)
+            if framed['framed'] and ref_obj not in objects:
+                objects.append(ref_obj)
+            if framed['frontal'] and ref_obj not in frontal_objs:
+                frontal_objs.append(ref_obj)
+            if framed['behind'] and ref_obj not in behind_objs:
+                behind_objs.append(ref_obj)
+            if ref_obj in objects and ref_obj in frontal_objs and \
+                    ref_obj in behind_objs:
+                        break
+    return {'all': objects, 'frontal': frontal_objs, 'behind': behind_objs}
+
+def get_non_case_sensitive_same_name(cam):
+    ''' Check if same name objects are present in object to render
+        or in render folder '''
+    same_name = [item for item, count in collections.Counter(
+        [ob.name.lower() for ob in cam.objects]).items() if count > 1]
+    if same_name:
+        return same_name
+    else:
+        existing_file_objects = []
+        for f in cam.existing_files:
+            ## Based on render_name of Cam.render()
+            start_index = f.rfind(cam.name) + len(cam.name + '-')
+            end_index = f.rfind('_')
+            existing_file_objects.append(f[start_index: end_index])
+        lower_exist_file_objs = [fo.lower() for fo in existing_file_objects]
+        for ob in cam.objects:
+            ## Get objects with same name but different in upper and lower-case
+            if ob.name.lower() in lower_exist_file_objs and \
+                    ob.name not in existing_file_objects:
+                        same_name.append(ob.name + ' (check files)')
+    return same_name
+
 
 def main():
-
     bpy.context.scene.render.resolution_x = RENDER_FACTOR * 1000
     bpy.context.scene.render.resolution_y = RENDER_FACTOR * 1000
+    bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'
+    bpy.context.scene.display.shading.light = 'FLAT'
+    bpy.context.scene.render.use_freestyle = True
+    bpy.context.scene.svg_export.use_svg_export = True
 
     tmp_name = create_tmp_collection()
     fs_linesets = set_freestyle(tmp_name)
+    render_args = get_render_args()
     print('fs_linesets', fs_linesets)
 
-    bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'
-    bpy.context.scene.display.shading.light = 'FLAT'
-
-    render_args = get_render_args()
     objs = render_args['objs']
     cams = []
     ## Create Cam objetcs
     for cam in render_args['cams']:
         cam_name = undotted(cam.name)
         folder_path = (RENDER_PATH + os.sep + cam_name).strip(os.sep)
-        print(folder_path)
+        print('folder path', folder_path)
         cams.append(Cam(
             cam, cam_name, folder_path, 
             prepare_files(folder_path, cam_name),
@@ -556,7 +589,7 @@ def main():
         print('objects are', cams[-1].objects)
 
     for cam in cams:
-        same_name_objects = check_non_case_sensitive(cam)
+        same_name_objects = get_non_case_sensitive_same_name(cam)
         if same_name_objects:
             print('The following objects have the same name for non ' + \
                     'case-sensitive os. \nPlease fix it before continuing')
