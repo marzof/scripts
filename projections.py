@@ -39,6 +39,7 @@ from pathlib import Path
 import mathutils
 from mathutils import Vector
 from mathutils import geometry
+from mathutils import Matrix
 from bpy_extras.object_utils import world_to_camera_view
 
 check_list = lambda x, alt: x if x else alt
@@ -146,13 +147,17 @@ class Cam():
                 cleaned_objects = self.__clean_and_prepare(contained_objects, ob)
             elif ob.type == 'CURVE':
                 bpy.ops.object.convert(target='MESH')
+                apply_mod(ob, type='MIRROR')
                 apply_mod(ob, type='SOLIDIFY')
             else:
+                apply_mod(ob, type='MIRROR')
                 apply_mod(ob, type='SOLIDIFY')
 
             new_ob = bpy.context.selected_objects
             self.cut_objects[ob] = new_ob
-            self.__bisect_and_extrude()
+            if new_ob:
+                print('Ready to bisect', new_ob, 'of', ob.name)
+                self.__bisect_and_extrude()
             for sel_ob in new_ob:
                 sel_ob.select_set(False)
             bpy.ops.object.select_all(action='DESELECT')
@@ -164,13 +169,12 @@ class Cam():
         ## Remove not framed objects from empty
         for ob in all_objects:
             framed = in_frame(self.obj, ob, ref_obj)
-            if ob.name == 'Plane.013' or ob.name == 'Plane.024':
-                print(framed)
             if framed['framed'] and framed['frontal'] and framed['behind']:
                 print('to keep', ob.name)
                 to_join.append(ob)
                 ob.select_set(True)
                 bpy.context.view_layer.objects.active = ob
+                apply_mod(ob, type='MIRROR')
                 apply_mod(ob, type='SOLIDIFY')
             else:
                 print('to delete', ob.name)
@@ -383,8 +387,20 @@ def make_local(obj):
 def in_frame(cam, obj, container):
     ''' Filter objs and return just those viewed from cam '''
     #print('Check visibility for', obj.name)
-    matrix = container.matrix_world
-    box = [obj.matrix_world @ Vector(v) for v in obj.bound_box]
+    if container.instance_collection and \
+        obj.name in container.instance_collection.all_objects: ## obj is linked
+        matrix = container.matrix_world
+        ref_offset = container.instance_collection.instance_offset
+    else:
+        matrix = Matrix((
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, 0.0, 1.0)))
+        ref_offset = Vector((0.0, 0.0, 0.0))
+    box = [matrix @ ((obj.matrix_world @ Vector(v)) - ref_offset) 
+            for v in obj.bound_box]
+
     frontal = False
     behind = False
     framed = False
@@ -503,7 +519,7 @@ def prepare_files(folder_path, cam_name):
         print(folder_path, 'exists and contains:\n', existing_files)
         file_in_folder = cam_name + '.dwg' in os.listdir(
                 os.path.realpath(RENDER_PATH))
-        print(cam_name + '.dwg ' + ("NOT " * file_in_folder) + 'in ' + 
+        print(cam_name + '.dwg ' + ("NOT " * (not file_in_folder)) + 'in ' + 
                 folder_path)
         if not file_in_folder:
             print('Create', folder_path + '.dwg')
