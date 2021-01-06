@@ -50,6 +50,7 @@ norm_path = lambda x: os.path.realpath(x).replace(
 ARGS = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
 FLAGS = [arg for arg in ARGS if arg.startswith('-')]
 BLANK_CAD = './blank.dwg'
+STATUS = 'status'
 ODA_FILE_CONVERTER = '/usr/bin/ODAFileConverter'
 #CONTINUOUS_LINE_RE = r'AcDbLine\n(\s*62\n\s*0\n\s*6\n\s*CONTINUOUS\n)'
 LINEWEIGHT_RE = r'\n\s*100\n\s*AcDbLine\n'
@@ -171,6 +172,7 @@ class Cam():
             framed = in_frame(self.obj, ob, ref_obj)
             if framed['framed'] and framed['frontal'] and framed['behind']:
                 print('to keep', ob.name)
+                print('prepare to join', ob.name)
                 to_join.append(ob)
                 ob.select_set(True)
                 bpy.context.view_layer.objects.active = ob
@@ -224,17 +226,20 @@ class Cam():
     def render(self, tmp_name, fs_linesets, obj):
         ''' Execute render for obj and save it as svg '''
         bpy.context.scene.camera = self.obj
-        print('Start rendering', obj.name)
-
         actual_obj = [obj]
 
         for ls in fs_linesets:
-            print('with style', ls)
+            print('Start rendering', obj.name, 'with style', ls)
+            status_file = open(self.folder_path + os.sep + STATUS, 'a')
+            status_file.write('\nStart rendering {} with style {}'.format(
+                obj.name, ls))
             ## Cut render only for actual cut objects
-            if ls == 'cut' and obj in self.cut_objects:
-                actual_obj = self.cut_objects[obj]
-
-            elif obj.type == 'EMPTY' and ls != 'cut':
+            if ls == 'cut':
+                if obj in self.cut_objects:
+                    actual_obj = self.cut_objects[obj]
+                else:
+                    return
+            elif obj.type == 'EMPTY':
                 obj.select_set(True)
                 bpy.context.view_layer.objects.active = obj
                 bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
@@ -251,6 +256,8 @@ class Cam():
             fs_linesets[ls].show_render = True
             bpy.context.scene.render.filepath = render_name
             bpy.ops.render.render()
+            status_file.write('\n\t...render completed!')
+            status_file.close()
             fs_linesets[ls].show_render = False
 
             self.__handle_svg(render_name)
@@ -269,6 +276,10 @@ class Cam():
         ## Remove svg not containing '<path'
         svg_content = get_file_content(svg)
         if '<path' not in svg_content:
+            status_file = open(self.folder_path + os.sep + STATUS, 'a')
+            status_file.write('\n{} not visible'.format(svg))
+            status_file.close()
+            print('Void SVG!!')
             os.remove(svg)
         else:
             self.svgs.append(svg)
@@ -316,7 +327,6 @@ class Cam():
             scr.write('LAYER\nM\n{}\n\nXREF\na\n{}\n0,0,0\n1\n1\n0\n'.format(
                 layer_name, rel_obj))
         scr.write('LAYER\nM\n0\n\n')
-
 
 ##### UTILITIES #####
 
@@ -387,9 +397,17 @@ def make_local(obj):
 def in_frame(cam, obj, container):
     ''' Filter objs and return just those viewed from cam '''
     #print('Check visibility for', obj.name)
-    if container.instance_collection and \
-        obj.name in container.instance_collection.all_objects: ## obj is linked
+    linked = False
+    if container.instance_collection:
+        for inner_obj in container.instance_collection.all_objects:
+            if obj == inner_obj:
+                linked = True
+                break
+    if linked:
+        print(obj.name, 'is linked')
         matrix = container.matrix_world
+        #print('matrix', matrix)
+        #print('obj matrix', obj.matrix_world)
         ref_offset = container.instance_collection.instance_offset
     else:
         matrix = Matrix((
@@ -400,6 +418,8 @@ def in_frame(cam, obj, container):
         ref_offset = Vector((0.0, 0.0, 0.0))
     box = [matrix @ ((obj.matrix_world @ Vector(v)) - ref_offset) 
             for v in obj.bound_box]
+    #print('ref_offset', ref_offset)
+    #print('box', box)
 
     frontal = False
     behind = False
@@ -432,6 +452,8 @@ def in_frame(cam, obj, container):
                 return {'framed': framed, 'frontal': frontal, 'behind': behind}
 
     #print(obj.name, "is NOT FRAMED!")
+    frontal = False
+    behind = False
     return {'framed': framed, 'frontal': frontal, 'behind': behind}
 
 ##### OPS #####
@@ -579,6 +601,10 @@ def get_non_case_sensitive_same_name(cam):
 
 
 def main():
+
+    status_file = open(folder_path + os.sep + STATUS, 'w')
+    status_file.write('Start process')
+    status_file.close()
     bpy.context.scene.render.resolution_x = RENDER_FACTOR * 1000
     bpy.context.scene.render.resolution_y = RENDER_FACTOR * 1000
     bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'
@@ -614,9 +640,25 @@ def main():
         print('Objects to render are:\n', [ob.name for ob in cam.objects])
         print('Frontal are:\n', [ob.name for ob in cam.frontal_objects])
         print('Behind are:\n', [ob.name for ob in cam.behind_objects])
+        status_file = open(folder_path + os.sep + STATUS, 'a')
+        status_file.write('\nObjects to render are {}:\n{}'.format(
+            len(cam.objects), [ob.name for ob in cam.objects]))
+        status_file.write('\nFrontal objects are {}:\n{}'.format(
+            len(cam.frontal_objects), [ob.name for ob in cam.frontal_objects]))
+        status_file.write('\nBehind objects are {}:\n{}'.format(
+            len(cam.behind_objects), [ob.name for ob in cam.behind_objects]))
         cam.set_resolution()
         cam.create_cut()
-        for obj in [ob for ob in cam.frontal_objects if ob not in DISABLED_OBJS]:
+        status_file.write('\nCut objects are {}:\n{}'.format(
+            len(cam.cut_objects), [ob.name for ob in cam.cut_objects]))
+        status_file.close()
+        for i, obj in enumerate([ob for ob in cam.frontal_objects 
+                if ob not in DISABLED_OBJS], start=1):
+            status_file = open(folder_path + os.sep + STATUS, 'a')
+            status_file.write('\nRender {}, object #{}/{} ({}%)'.format(
+                obj.name, i, len(cam.frontal_objects), 
+                round(100 * float(i)/len(cam.frontal_objects), 2)))
+            status_file.close()
             cam.render(tmp_name, {fs_ls:fs_linesets[fs_ls] 
                 for fs_ls in fs_linesets if fs_ls != 'bak'}, obj)
         cam.delete_cut()
