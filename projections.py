@@ -602,9 +602,6 @@ def get_non_case_sensitive_same_name(cam):
 
 def main():
 
-    status_file = open(folder_path + os.sep + STATUS, 'w')
-    status_file.write('Start process')
-    status_file.close()
     bpy.context.scene.render.resolution_x = RENDER_FACTOR * 1000
     bpy.context.scene.render.resolution_y = RENDER_FACTOR * 1000
     bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'
@@ -640,7 +637,7 @@ def main():
         print('Objects to render are:\n', [ob.name for ob in cam.objects])
         print('Frontal are:\n', [ob.name for ob in cam.frontal_objects])
         print('Behind are:\n', [ob.name for ob in cam.behind_objects])
-        status_file = open(folder_path + os.sep + STATUS, 'a')
+        status_file = open(folder_path + os.sep + STATUS, 'w')
         status_file.write('\nObjects to render are {}:\n{}'.format(
             len(cam.objects), [ob.name for ob in cam.objects]))
         status_file.write('\nFrontal objects are {}:\n{}'.format(
