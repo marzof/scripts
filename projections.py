@@ -143,7 +143,7 @@ class Cam():
             bpy.context.view_layer.objects.active = ob
             print('duplicate', ob.name, 'for cutting object')
             bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
-            if ob.type == 'EMPTY':
+            if ob.type == 'EMPTY' or ob.override_library:
                 contained_objects = make_local(bpy.context.object)
                 cleaned_objects = self.__clean_and_prepare(contained_objects, ob)
             elif ob.type == 'CURVE':
@@ -174,6 +174,9 @@ class Cam():
                 print('to keep', ob.name)
                 print('prepare to join', ob.name)
                 to_join.append(ob)
+                ## Make single user for multi-user objects
+                if ob.data.users > 1:
+                    ob.data = ob.data.copy()
                 ob.select_set(True)
                 bpy.context.view_layer.objects.active = ob
                 apply_mod(ob, type='MIRROR')
