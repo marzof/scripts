@@ -148,11 +148,9 @@ class Cam():
                 cleaned_objects = self.__clean_and_prepare(contained_objects, ob)
             elif ob.type == 'CURVE':
                 bpy.ops.object.convert(target='MESH')
-                apply_mod(ob, type='MIRROR')
-                apply_mod(ob, type='SOLIDIFY')
+                apply_mod(ob, type=['MIRROR', 'SOLIDIFY', 'BEVEL'])
             else:
-                apply_mod(ob, type='MIRROR')
-                apply_mod(ob, type='SOLIDIFY')
+                apply_mod(ob, type=['MIRROR', 'SOLIDIFY', 'BEVEL'])
 
             new_ob = bpy.context.selected_objects
             self.cut_objects[ob] = new_ob
@@ -179,8 +177,7 @@ class Cam():
                     ob.data = ob.data.copy()
                 ob.select_set(True)
                 bpy.context.view_layer.objects.active = ob
-                apply_mod(ob, type='MIRROR')
-                apply_mod(ob, type='SOLIDIFY')
+                apply_mod(ob, type=['MIRROR', 'SOLIDIFY', 'BEVEL'])
             else:
                 print('to delete', ob.name)
                 to_delete.append(ob)
@@ -375,9 +372,9 @@ def svg2dxf(svg):
 
     return dxf
 
-def apply_mod(obj, type = None):
+def apply_mod(obj, type = []):
     ''' Apply modifier of type "type" '''
-    mods = [mod for mod in obj.modifiers if mod.type == type]
+    mods = [mod for mod in obj.modifiers if mod.type in type]
     for mod in mods:
         bpy.ops.object.modifier_apply(modifier=mod.name)
 
