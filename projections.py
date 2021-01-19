@@ -374,7 +374,7 @@ def svg2dxf(svg):
 
 def apply_mod(obj, type = []):
     ''' Apply modifier of type "type" '''
-    mods = [mod for mod in obj.modifiers if mod.type in type]
+    mods = [mod for mod in obj.modifiers if mod.type in type and mod.show_render]
     for mod in mods:
         bpy.ops.object.modifier_apply(modifier=mod.name)
 
