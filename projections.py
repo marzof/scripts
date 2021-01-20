@@ -92,9 +92,11 @@ RENDERABLE_STYLES = check_list([ls for ls in FREESTYLE_SETS if
     [ls for ls in FREESTYLE_SETS_DEFAULT])
 RENDER_PATH = norm_path(bpy.context.scene.render.filepath)
 
-BOUNDING_BOX_EDGES = ((0, 1), (0, 3), (0, 4), (1, 2), 
-                    (1, 5), (2, 3), (2, 6), (3, 7), 
-                    (4, 5), (4, 7), (5, 6), (6, 7))
+BOUNDING_BOX_EDGES = ((0, 1), (0, 3), (0, 4), (1, 2), (1, 5), (2, 3), 
+                    (2, 6), (3, 7), (4, 5), (4, 7), (5, 6), (6, 7))
+
+BOUNDING_BOX_FACES = ((0, 1, 2, 3), (2, 3, 7, 6), (6, 7, 4, 5),
+                   (4, 5, 1, 0), (0, 4, 7, 3), (1, 5, 6, 2)) 
 
 FRAME_EDGES = (Vector((0,0)), Vector((1,0)), Vector((1,1)), Vector((0,1)))
 EXTRUDE_CUT_FACTOR = .005
@@ -425,9 +427,11 @@ def in_frame(cam, obj, container):
     behind = False
     framed = False
 
-    ## If a vertex is in camera_view then object is in
+    bound_box_verts_from_cam = []
+    ## If a vertex of bounding box is in camera_view then object is in
     for v in box:
         x, y, z = world_to_camera_view(bpy.context.scene, cam, v)
+        bound_box_verts_from_cam.append((x, y, z))
         if z >= cam.data.clip_start:
             frontal = True
         else:
@@ -435,6 +439,18 @@ def in_frame(cam, obj, container):
         if 1 >= x >= 0 and 1 >= y >= 0:
             #print(obj.name, "is FRAMED! (in vertex", v, ")")
             framed = True
+
+    if not framed:
+        ## Check if obect is bigger than frame
+        for face in BOUNDING_BOX_FACES:
+            face_verts = [bound_box_verts_from_cam[v] for v in face]
+            intersect = mathutils.geometry.intersect_point_quad_2d(
+                    Vector((0.5, 0.5, 0.0)), 
+                    face_verts[0], face_verts[1], face_verts[2], face_verts[3])
+            if intersect:
+                framed = True
+                break
+
     if framed:
         return {'framed': framed, 'frontal': frontal, 'behind': behind}
 
