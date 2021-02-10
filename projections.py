@@ -376,6 +376,14 @@ def svg2dxf(svg):
 
 def apply_mod(obj, type = []):
     ''' Apply modifier of type "type" '''
+
+    ## Remove shape keys
+    print('shape_key', obj.data.shape_keys)
+    if obj.data.shape_keys:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.shape_key_remove(all=True)
+        print('remove shape_key', obj.data.shape_keys)
+
     mods = [mod for mod in obj.modifiers if mod.type in type and mod.show_render]
     for mod in mods:
         bpy.ops.object.modifier_apply(modifier=mod.name)
