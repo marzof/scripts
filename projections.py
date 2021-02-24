@@ -378,7 +378,7 @@ def apply_mod(obj, type = []):
     ''' Apply modifier of type "type" '''
 
     ## Remove shape keys
-    print('shape_key', obj.data.shape_keys)
+    ## TODO apply the active shape key after the other to keep the shape
     if obj.data.shape_keys:
         bpy.context.view_layer.objects.active = obj
         bpy.ops.object.shape_key_remove(all=True)
