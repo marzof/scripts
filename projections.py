@@ -36,6 +36,7 @@ import collections
 import subprocess, shlex
 from shutil import copyfile
 from pathlib import Path
+import ezdxf
 import mathutils
 from mathutils import Vector
 from mathutils import geometry
@@ -362,6 +363,11 @@ def svg2dxf(svg):
         os.remove(eps)
 
     ## Change continuous lines and lineweight to ByBlock in dxfs
+
+    ## Convert dxf to readable code page: DWGCODEPAGE ANSI_1252
+    dxf_file = ezdxf.readfile(dxf, 'utf-8')
+    dxf_file.saveas(dxf)
+
     dxf_content = get_file_content(dxf)
 
     dxf_linetype = re.sub(r'CONTINUOUS', r'ByBlock', dxf_content)
