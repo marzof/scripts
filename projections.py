@@ -53,8 +53,6 @@ FLAGS = [arg for arg in ARGS if arg.startswith('-')]
 BLANK_CAD = './blank.dwg'
 STATUS = 'status'
 ODA_FILE_CONVERTER = '/usr/bin/ODAFileConverter'
-#CONTINUOUS_LINE_RE = r'AcDbLine\n(\s*62\n\s*0\n\s*6\n\s*CONTINUOUS\n)'
-LINEWEIGHT_RE = r'\n\s*100\n\s*AcDbLine\n'
 LINESTYLE_LAYER_RE = r'.*(_.*)\.dwg'
 FACTOR_MARKER = '-f'
 ADD_SCRIPT_MARKER = '-add'
@@ -362,21 +360,13 @@ def svg2dxf(svg):
     if os.path.exists(eps):
         os.remove(eps)
 
-    ## Change continuous lines and lineweight to ByBlock in dxfs
-
-    ## Convert dxf to readable code page: DWGCODEPAGE ANSI_1252
+    ## Convert dxf to readable code page (utf-8 -> DWGCODEPAGE ANSI_1252)
+    ## and set linetype and lineweight to 'ByBlock'
     dxf_file = ezdxf.readfile(dxf, 'utf-8')
+    for entity in dxf_file.modelspace().query('LINE'):
+        entity.dxf.linetype = 'ByBlock'
+        entity.dxf.lineweight = -2
     dxf_file.saveas(dxf)
-
-    dxf_content = get_file_content(dxf)
-
-    dxf_linetype = re.sub(r'CONTINUOUS', r'ByBlock', dxf_content)
-    dxf_lineweight = re.sub(LINEWEIGHT_RE, 
-            r'\n370\n    -2\n100\nAcDbLine\n', dxf_linetype)
-
-    f_dxf = open(dxf, 'w')
-    f_dxf.write(dxf_lineweight)
-    f_dxf.close()
 
     return dxf
 
