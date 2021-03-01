@@ -192,6 +192,9 @@ class Cam():
             print('to join', ob.name)
             ob.select_set(True)
             bpy.context.view_layer.objects.active = ob
+            if ob.type == 'CURVE':
+                print('Convert curve to mesh')
+                bpy.ops.object.convert(target='MESH')
 
         return bpy.context.selected_objects
 
