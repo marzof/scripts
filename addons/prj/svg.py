@@ -69,8 +69,8 @@ while len(pts_dict) > 0:
 ordered_pts.append(ordered_pts[0])
 print('ORDERED\n', ordered_pts)
 polyline = drw.polyline(points = ordered_pts)
-attrib = {'stroke': '#000000', 'stroke-opacity': '1', 'fill': 'none', 
-        'stroke-linecap': 'round', 'stroke-width': '2', 'style': 'fill: #f00'}
+attrib = {'stroke': '#000000', 'stroke-opacity': '1', 'id': 'pl',
+        'stroke-linecap': 'round', 'stroke-width': '2'} #, 'style': 'fill: #f00'}
 polyline.update(attrib)
 group.add(polyline)
 drw.add(group)
