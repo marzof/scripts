@@ -1,0 +1,12 @@
+use { 
+    fill-opacity:.5;
+}
+#use2402 {
+	stroke-width:3;
+	fill:red;
+	stroke:blue;
+}
+rect {
+	fill:green;
+	stroke:yellow;
+}
