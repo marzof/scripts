@@ -9,12 +9,8 @@ import subprocess, shlex
 import os,  pathlib
 
 RENDERABLES = ['MESH', 'CURVE', 'EMPTY']
-FILEPATH = bpy.data.filepath
 ADDONS_PATH = str(pathlib.Path(__file__).parent.absolute())
 MAIN_PATH = 'main.py'
-#prj_cmd = lambda x: bpy.app.binary_path + " --background " + \
-#        bpy.data.filepath + " --python " + ADDONS_PATH + "/" + \
-#        MAIN_PATH + " -- " + x
 prj_cmd = lambda x: [bpy.app.binary_path, "--background", bpy.data.filepath,
         "--python", ADDONS_PATH + "/" + MAIN_PATH, "--", x]
 
@@ -32,14 +28,15 @@ class Prj(bpy.types.Operator):
 
     def execute(self, context):
         bpy.ops.wm.save_mainfile()
-        #subprocess.run(shlex.split(prj_cmd(str(self.render_assets))))
-        subprocess.run(prj_cmd(str(self.render_assets)))
+        subprocess.run(prj_cmd(str(self.render_assets_names)))
 
     def modal(self, context, event):
         self.execute(context)
         v3d = context.space_data
         rv3d = v3d.region_3d
 
+        bpy.context.scene.camera = self._initial_scene_camera
+        self.camera.rotation_mode = self._initial_cam_rotation_mode
         rv3d.view_perspective = self._initial_perspective
         rv3d.view_rotation = self._initial_rotation
         rv3d.view_location = self._initial_location
@@ -48,6 +45,10 @@ class Prj(bpy.types.Operator):
 
     def invoke(self, context, event):
         self.render_assets = get_render_assets()
+        self.render_assets_names = {}
+        for tp in self.render_assets:
+            self.render_assets_names[tp] = [i.name 
+                    for i in self.render_assets[tp]]
 
         if context.space_data.type != 'VIEW_3D':
             self.report({'WARNING'}, "Active space must be a View3d")
@@ -61,10 +62,16 @@ class Prj(bpy.types.Operator):
         rv3d = v3d.region_3d
         
         self._initial_perspective = rv3d.view_perspective
+        self._initial_matrix = rv3d.view_matrix.copy()
         self._initial_rotation = rv3d.view_rotation.copy()
         self._initial_location = rv3d.view_location.copy()
         self._initial_distance = rv3d.view_distance
-        self.camera = get_render_args()['cams'][0]
+        self._initial_scene_camera = bpy.context.scene.camera
+        self.camera = get_render_assets()['cams'][0]
+        self._initial_cam_rotation_mode = self.camera.rotation_mode
+
+        bpy.context.scene.camera = self.camera
+        self.camera.rotation_mode = 'QUATERNION'
 
         rv3d.view_perspective = self.camera.data.type
         rv3d.view_rotation = self.camera.rotation_quaternion
