@@ -6,13 +6,13 @@ bl_info = {
 
 import bpy
 import subprocess, shlex
-import os,  pathlib
+import os, pathlib
 
 RENDERABLES = ['MESH', 'CURVE', 'EMPTY']
 ADDONS_PATH = str(pathlib.Path(__file__).parent.absolute())
 MAIN_PATH = 'main.py'
-prj_cmd = lambda x: [bpy.app.binary_path, "--background", bpy.data.filepath,
-        "--python", ADDONS_PATH + "/" + MAIN_PATH, "--", x]
+prj_cmd = lambda flags, assets: [bpy.app.binary_path, "--background", bpy.data.filepath,
+        "--python", ADDONS_PATH + "/" + MAIN_PATH, "--", flags, assets]
 
 def get_render_assets():
     ''' Get cameras and object based on args or selection '''
@@ -21,20 +21,16 @@ def get_render_assets():
     objs = [obj for obj in selection if obj.type in RENDERABLES]
     return {'cams': cams, 'objs': objs}
 
+
 class Prj(bpy.types.Operator):
     """Set view to camera to export svg  from grease pencil"""
     bl_idname = "prj.modal_operator"
     bl_label = "Set 3d view as selected camera and launch prj"
+    bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
-        bpy.ops.wm.save_mainfile()
-        subprocess.run(prj_cmd(str(self.render_assets_names)))
-
-    def modal(self, context, event):
-        self.execute(context)
+    def reset_scene(self, context):
         v3d = context.space_data
         rv3d = v3d.region_3d
-
         bpy.context.scene.camera = self._initial_scene_camera
         self.camera.rotation_mode = self._initial_cam_rotation_mode
         rv3d.view_perspective = self._initial_perspective
@@ -42,6 +38,33 @@ class Prj(bpy.types.Operator):
         rv3d.view_location = self._initial_location
         rv3d.view_distance = self._initial_distance
         return {'FINISHED'}
+
+    def execute(self, context):
+        bpy.ops.wm.save_mainfile()
+        subprocess.run(prj_cmd(self.key, str(self.render_assets_names)))
+        self.reset_scene(context)
+
+
+    def modal(self, context, event):
+        context.area.header_text_set("Type Enter to create drawing, " + \
+                "H for hiddden, B for back, ESC for exit")
+        if event.type in {'RET', 'NUMPAD_ENTER'} or event.type == 'LEFTMOUSE':
+            self.key = '-cp'
+            self.execute(context)
+            return {'FINISHED'}
+        elif event.type == 'H':
+            self.key = '-h'
+            self.execute(context)
+            return {'FINISHED'}
+        elif event.type == 'B':
+            self.key = '-b'
+            self.execute(context)
+            return {'FINISHED'}
+        elif event.type == 'ESC':
+            self.reset_scene(context)
+            return {'CANCELLED'}
+
+        return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
         self.render_assets = get_render_assets()

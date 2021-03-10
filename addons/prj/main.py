@@ -27,32 +27,34 @@ import bpy, bmesh
 import sys, os
 import ast, random
 from prj import blend2svg
-from prj import svg
+from prj import svg_lib
+#import svgutils
 
 norm_path = lambda x: os.path.realpath(x).replace(
         os.path.realpath('.'), '').strip(os.sep)
 
 ARGS = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
-#FLAGS = [arg for arg in ARGS if arg.startswith('-')]
+FLAGS = ARGS[0].replace('-', '')
+ASSETS = ARGS[1]
 FILE_PATH = bpy.path.abspath("//")
 RENDER_PATH = norm_path(bpy.context.scene.render.filepath)
-GREASE_PENCIL_MOD = 'prj_gp_la'
-GREASE_PENCIL_MAT = 'prj_gp_mat'
-CAM_SIZE_PLANE_SUFFIX = '_size_ref'
-GREASE_PENCIL_PREFIX = 'prj_gp_'
-GREASE_PENCIL_LAYER = 'prj_gp_lay'
+GREASE_PENCIL_MOD = 'prj_la'
+GREASE_PENCIL_MAT = 'prj_mat'
+CAM_SIZE_PLANE = 'size_frame'
+GREASE_PENCIL_PREFIX = 'prj_'
+GREASE_PENCIL_LAYER = 'prj_lay'
+RENDERABLES = ['MESH', 'CURVE', 'EMPTY']
+SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
 
-
-
+OCCLUSION_LEVELS = { 'cp': (0,0), 'h': (1,128), 'b': (0,128), }
 
 def get_render_assets(args):
     """ Get render assets from args and convert it to dict """
     r_a = {}
-    for arg in args:
-        if isinstance(ast.literal_eval(arg), dict):
-            dict_arg = ast.literal_eval(arg)
-            for k in dict_arg:
-                r_a[k] = [bpy.data.objects[name] for name in dict_arg[k]]
+    if isinstance(ast.literal_eval(args), dict):
+        dict_arg = ast.literal_eval(args)
+        for k in dict_arg:
+            r_a[k] = [bpy.data.objects[name] for name in dict_arg[k]]
     return r_a
 
 def create_tmp_collection():
@@ -73,8 +75,8 @@ def create_tmp_collection():
 
 def add_size_plane_mesh(cam):
     """ Create a plane at the clip end of cam with same size of cam frame """
-    mesh = bpy.data.meshes.new(cam.name + CAM_SIZE_PLANE_SUFFIX)
-    obj = bpy.data.objects.new(cam.name + CAM_SIZE_PLANE_SUFFIX, mesh)
+    mesh = bpy.data.meshes.new(CAM_SIZE_PLANE)
+    obj = bpy.data.objects.new(CAM_SIZE_PLANE, mesh)
 
     bpy.context.collection.objects.link(obj)
 
@@ -91,7 +93,8 @@ def add_size_plane_mesh(cam):
     obj.matrix_world = cam.matrix_world
     return obj
 
-def create_line_art_onto(source, source_type):
+def create_line_art_onto(source, source_type, 
+        occl_level_start = 0, occl_level_end = 0):
     """ Create a line art gp from source of the source_type """
     gp_name = GREASE_PENCIL_PREFIX + source.name
 
@@ -111,6 +114,9 @@ def create_line_art_onto(source, source_type):
     gp_mod.target_material = gp_mat
     gp_mod.chaining_geometry_threshold = 0
     gp_mod.chaining_image_threshold = 0
+    gp_mod.use_multiple_levels = True
+    gp_mod.level_start = occl_level_start
+    gp_mod.level_end = occl_level_end
     gp_mod.source_type = source_type
     if source_type == 'OBJECT':
         gp_mod.source_object = source
@@ -125,18 +131,24 @@ def make_active(obj):
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
 
-render_assets = get_render_assets(ARGS)
+
+render_assets = get_render_assets(ASSETS)
 tmp_collection = create_tmp_collection()
 
 for cam in render_assets['cams']:
-    bpy.context.scene.camera = cam
     size_plane_mesh = add_size_plane_mesh(cam)
-    size_plane_gp = create_line_art_onto(size_plane_mesh, 'OBJECT')
-    drawing_la_gp = create_line_art_onto(tmp_collection, 'COLLECTION')
+    size_plane_la_gp = create_line_art_onto(size_plane_mesh, 'OBJECT', 
+            OCCLUSION_LEVELS['b'][0], OCCLUSION_LEVELS['b'][1])
+    drawing_la_gp = create_line_art_onto(tmp_collection, 'COLLECTION',
+            OCCLUSION_LEVELS[FLAGS][0], OCCLUSION_LEVELS[FLAGS][1])
     make_active(drawing_la_gp)
-    svg_data = blend2svg.get_svg(cam, render_assets['objs'],
+    svg_files = blend2svg.get_svg(cam, render_assets['objs'], drawing_la_gp,
             tmp_collection, FILE_PATH + RENDER_PATH)
-    print(svg_data)
-#for svg_file in svg_data['files']:
-#    svg.set_data(svg_data['frame_size'])
-#    svg.read_svg(svg_file, svg_data['frame_name'], svg_data['line_art_name'])
+    print('svg files:', svg_files)
+    for svg_f in svg_files:
+        svg, drawing_g, frame_g = svg_lib.read_svg(svg_f['path'],
+                SVG_GROUP_PREFIX + svg_f['obj'],
+                SVG_GROUP_PREFIX + CAM_SIZE_PLANE) 
+        svg_lib.write_svg(svg, drawing_g, frame_g, cam.data.ortho_scale, 
+                svg_f['path'])
+
