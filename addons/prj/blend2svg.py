@@ -23,7 +23,7 @@ def get_svg(cam, objs, la_gp, collection, render_path):
         ## Link object to rendering collection, 
         ## export svg and unlink it
         collection.objects.link(obj)
-        fpath = render_path + os.sep + obj.name + '.svg'
+        fpath = render_path + obj.name + '.svg'
         ## Change la_gp name removing collection name
         la_gp.name = la_gp.name.replace(collection.name, obj.name)
         bpy.ops.wm.gpencil_export_svg(filepath=fpath,
