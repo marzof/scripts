@@ -48,7 +48,7 @@ class Prj(bpy.types.Operator):
     def modal(self, context, event):
         context.area.header_text_set("Type Enter to create drawing, " + \
                 "H for hiddden, B for back, ESC for exit")
-        if event.type in {'RET', 'NUMPAD_ENTER'} or event.type == 'LEFTMOUSE':
+        if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
             self.key = '-cp'
             self.execute(context)
             return {'FINISHED'}

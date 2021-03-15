@@ -35,11 +35,11 @@ from mathutils import Matrix
 from bpy_extras.object_utils import world_to_camera_view
 
 
+
 undotted = lambda x: x.replace('.', '_')
 
 ARGS = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
-FLAGS = ARGS[0].replace('-', '')
-ASSETS = ARGS[1]
+FLAGS = ARGS[0].replace('-', '') if ARGS else 'cp'
 RENDER_PATH = bpy.path.abspath(bpy.context.scene.render.filepath)
 GREASE_PENCIL_MOD = 'prj_la'
 GREASE_PENCIL_MAT = 'prj_mat'
@@ -48,7 +48,6 @@ GREASE_PENCIL_PREFIX = 'prj_'
 GREASE_PENCIL_LAYER = 'prj_lay'
 RENDERABLES = ['MESH', 'CURVE', 'EMPTY']
 SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
-
 OCCLUSION_LEVELS = { 'cp': (0,0), 'h': (1,128), 'b': (0,128), }
 
 def get_render_assets(args):
@@ -59,6 +58,15 @@ def get_render_assets(args):
         for k in dict_arg:
             r_a[k] = [bpy.data.objects[name] for name in dict_arg[k]]
     return r_a
+
+def get_render_assets_cl():
+    ''' Get cameras and object based on selection if run by command line '''
+    selection = bpy.context.selected_objects
+    cams = [obj.name for obj in selection if obj.type == 'CAMERA']
+    objs = [obj.name for obj in selection if obj.type in RENDERABLES]
+    return {'cams': cams, 'objs': objs}
+
+ASSETS = ARGS[1] if ARGS else str(get_render_assets_cl())
 
 def create_tmp_collection():
     """ Create a tmp collection and link it to the actual scene """
@@ -256,8 +264,8 @@ class Draw_maker:
 ## Prepare scene: collection, line art... -> class:
     def prepare_scene():
         pass
-    def draw_from_cam(class Cam):
-        pass
+#    def draw_from_cam(class Cam):
+#        pass
 
 ## for cam in cams:
 ##     Prepare files and folders if missing, get existing svg links...
