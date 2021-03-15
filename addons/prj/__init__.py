@@ -11,15 +11,9 @@ import os, pathlib
 RENDERABLES = ['MESH', 'CURVE', 'EMPTY']
 ADDONS_PATH = str(pathlib.Path(__file__).parent.absolute())
 MAIN_PATH = 'main.py'
-prj_cmd = lambda flags, assets: [bpy.app.binary_path, "--background", bpy.data.filepath,
-        "--python", ADDONS_PATH + "/" + MAIN_PATH, "--", flags, assets]
+prj_cmd = lambda flags, objects: [bpy.app.binary_path, "--background", bpy.data.filepath,
+        "--python", ADDONS_PATH + "/" + MAIN_PATH, "--", flags, objects]
 
-def get_render_assets():
-    ''' Get cameras and object based on args or selection '''
-    selection = bpy.context.selected_objects
-    cams = [obj for obj in selection if obj.type == 'CAMERA']
-    objs = [obj for obj in selection if obj.type in RENDERABLES]
-    return {'cams': cams, 'objs': objs}
 
 
 class Prj(bpy.types.Operator):
@@ -27,6 +21,20 @@ class Prj(bpy.types.Operator):
     bl_idname = "prj.modal_operator"
     bl_label = "Set 3d view as selected camera and launch prj"
     bl_options = {'REGISTER', 'UNDO'}
+
+    def get_objects(self, selection):
+        ''' Get objects based on selection '''
+        objs = [obj.name.replace(';', '_') for obj in selection 
+                if obj.type in RENDERABLES]
+        return objs
+
+    def get_camera(self, selection):
+        ''' Get selected camera '''
+        cams = [obj for obj in selection if obj.type == 'CAMERA']
+        if len(cams) != 1:
+            self.report({'WARNING'}, "Just one camera has to be selected")
+            return None
+        return cams[0]
 
     def reset_scene(self, context):
         v3d = context.space_data
@@ -39,9 +47,14 @@ class Prj(bpy.types.Operator):
         rv3d.view_distance = self._initial_distance
         return {'FINISHED'}
 
+    @classmethod
+    def poll(cls, context):
+        return context.area.type == 'VIEW_3D'
+
     def execute(self, context):
         bpy.ops.wm.save_mainfile()
-        subprocess.run(prj_cmd(self.key, str(self.render_assets_names)))
+        objs = ';'.join(self.get_objects(self.selection) + [self.camera.name])
+        subprocess.run(prj_cmd(self.key, objs))
         self.reset_scene(context)
 
 
@@ -67,20 +80,12 @@ class Prj(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
-        self.render_assets = get_render_assets()
-        self.render_assets_names = {}
-        for tp in self.render_assets:
-            self.render_assets_names[tp] = [i.name 
-                    for i in self.render_assets[tp]]
 
-        if context.space_data.type != 'VIEW_3D':
-            self.report({'WARNING'}, "Active space must be a View3d")
+        self.selection = bpy.context.selected_objects
+        self.objects = self.get_objects(self.selection)
+        self.camera = self.get_camera(self.selection)
+        if not self.camera:
             return {'CANCELLED'}
-        
-        if len(self.render_assets['cams']) == 0:
-            self.report({'WARNING'}, "At least one camera has to be selectd")
-            return {'CANCELLED'}
-
         v3d = context.space_data
         rv3d = v3d.region_3d
         
@@ -90,7 +95,6 @@ class Prj(bpy.types.Operator):
         self._initial_location = rv3d.view_location.copy()
         self._initial_distance = rv3d.view_distance
         self._initial_scene_camera = bpy.context.scene.camera
-        self.camera = get_render_assets()['cams'][0]
         self._initial_cam_rotation_mode = self.camera.rotation_mode
 
         bpy.context.scene.camera = self.camera

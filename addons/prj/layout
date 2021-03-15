@@ -1,0 +1,90 @@
+## Start tracking process -> file class: receiving signals from steps
+class Tracker:
+    def start_tracking():
+        pass
+    def write_step():
+        pass
+    def stop_tracking():
+        pass
+
+### Check scene: naming, args, paths... -> class: verify naming conflict with files
+#class Draw_maker:
+#    def get_args():
+#        pass
+#    def get_file_paths():
+#        pass
+### Prepare scene: collection, line art... -> class:
+#    def prepare_scene():
+#        pass
+#    def draw_from_cam(class Cam):
+#        pass
+
+## for cam in cams:
+##     Prepare files and folders if missing, get existing svg links...
+## 
+##     Prepare camera (size frame, back view)
+## 
+##     Check objects viewing condition: frontal, rear, cut...
+##     Prepare objects: cut objetcs, linked object
+##     
+##     for obj in objs:
+##         Prepare export (rotate obj, link to collection, rename line art)
+##         Export svg
+##         Reset for next export
+##
+##         Read svg
+##         Rewrite svg (fix size and scale, closed polyline for cuts, import css)
+##
+##     Compose cam.svg
+##     Reset scene (remove cuts) for next cam
+
+## DATA STRUCTURE
+## /assets
+##     /components
+##         /obj
+##             /reprs
+##                 obj_cam_type.svg
+##                 obj_cam_type.svg
+##                 obj_cam_type.svg
+##                 obj_cam_type.svg
+##             /other_things
+##                 other_file
+##                 other_file
+##                 other_file
+##             other_file
+##             other_file
+##             other_file
+##         /obj
+##             /reprs
+##                 obj_cam_type.svg
+##                 obj_cam_type.svg
+##                 obj_cam_type.svg
+##                 obj_cam_type.svg
+##             /other_things
+##                 other_file
+##                 other_file
+##                 other_file
+##             other_file
+##             other_file
+##             other_file
+##     /reprs
+##         cam_0.svg
+##         cam_1.svg
+##         cam_1.css
+##         cam_2.svg
+##     /boards
+##         cam_0.pdf
+##         cam_1.pdf
+##         cam_2.pdf
+##     /other_things
+##         other_file
+##         other_file
+##         other_file
+##     /other_things
+##         other_file
+##         other_file
+##         other_file
+##     base.css
+##     other_file
+##     other_file
+##     other_file
