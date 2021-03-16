@@ -20,107 +20,55 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Dependencies: 
+# TODO...
+
+
+import bpy
+import sys, os
+import mathutils
+from prj import svg_lib
+from prj import prj_utils
+#import svgutils
 
 print('\n\n\n###################################\n\n\n')
 
-import bpy, bmesh
-import sys, os
-import ast, random
-from prj import blend2svg
-from prj import svg_lib
-from prj import prj_utils
-import mathutils
-from mathutils import Vector
-from mathutils import geometry
-from mathutils import Matrix
-#import svgutils
-from bpy_extras.object_utils import world_to_camera_view
-
-undotted = lambda x: x.replace('.', '_')
-
 ARGS = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
 RENDER_PATH = bpy.path.abspath(bpy.context.scene.render.filepath)
-RENDERABLES = ['MESH', 'CURVE', 'EMPTY']
-OCCLUSION_LEVELS = { 'cp': (0,0), 'h': (1,128), 'b': (0,128), }
-
-CAM_SIZE_PLANE = 'size_frame'
 #SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
 
-## FLAGS = ARGS[0].replace('-', '') if ARGS else 'cp'
-## ASSETS = ARGS[1] if ARGS else str(get_render_assets_cl())
-
-class Drawing_subject:
-
-    obj: bpy.types.Object
-    initial_rotation: mathutils.Euler
-    lineart: bpy.types.Object ## bpy.types.GreasePencil
-    svg_path: str
-
-    def __init__(self, obj):
-        self.obj = obj
-        self.initial_rotation = obj.rotation_euler.copy()
-
-    def get_svg_path(self, path, prefix = None, suffix = None) -> str:
-        sep = "" if path.endswith(os.sep) else os.sep
-        pfx = f"{prefix}_" if prefix else ""
-        sfx = f"_{suffix}" if suffix else ""
-        self.svg_path = f"{path}{sep}{pfx}{self.obj.name}{sfx}.svg"
-        return self.svg_path
-
-    def pose(self, amount) -> None:
-        """ Apply a small amount rotation to avoid lineart bugs """
-        for i, angle in enumerate(self.obj.rotation_euler):
-            self.obj.rotation_euler[i] = angle + amount
-
-    def unpose(self) -> None:
-        """ Reset obj to previous position """
-        self.obj.rotation_euler = self.initial_rotation
-
-    def get_lineart(self, style) -> bpy.types.Object:
-        self.lineart = prj_utils.create_line_art_onto(self.obj, 'OBJECT', 
-                OCCLUSION_LEVELS[style][0], OCCLUSION_LEVELS[style][1])
-        return self.lineart
-
-    def remove_lineart(self) -> None:
-        bpy.data.objects.remove(self.lineart, do_unlink=True)
-
-
-class Draw_maker:
-
-    render_path: str
-    rotation_fix: float
-
-    def __init__(self, render_path, rotation_fix = .000001):
-        self.render_path = render_path
-        self.rotation_fix = rotation_fix
-
-    def draw(self, subject: Drawing_subject, style: str) -> str:
-        subject.pose(self.rotation_fix)
-        prj_utils.make_active(subject.get_lineart(style))
-        bpy.ops.wm.gpencil_export_svg(
-           filepath=subject.get_svg_path(self.render_path), 
-           selected_object_type='VISIBLE')
-        subject.unpose()
-        subject.remove_lineart()
-        return subject.svg_path
-
 class Drawing_context:
-
+    args: list[str]
     style: str
-    frame_size: float ## tuple[float, float] ... try?
     subjects: list[bpy.types.Object]
     camera: bpy.types.Object ## bpy.types.Camera 
+    frame: bpy.types.Object ## bpy.types.GreasePencil (lineart)
+    frame_size: float ## tuple[float, float] ... try?
+    render_path: str
+    viewed_objects: dict[str, bpy.types.Object]
 
-    def __init__(self, args):
+    RENDERABLES: list[str] = ['MESH', 'CURVE', 'EMPTY']
+    FRAME_NAME: str = 'frame'
+    DEFAULT_STYLE: str = 'cp'
+    OCCLUSION_LEVELS = { 'cp': (0,0), 'h': (1,128), 'b': (0,128), }
+
+    def __init__(self, args: list[str], render_path: str):
         self.args = args
         self.style = self.get_style()
         self.subjects, self.camera = self.get_objects()
         self.frame_size = self.camera.data.ortho_scale
         self.frame = self.create_frame()
+        self.render_path = render_path
+        self.viewed_objects = prj_utils.viewed_objects(
+                self.camera, self.subjects, self.RENDERABLES)
+        self.subjects, self.camera = self.get_objects()
+        if not self.subjects:
+            self.subjects = self.viewed_objects['frontal']
 
     def get_style(self) -> str:
         style = ''.join([a.replace('-', '') for a in self.args 
             if a.startswith('-')])
+        if not style == 0:
+            return self.DEFAULT_STYLE
         return style
 
     def get_objects(self) -> tuple[list[bpy.types.Object], bpy.types.Object]:
@@ -128,42 +76,141 @@ class Drawing_context:
             if not a.startswith('-')]).split(';')
         objs = []
         for o in all_objs:
-            if bpy.data.objects[o].type in RENDERABLES:
-                objs.append(bpy.data.objects[o])
             if bpy.data.objects[o].type == 'CAMERA':
                 cam = bpy.data.objects[o]
+            if bpy.data.objects[o].type in self.RENDERABLES:
+                objs.append(bpy.data.objects[o])
         return objs, cam
         
     def create_frame(self) -> bpy.types.Object: ## GreasePencil (lineart)
         """ Create a plane at the clip end of cam with same size of cam frame """
-        frame_mesh = bpy.data.meshes.new(CAM_SIZE_PLANE)
-        frame_obj = bpy.data.objects.new(CAM_SIZE_PLANE, frame_mesh)
 
-        bpy.context.collection.objects.link(frame_obj)
+        ## Get frame verts by camera dimension and put it at the camera clip end
+        z = -(self.camera.data.clip_end - .01)
+        print('z',z)
+        verts = [v[:2] + (z,) for v in self.camera.data.view_frame()]
+        frame_obj = prj_utils.mesh_by_verts(self.FRAME_NAME, verts)
 
-        bm = bmesh.new()
-        bm.from_object(frame_obj, bpy.context.view_layer.depsgraph)
-
-        for v in self.camera.data.view_frame():
-            bm.verts.new(v[:2] + (-(self.camera.data.clip_end - .01),))
-
-        bmesh.ops.contextual_create(bm, geom=bm.verts)
-
-        bm.to_mesh(frame_mesh)
-        bm.free()
+        ## Align frame to camera orientation and position
         frame_obj.matrix_world = self.camera.matrix_world
+        
+        ## Create the grease pencil with lineart modifier
         frame_la_gp = prj_utils.create_line_art_onto(frame_obj, 'OBJECT', 
-                OCCLUSION_LEVELS['b'][0], OCCLUSION_LEVELS['b'][1])
+                self.OCCLUSION_LEVELS['b'][0], self.OCCLUSION_LEVELS['b'][1])
+
         return frame_la_gp
+
+class Draw_maker:
+    draw_context: Drawing_context
+
+    def __init__(self, draw_context):
+        self.drawing_context = draw_context
+
+    def set_drawing_context(self, draw_context: Drawing_context) -> None:
+        self.drawing_context = draw_context
+
+    def get_drawing_context(self) -> Drawing_context:
+        return self.drawing_context
+
+    def draw(self, subject: 'Drawing_subject', style: str) -> str:
+        subject.pose()
+        prj_utils.make_active(subject.create_lineart('OBJECT', style))
+        bpy.ops.wm.gpencil_export_svg(filepath=subject.get_svg_path(), 
+                selected_object_type='VISIBLE')
+        subject.unpose()
+        subject.remove_lineart()
+        return subject.svg_path
+
+    def export(self):
+        prj_utils.make_active(bpy.data.objects["Line Art"])
+        bpy.ops.object.gpencil_modifier_apply(modifier="Line Art")
+        print(bpy.context.active_object)
+        bpy.ops.wm.gpencil_export_svg(filepath='/home/mf/Documents/test.svg', 
+                selected_object_type='VISIBLE')
+
+class Drawing_subject:
+    obj: bpy.types.Object
+    initial_rotation: mathutils.Euler
+    lineart: bpy.types.Object ## bpy.types.GreasePencil
+    svg_path: str
+    draw_maker: Draw_maker
+    draw_context: Drawing_context
+
+    POSE_ROTATION: float = .000001
+
+    def __init__(self, obj, draw_maker):
+        self.obj = obj
+        self.initial_rotation = obj.rotation_euler.copy()
+        self.pose_rotation = self.POSE_ROTATION
+        self.draw_maker = draw_maker
+        self.drawing_context = draw_maker.drawing_context
+
+    def set_draw_maker(self, draw_maker: Draw_maker) -> None:
+        self.draw_maker = draw_maker
+
+    def get_draw_maker(self) -> Draw_maker:
+        return self.draw_maker
+
+    def set_drawing_context(self, draw_context: Drawing_context) -> None:
+        self.drawing_context = draw_context
+
+    def get_drawing_context(self) -> Drawing_context:
+        return self.drawing_context
+
+    def set_pose_rotation(self, value: float) -> None:
+        self.pose_rotation = value
+
+    def get_pose_rotation(self) -> float:
+        return self.pose_rotation
+
+    def get_svg_path(self, prefix = None, suffix = None) -> str:
+        path = self.drawing_context.render_path
+        sep = "" if path.endswith(os.sep) else os.sep
+        pfx = f"{prefix}_" if prefix else ""
+        sfx = f"_{suffix}" if suffix else ""
+        self.svg_path = f"{path}{sep}{pfx}{self.obj.name}{sfx}.svg"
+        return self.svg_path
+
+    def pose(self, rotation: float = POSE_ROTATION) -> None:
+        """ Apply a small amount rotation to avoid lineart bugs """
+        self.pose_rotation = rotation
+        for i, angle in enumerate(self.obj.rotation_euler):
+            self.obj.rotation_euler[i] = angle + self.pose_rotation
+
+    def unpose(self) -> None:
+        """ Reset obj to previous position """
+        self.obj.rotation_euler = self.initial_rotation
+
+    def create_lineart(self, source_type: str = 'OBJECT', style: str = 'cp') -> bpy.types.Object:
+        if self.obj.type == 'EMPTY':
+            source = self.obj.instance_collection
+            source_type = 'COLLECTION'
+            print('source', source)
+            print('source_type', source_type)
+        else:
+            source = self.obj
+        self.lineart = prj_utils.create_line_art_onto(source, source_type, 
+                self.drawing_context.OCCLUSION_LEVELS[style][0], 
+                self.drawing_context.OCCLUSION_LEVELS[style][1])
+        return self.lineart
+
+    def remove_lineart(self) -> None:
+        print('remove', self.lineart)
+        print(self.lineart.type)
+        print(list(self.lineart.grease_pencil_modifiers))
+        bpy.data.objects.remove(self.lineart, do_unlink=True)
 
 
 svgs: list[str] = []
 
-draw_context = Drawing_context(ARGS)
-
-draw_maker = Draw_maker(RENDER_PATH)
-for subj in draw_context.subjects:
-    svgs.append(draw_maker.draw(Drawing_subject(subj), draw_context.style))
+draw_context = Drawing_context(args = ARGS, render_path = RENDER_PATH)
+draw_maker = Draw_maker(draw_context)
+print(draw_context.viewed_objects)
+draw_maker.export()
+#for subj in draw_context.subjects:
+#    print(subj.name)
+#    svgs.append(draw_maker.draw(Drawing_subject(subj, draw_maker), 
+#        draw_context.style))
 
 #        for svg_f in svg_files:
 #            svg, drawing_g, frame_g = svg_lib.read_svg(svg_f['path'],
