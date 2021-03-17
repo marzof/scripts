@@ -68,11 +68,12 @@ def mesh_by_verts(obj_name: str, verts: list[Vector]) -> bpy.types.Object:
 
 def make_active(obj: bpy.types.Object) -> None:
     """ Deselect all and make obj active """
-    bpy.ops.object.select_all(action='DESELECT')
+    for o in bpy.context.selected_objects:
+        o.select_set(False)
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
 
-def point_in_quad(point: Vector, quad_vert: list[Vector]) -> bool:
+def __point_in_quad(point: Vector, quad_vert: list[Vector]) -> bool:
     """ Check if point is inside quad (2d only) """
     intersect_point = geometry.intersect_point_quad_2d(point,
             quad_vert[0], quad_vert[1], quad_vert[2], quad_vert[3])
@@ -80,7 +81,7 @@ def point_in_quad(point: Vector, quad_vert: list[Vector]) -> bool:
         return False
     return True
 
-def lines_intersect(a_0: Vector, a_1: Vector, b_0: Vector, b_1: Vector) -> bool:
+def __lines_intersect(a_0: Vector, a_1: Vector, b_0: Vector, b_1: Vector) -> bool:
     """ Check if lines a and b intersects (2d only) """
     intersect_point = geometry.intersect_line_line_2d(a_0, a_1, b_0, b_1)
     if not intersect_point:
@@ -88,7 +89,7 @@ def lines_intersect(a_0: Vector, a_1: Vector, b_0: Vector, b_1: Vector) -> bool:
     return True
 
 def in_frame(cam: bpy.types.Object, 
-        obj: bpy.types.Object) -> dict[str,list[bpy.types.Object]]:
+        obj: bpy.types.Object) -> dict[str, bool]:
     """ Get visibility relation between cam and obj """
 
     BOUNDING_BOX_EDGES = ((0, 1), (0, 3), (0, 4), (1, 2), (1, 5), (2, 3), 
@@ -124,7 +125,7 @@ def in_frame(cam: bpy.types.Object,
         ## Check if obect is bigger than frame
         for face in BOUNDING_BOX_FACES:
             face_verts = [bound_box_verts_from_cam[v] for v in face]
-            if point_in_quad(Vector((.5,.5,.0)), face_verts):
+            if __point_in_quad(Vector((.5,.5,.0)), face_verts):
                 framed = True
                 return {'framed': framed, 'frontal': frontal, 'behind': behind}
 
@@ -133,7 +134,7 @@ def in_frame(cam: bpy.types.Object,
             box_edge = [Vector(point_from_camera(box[e[0]])[:2], cam),
                 Vector(point_from_camera(box[e[1]])[:2], cam)]
             for i in range(4):
-                if lines_intersect(box_edge[0], box_edge[1], 
+                if __lines_intersect(box_edge[0], box_edge[1], 
                         FRAME_EDGES[i], FRAME_EDGES[(i+1)%4]):
                     framed = True
                     return {'framed': framed, 'frontal': frontal, 'behind': behind}
@@ -151,42 +152,4 @@ def localize_obj(container: bpy.types.Object,
     cnt_translated = cnt_matrix @ Matrix.Translation(-cnt_instance_offset)
     inner_obj.matrix_world = cnt_translated @ inner_obj.matrix_world
     return inner_obj
-
-def viewed_objects(cam: bpy.types.Object, objs: list[bpy.types.Object], 
-        filtering: list[str]) -> dict[str,list[bpy.types.Object]]:
-    """ Get visibility relation between filtered objs and camera """
-    viewed_objs = {}
-
-    ## Use indicated objs if any. Else use selectable
-    objs = objs if len(objs) else bpy.context.selectable_objects 
-
-    for obj in [o for o in objs if o.type in filtering]:
-        if obj.type == 'EMPTY' and obj.instance_collection:
-            types = []
-            for inner_obj in obj.instance_collection.all_objects:
-                relocated_obj = localize_obj(obj, inner_obj)
-                framed = in_frame(cam, relocated_obj)
-                for k in framed:
-                    if k not in viewed_objs:
-                        viewed_objs[k] = []
-                    if framed[k] and obj not in viewed_objs[k]:
-                        viewed_objs[k].append(obj)
-                        types.append(k)
-                        if len(set(types)) == len(set(framed.keys())):
-                            break
-                ## break the outer loop because obj is in 'framed', 
-                ## 'frontal' and 'behind': 
-                else:
-                    continue
-                break
-
-        elif obj.type != 'EMPTY':
-            framed = in_frame(cam, obj)
-            for k in framed:
-                if k not in viewed_objs:
-                    viewed_objs[k] = []
-                if framed[k]:
-                    viewed_objs[k].append(obj)
-
-    return viewed_objs
 
