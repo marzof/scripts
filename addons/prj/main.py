@@ -26,16 +26,13 @@
 import bpy
 import sys, os
 import mathutils
-from prj import svg_lib
 from prj import prj_utils
-#import svgutils
+from prj import prj_svglib
+from prj.prj_svglib import Svg_drawing
 
 print('\n\n\n###################################\n\n\n')
 
 ARGS = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
-
-GREASE_PENCIL_PREFIX = 'prj_'
-SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
 
 class Drawing_context:
     args: list[str]
@@ -52,6 +49,8 @@ class Drawing_context:
     DEFAULT_STYLE: str = 'cp'
     OCCLUSION_LEVELS = { 'cp': (0,0), 'h': (1,128), 'b': (0,128), }
     RENDER_PATH: str = bpy.path.abspath(bpy.context.scene.render.filepath)
+    GREASE_PENCIL_PREFIX = 'prj_'
+    SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
 
     def __init__(self, args: list[str]):
         self.args = args
@@ -236,17 +235,21 @@ class Drawing_subject:
         return visibility
 
 
-svgs: list[str] = []
+drawings: list[Svg_drawing] = []
 
 draw_context = Drawing_context(args = ARGS)
 draw_maker = Draw_maker(draw_context)
 for subj in draw_context.subjects:
     print(subj.name)
-    svgs.append(draw_maker.draw(Drawing_subject(subj, draw_maker),
-        draw_context.style))
-
+    drawings.append(Svg_drawing(draw_maker.draw(Drawing_subject(subj, draw_maker),
+        draw_context.style), draw_context))
+    #d = drawings[-1]
+    #frame_loc_size = prj_svglib.get_rect_loc_size(d.svg, 
+    #        SVG_GROUP_PREFIX + draw_context.FRAME_NAME)
+    #frame_size = frame_loc_size['dimensions'][0]
+    #print(prj_svglib.pixel_to_mm(frame_size, frame_size, draw_context.frame_size))
 #for svg_f in svgs:
-    svg, drawing_g, frame_g = svg_lib.read_svg(svgs[-1],
-            SVG_GROUP_PREFIX + subj.name, 
-            SVG_GROUP_PREFIX + draw_context.FRAME_NAME)
-    svg_lib.write_svg(svg, drawing_g, frame_g, draw_context.frame_size, svgs[-1])
+    #svg, drawing_g, frame_g = svg_lib.read_svg(svgs[-1],
+    #        SVG_GROUP_PREFIX + subj.name, 
+    #        SVG_GROUP_PREFIX + draw_context.FRAME_NAME)
+    #svg_lib.write_svg(svg, drawing_g, frame_g, draw_context.frame_size, svgs[-1])

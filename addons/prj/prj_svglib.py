@@ -4,13 +4,12 @@
 
 import svgwrite
 import svgutils
-import xml.etree.ElementTree as ET
+#import xml.etree.ElementTree as ET
 import numpy
 import math
 import re
 
 
-SCALE_FACTOR = 96.0 / 2.54 ## resolution / inch
 
 tuple_points = lambda x: [tuple([float(n) for n in i.split(',')]) 
         for i in x.split(' ')]
@@ -18,30 +17,49 @@ get_g_polylines = lambda group: list(group.root.iterdescendants('polyline'))
 get_pl_points = lambda polylines: [tuple_points(pt.attrib['points']) 
         for pt in polylines]
 
+RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
-def read_svg(svg_file, obj, frame):
-    svg = svgutils.compose.SVG(svg_file)
-    frame_g = svg.find_id(frame)
-    drawing_g = svg.find_id(obj)
-    return svg, drawing_g, frame_g
+class Svg_drawing:
+    original_svg : svgutils.compose.SVG
 
-def get_size(frame, frame_size):
-    min_val = math.inf
-    max_val = 0.0
-    frame_pl = get_g_polylines(frame)
-    frame_pts = get_pl_points(frame_pl)
-    for pl in frame_pts:
-        for co in pl:
-            if sum(co) < min_val:
-                min_val = sum(co)
-                origin = co
-            if sum(co) > max_val:
-                max_val = sum(co)
-                extension = co
-    dimensions = numpy.subtract(extension, origin)
-    factor = frame_size * SCALE_FACTOR / dimensions[0]
-    return origin, dimensions, factor
+    def __init__(self, filepath: str, context):
 
+        self.path = filepath
+        self.original_svg = svgutils.compose.SVG(filepath)
+        self.drawing_context = context
+
+        frame_name = context.SVG_GROUP_PREFIX + context.FRAME_NAME
+        base_offset, base_size = self.__frame_loc_size(frame_name)
+        base_ratio = context.frame_size / base_size[0]
+        px_to_mm_factor = 10 * base_ratio
+        unit_to_px_factor = RESOLUTION_FACTOR * base_ratio
+
+        self.px2mm = lambda x: px_to_mm_factor * x
+        self.svg = self.__write(size=base_size[0], offset=base_offset)
+
+    def __write(self, size: tuple[float], offset: list[float]) -> svgwrite.drawing.Drawing:
+        drw = svgwrite.drawing.Drawing(filename= self.path + '_edit.svg',
+                size=(str(self.px2mm(size)) + 'mm', 
+                    str(self.px2mm(size)) + 'mm'))
+        drw.save(pretty=True)
+        return drw
+
+    def __frame_loc_size(self, frame_name) -> tuple[tuple[float],list[float]]: 
+        """ Get dimensions of rect in svg """
+        min_val, max_val = math.inf, 0.0
+        g = self.original_svg.find_id(frame_name)
+        pl = get_g_polylines(g)
+        pts = get_pl_points(pl)
+        for p in pts:
+            for co in p:
+                if sum(co) < min_val:
+                    min_val = sum(co)
+                    origin = co
+                if sum(co) > max_val:
+                    max_val = sum(co)
+                    extension = co
+        size = numpy.subtract(extension, origin)
+        return origin, size 
 
 
 def write_svg(svg, drawing_g, frame_g, frame_size, svg_path):
