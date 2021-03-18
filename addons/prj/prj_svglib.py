@@ -8,7 +8,8 @@ import svgutils
 import numpy
 import math
 import re
-
+import prj
+from prj.prj_drawing_classes import Drawing_context
 
 
 tuple_points = lambda x: [tuple([float(n) for n in i.split(',')]) 
@@ -22,25 +23,50 @@ RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 class Svg_drawing:
     original_svg : svgutils.compose.SVG
 
-    def __init__(self, filepath: str, context):
-
+    def __init__(self, filepath: str, context: Drawing_context, subject: str):
         self.path = filepath
         self.original_svg = svgutils.compose.SVG(filepath)
         self.drawing_context = context
 
-        frame_name = context.SVG_GROUP_PREFIX + context.FRAME_NAME
+        subject_name = prj.SVG_GROUP_PREFIX + subject
+        frame_name = prj.SVG_GROUP_PREFIX + context.FRAME_NAME
         base_offset, base_size = self.__frame_loc_size(frame_name)
         base_ratio = context.frame_size / base_size[0]
-        px_to_mm_factor = 10 * base_ratio
-        unit_to_px_factor = RESOLUTION_FACTOR * base_ratio
 
-        self.px2mm = lambda x: px_to_mm_factor * x
-        self.svg = self.__write(size=base_size[0], offset=base_offset)
+        self.px_to_mm_factor = 10 * base_ratio
+        self.unit_to_px_factor = RESOLUTION_FACTOR * base_ratio
+        self.px2mm = lambda x: self.px_to_mm_factor * x
+        self.subject = self.original_svg.find_id(subject_name)
+        self.svg = self.__write(size=base_size[0], offset=base_offset, 
+                subject=self.subject)
 
-    def __write(self, size: tuple[float], offset: list[float]) -> svgwrite.drawing.Drawing:
+    def __write(self, size: tuple[float], offset: list[float], 
+            subject: svgutils.compose.Element) -> svgwrite.drawing.Drawing:
+        """ Write svg with subject scaled to fit size and offset """
         drw = svgwrite.drawing.Drawing(filename= self.path + '_edit.svg',
                 size=(str(self.px2mm(size)) + 'mm', 
                     str(self.px2mm(size)) + 'mm'))
+        group = drw.g()
+        pts_dict = {}
+        for i, pl in enumerate(list(subject.root.iterdescendants('polyline'))):
+            #print('pl', pl)
+            pts = tuple_points(pl.attrib['points'])
+            #print('pts', pts)
+            new_pts = [tuple(numpy.multiply(numpy.subtract(p, offset), 
+                self.unit_to_px_factor)) for p in pts]
+            #print('new_pts', new_pts)
+            two_points = [str(new_pts[0]), str(new_pts[1])]
+            #print('two_points', two_points)
+            four_coords = re.findall('\d*\.\d*', ''.join(two_points))
+            coords = [tuple(four_coords[:2]), tuple(four_coords[2:])]
+            #print(coords)
+
+            polyline = drw.polyline(points = coords)
+            attrib = {'stroke': '#000000', 'stroke-opacity': '1', 'id': 'pl',
+                    'stroke-linecap': 'round', 'stroke-width': '2'} #, 'style': 'fill: #f00'}
+            polyline.update(attrib)
+            group.add(polyline)
+        drw.add(group)
         drw.save(pretty=True)
         return drw
 

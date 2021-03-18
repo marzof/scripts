@@ -6,6 +6,7 @@ from mathutils import Matrix
 from mathutils import Vector
 from mathutils import geometry
 from bpy_extras.object_utils import world_to_camera_view
+import prj
 
 point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, cam, v)
 
@@ -14,11 +15,10 @@ def create_line_art_onto(source, source_type: str, occl_start: int = 0,
     """ Create a line art gp from source of the source_type """
     GREASE_PENCIL_MOD = 'prj_la'
     GREASE_PENCIL_MAT = 'prj_mat'
-    GREASE_PENCIL_PREFIX = 'prj_'
     GREASE_PENCIL_LAYER = 'prj_lay'
 
     ## Create the grease pencil, its layer, material and frame and link to scene
-    gp_name = GREASE_PENCIL_PREFIX + source.name
+    gp_name = prj.GREASE_PENCIL_PREFIX + source.name
     gp = bpy.data.grease_pencils.new(gp_name)
 
     gp_layer = gp.layers.new(GREASE_PENCIL_LAYER)

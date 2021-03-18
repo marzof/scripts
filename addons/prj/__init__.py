@@ -8,13 +8,14 @@ import bpy
 import subprocess, shlex
 import os, pathlib
 
-RENDERABLES = ['MESH', 'CURVE', 'EMPTY']
 ADDONS_PATH = str(pathlib.Path(__file__).parent.absolute())
 MAIN_PATH = 'main.py'
+GREASE_PENCIL_PREFIX = 'prj_'
+SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
 prj_cmd = lambda flags, objects: [bpy.app.binary_path, "--background", bpy.data.filepath,
         "--python", ADDONS_PATH + "/" + MAIN_PATH, "--", flags, objects]
-
-
+renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
+        in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
 
 class Prj(bpy.types.Operator):
     """Set view to camera to export svg  from grease pencil"""
@@ -25,7 +26,7 @@ class Prj(bpy.types.Operator):
     def get_objects(self, selection):
         ''' Get objects based on selection '''
         objs = [obj.name.replace(';', '_') for obj in selection 
-                if obj.type in RENDERABLES]
+                if renderables(obj)]
         return objs
 
     def get_camera(self, selection):
