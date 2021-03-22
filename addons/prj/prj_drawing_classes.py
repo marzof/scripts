@@ -26,6 +26,7 @@
 import bpy
 import os
 import mathutils
+from mathutils import Vector
 import prj
 from prj import prj_utils
 
@@ -37,19 +38,29 @@ class Drawing_context:
     camera: bpy.types.Object ## bpy.types.Camera 
     frame: bpy.types.Object ## bpy.types.GreasePencil (lineart)
     frame_size: float ## tuple[float, float] ... try?
+    camera_frame: dict[str,Vector]
 
 
     FRAME_NAME: str = 'frame'
     DEFAULT_STYLE: str = 'cp'
-    OCCLUSION_LEVELS = { 'c': (0,0), 'p': (0,0), 'h': (1,128), 'b': (0,128), }
     RENDER_PATH: str = bpy.path.abspath(bpy.context.scene.render.filepath)
 
     def __init__(self, args: list[str]):
         self.args = args
         self.style = self.__get_style()
         self.subjects, self.camera = self.__get_objects()
+
         self.frame_size = self.camera.data.ortho_scale
-        self.frame = self.__create_frame()
+
+        cam_frame_local = [v * Vector((1,1,self.camera.data.clip_start)) 
+                for v in self.camera.data.view_frame()]
+        cam_frame = [self.camera.matrix_world @ v 
+                for v in cam_frame_local]
+        cam_frame_norm = mathutils.geometry.normal(cam_frame[:3])
+        cam_frame_loc = (cam_frame[0] + cam_frame[2]) / 2
+        self.camera_frame = {'location': cam_frame_loc, 
+                'direction': cam_frame_norm}
+
 
     def __get_style(self) -> str:
         style = ''.join([a.replace('-', '') for a in self.args 
@@ -72,7 +83,7 @@ class Drawing_context:
                     if prj.renderables(ob)]
         return objs, cam
         
-    def __create_frame(self) -> bpy.types.Object: ## GreasePencil (lineart)
+    def create_frame(self) -> bpy.types.Object:
         """ Create a plane at the clip end of cam with same size of cam frame """
 
         ## Get frame verts by camera dimension and put it at the camera clip end
@@ -82,12 +93,9 @@ class Drawing_context:
 
         ## Align frame to camera orientation and position
         frame_obj.matrix_world = self.camera.matrix_world
+        self.frame = frame_obj
         
-        ## Create the grease pencil with lineart modifier
-        frame_la_gp = prj_utils.create_line_art_onto(frame_obj, 'OBJECT', 
-                self.OCCLUSION_LEVELS['b'][0], self.OCCLUSION_LEVELS['b'][1])
-
-        return frame_la_gp
+        return frame_obj
 
 class Draw_maker:
     draw_context: Drawing_context
@@ -101,49 +109,88 @@ class Draw_maker:
     def get_drawing_context(self) -> Drawing_context:
         return self.drawing_context
 
-    def draw(self, subject: 'Drawing_subject', style: str) -> str:
-        subject.pose()
-        prj_utils.make_active(subject.create_lineart(style))
+    def draw(self, subject: 'Drawing_subject', draw_style: str, 
+            remove: bool = True) -> str:
+
+        ## Cut has to be the last style
+        cut_flag = 'c'
+        draw_style = [l for l in draw_style if l != cut_flag] + [cut_flag]
+        cuts_collection = bpy.data.collections.new(subject.name + '_cuts') \
+                if cut_flag in draw_style else None
+        for d_style in draw_style:
+            draw_subject = subject
+
+            if d_style == cut_flag and subject.cut_objects:
+                for ob in subject.cut_objects:
+                    prj_utils.apply_mod(ob)
+                    cut = prj_utils.cut_object(obj = ob, 
+                            cut_plane = self.drawing_context.camera_frame)
+                    cut.location = cut.location + \
+                            self.drawing_context.camera_frame['direction']
+                    to_draw = cut
+                    if subject.type == 'COLLECTION':
+                        cuts_collection.objects.link(cut)
+                        to_draw = cuts_collection
+
+                scene = bpy.context.scene
+                scene.collection.children.link(cuts_collection)
+                draw_subject = Drawing_subject(to_draw, self)
+
+            elif d_style == 'b':
+                ## TODO
+                pass
+            
+            la_gp = prj_utils.create_lineart(source=subject, style=d_style, 
+                    la_source=draw_subject)
+
+        prj_utils.make_active(la_gp)
         bpy.ops.wm.gpencil_export_svg(filepath=subject.get_svg_path(), 
                 selected_object_type='VISIBLE')
-        subject.unpose()
-        subject.remove_lineart()
+        if remove:
+            bpy.data.objects.remove(la_gp, do_unlink=True)
         return subject.svg_path
 
 class Drawing_subject:
     obj: bpy.types.Object
-    initial_rotation: mathutils.Euler
     draw_maker: Draw_maker
     drawing_context: Drawing_context
-    visibility: dict[str, bool]
-    framed: bool
+    visible: bool
     frontal: bool
     behind: bool
     lineart: bpy.types.Object ## bpy.types.GreasePencil
     svg_path: str
-
-    POSE_ROTATION: float = .00001
+    visibility: dict[str, bool]
+    objects_visibility: dict[str, list[bpy.types.Object]]
+    cut_objects: list[bpy.types.Object]
 
     def __init__(self, obj, draw_maker):
         self.obj = obj
-        self.pose_rotation = self.POSE_ROTATION
+        if (type(obj) == bpy.types.Object and obj.type == 'EMPTY'):
+            self.obj = prj_utils.make_local_collection(self.obj)
+        self.name = obj.name
         self.draw_maker = draw_maker
         self.drawing_context = draw_maker.drawing_context
-        self.type = obj.type
 
-        self.lineart_source = obj
-        self.lineart_source_type = 'OBJECT'
-        self.objects = [obj]
-        if self.type == 'EMPTY':
-            self.lineart_source = self.__make_local_collection()
-            self.lineart_source_type = 'COLLECTION'
-            self.objects = self.lineart_source.objects
+        if type(self.obj) == bpy.types.Collection:
+            self.type = 'COLLECTION'
+            self.lineart_source_type = self.type
+            self.objects = self.obj.all_objects
+        else:
+            self.type = obj.type
+            self.lineart_source_type = 'OBJECT'
+            self.objects = [obj]
+
+        self.lineart_source = self.obj
+        self.cut_objects = []
             
-        self.visibility = self.__get_visibility(linked = self.type == 'EMPTY')
-        self.initial_rotation = [o.rotation_euler.copy() for o in self.objects]
-        self.framed = self.visibility['framed']
-        self.frontal = self.visibility['frontal']
-        self.behind = self.visibility['behind']
+        self.visibility, self.objects_visibility = self.__get_visibility(
+                linked = self.type == 'COLLECTION')
+        self.visible = self.visibility['framed']
+        self.grease_pencil = None
+        for ob in self.objects:
+            if ob in self.objects_visibility['frontal'] \
+                    and ob in self.objects_visibility['behind']:
+                self.cut_objects.append(ob) 
 
     def set_draw_maker(self, draw_maker: Draw_maker) -> None:
         self.draw_maker = draw_maker
@@ -157,12 +204,6 @@ class Drawing_subject:
     def get_drawing_context(self) -> Drawing_context:
         return self.drawing_context
 
-    def set_pose_rotation(self, value: float) -> None:
-        self.pose_rotation = value
-
-    def get_pose_rotation(self) -> float:
-        return self.pose_rotation
-
     def get_svg_path(self, prefix = None, suffix = None) -> str:
         path = self.drawing_context.RENDER_PATH
         sep = "" if path.endswith(os.sep) else os.sep
@@ -171,57 +212,23 @@ class Drawing_subject:
         self.svg_path = f"{path}{sep}{pfx}{self.obj.name}{sfx}.svg"
         return self.svg_path
 
-    def pose(self, rotation: float = POSE_ROTATION) -> None:
-        """ Apply a small amount rotation to avoid lineart bugs """
-        self.pose_rotation = rotation
-        for obj in self.objects:
-            for i, angle in enumerate(obj.rotation_euler):
-                obj.rotation_euler[i] = angle + self.pose_rotation
-
-    def unpose(self) -> None:
-        """ Reset obj to previous position """
-        for i, obj in enumerate(self.objects):
-            obj.rotation_euler = self.initial_rotation[i]
-
-    def create_lineart(self, style: str) -> bpy.types.Object:
-        context = self.drawing_context
-        self.lineart = prj_utils.create_line_art_onto(
-                self.lineart_source, self.lineart_source_type, 
-                context.OCCLUSION_LEVELS[style][0], 
-                context.OCCLUSION_LEVELS[style][1])
-        return self.lineart
-
-    def remove_lineart(self) -> None:
-        bpy.data.objects.remove(self.lineart, do_unlink=True)
-    
-    def __make_local_collection(self) -> bpy.types.Collection:
-        ''' Convert linked object to local object '''
-        f_path = self.obj.instance_collection.library.filepath
-        with bpy.data.libraries.load(f_path, relative=False) as (data_from, data_to):
-            data_to.collections.append(self.obj.instance_collection.name)
-        self.collection = bpy.data.collections[-1]
-        self.collection.name = self.obj.name
-        scene = bpy.context.scene
-        scene.collection.children.link(self.collection)
-        return self.collection
-
     def __get_visibility(self, linked: bool = True) -> dict[str, bool]:
         """ Get self.obj visibility (framed, frontal, behind camera) 
         and store individual visibilities in self.objects_visibility """
-        self.objects_visibility = []
         visibility = {}
+        objects_visibility = {}
         for obj in self.objects:
-            relocated_obj = prj_utils.localize_obj(self.obj, obj) if linked \
-                    else obj
-            framed = prj_utils.in_frame(self.drawing_context.camera, 
-                    relocated_obj)
-            self.objects_visibility.append(framed)
+            framed = prj_utils.in_frame(self.drawing_context.camera, obj)
             for k in framed:
+                if k not in objects_visibility:
+                    objects_visibility[k] = []
+                if framed[k]:
+                    objects_visibility[k].append(obj)
                 if len(visibility) == 3 and False not in visibility.values():
-                    break
+                    continue
                 if k not in visibility:
                     visibility[k] = framed[k]
                     continue
                 if not visibility[k] and framed[k]:
                     visibility[k] = framed[k]
-        return visibility
+        return visibility, objects_visibility

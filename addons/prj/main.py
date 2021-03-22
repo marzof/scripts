@@ -24,6 +24,7 @@
 
 
 import sys
+import prj
 from prj.prj_drawing_classes import Drawing_context, Draw_maker, Drawing_subject
 from prj.prj_svglib import Svg_drawing
 
@@ -35,11 +36,16 @@ drawings: list[Svg_drawing] = []
 
 draw_context = Drawing_context(args = ARGS)
 draw_maker = Draw_maker(draw_context)
+
+frame = Drawing_subject(draw_context.create_frame(), draw_maker)
+draw_maker.draw(frame, 'a', remove=False)
+
 for subj in draw_context.subjects:
     print('Subject:', subj.name)
     draw_subj = Drawing_subject(subj, draw_maker)
-    for style in draw_context.style:
-        print('style:', style)
-        drawing = draw_maker.draw(draw_subj, style)
-        svg = Svg_drawing(drawing, draw_context, subj.name)
+    if draw_subj.visible:
+        print(subj.name, 'is visible')
+        drawing = draw_maker.draw(draw_subj, draw_context.style)
+        svg = Svg_drawing(filepath=drawing, context=draw_context, 
+                subject=subj.name)
         drawings.append(svg)

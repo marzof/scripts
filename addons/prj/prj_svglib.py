@@ -10,6 +10,7 @@ import math
 import re
 import prj
 from prj.prj_drawing_classes import Drawing_context
+from svgwrite.extensions import Inkscape
 
 
 tuple_points = lambda x: [tuple([float(n) for n in i.split(',')]) 
@@ -37,40 +38,38 @@ class Svg_drawing:
         self.unit_to_px_factor = RESOLUTION_FACTOR * base_ratio
         self.px2mm = lambda x: self.px_to_mm_factor * x
         self.subject = self.original_svg.find_id(subject_name)
+        self.layers = {}
+        for g in self.subject.root.iterdescendants('g'):
+            g_id = g.attrib['id']
+            if g_id in [prj.STYLES[style]['name'] for style in prj.STYLES]:
+                self.layers[g_id] = g
         self.svg = self.__write(size=base_size[0], offset=base_offset, 
-                subject=self.subject)
+                subject=self.layers)
 
     def __write(self, size: tuple[float], offset: list[float], 
             subject: svgutils.compose.Element) -> svgwrite.drawing.Drawing:
         """ Write svg with subject scaled to fit size and offset """
-        drw = svgwrite.drawing.Drawing(filename= self.path + '_edit.svg',
-                size=(str(self.px2mm(size)) + 'mm', 
-                    str(self.px2mm(size)) + 'mm'))
-        group = drw.g()
-        pts_dict = {}
-        for i, pl in enumerate(list(subject.root.iterdescendants('polyline'))):
-            #print('pl', pl)
-            pts = tuple_points(pl.attrib['points'])
-            #print('pts', pts)
-            new_pts = [tuple(numpy.multiply(numpy.subtract(p, offset), 
-                self.unit_to_px_factor)) for p in pts]
-            #print('new_pts', new_pts)
-            two_points = [str(new_pts[0]), str(new_pts[1])]
-            #print('two_points', two_points)
-            four_coords = re.findall('\d*\.\d*', ''.join(two_points))
-            coords = [tuple(four_coords[:2]), tuple(four_coords[2:])]
-            #print(coords)
+        drawing = svgwrite.drawing.Drawing(filename= self.path + '_edit.svg',
+                size=(str(self.px2mm(size)) + 'mm', str(self.px2mm(size)) + 'mm'))
+        ink_drawing = Inkscape(drawing)
+        for layer in self.layers:
+            group = ink_drawing.layer(label=layer)
+            for pl in list(self.layers[layer].iterdescendants('polyline')):
+                pts = tuple_points(pl.attrib['points'])
+                scaled_pts = numpy.multiply([numpy.subtract(p, offset) for p in pts], 
+                    self.unit_to_px_factor)
+                new_pts = [tuple(p) for p in scaled_pts]
 
-            polyline = drw.polyline(points = coords)
-            attrib = {'stroke': '#000000', 'stroke-opacity': '1', 'id': 'pl',
-                    'stroke-linecap': 'round', 'stroke-width': '2'} #, 'style': 'fill: #f00'}
-            polyline.update(attrib)
-            group.add(polyline)
-        drw.add(group)
-        drw.save(pretty=True)
-        return drw
+                polyline = drawing.polyline(points = new_pts)
+                attrib = {'stroke': '#000000', 'stroke-opacity': '1', 'id': 'pl',
+                        'stroke-linecap': 'round', 'stroke-width': '2'} #, 'style': 'fill: #f00'}
+                polyline.update(attrib)
+                group.add(polyline)
+            drawing.add(group)
+        drawing.save(pretty=True)
+        return drawing
 
-    def __frame_loc_size(self, frame_name) -> tuple[tuple[float],list[float]]: 
+    def __frame_loc_size(self, frame_name: str) -> tuple[tuple[float],list[float]]: 
         """ Get dimensions of rect in svg """
         min_val, max_val = math.inf, 0.0
         g = self.original_svg.find_id(frame_name)

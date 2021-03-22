@@ -10,44 +10,128 @@ import prj
 
 point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, cam, v)
 
-def create_line_art_onto(source, source_type: str, occl_start: int = 0, 
-        occl_end: int = 0) -> bpy.types.Object:
-    """ Create a line art gp from source of the source_type """
-    GREASE_PENCIL_MOD = 'prj_la'
-    GREASE_PENCIL_MAT = 'prj_mat'
-    GREASE_PENCIL_LAYER = 'prj_lay'
+def apply_mod(obj, mod_type: list[str] = []) -> None:
+    ''' Apply modifier of mod_type or all modifiers '''
 
-    ## Create the grease pencil, its layer, material and frame and link to scene
-    gp_name = prj.GREASE_PENCIL_PREFIX + source.name
-    gp = bpy.data.grease_pencils.new(gp_name)
+    make_active(obj)
+    bpy.ops.object.mode_set(mode = 'OBJECT')
 
-    gp_layer = gp.layers.new(GREASE_PENCIL_LAYER)
+    ## Remove shape keys
+    ## TODO apply the active shape key after the other to keep the shape
+    if obj.data.shape_keys:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.shape_key_remove(all=True)
+        print('remove shape_key', obj.data.shape_keys)
+
+    mods = obj.modifiers
+    if mod_type:
+        mods = [mod for mod in obj.modifiers if mod.type in mod_type 
+                and mod.show_render]
+    for mod in mods:
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+
+def make_local_collection(instancer: bpy.types.Object) -> bpy.types.Collection:
+    ''' Convert linked collection in instancer (empty) to local collection '''
+    linked_coll = instancer.instance_collection
+    coll_path = linked_coll.library.filepath
+    linked_coll_name = linked_coll.name
+    linked_objs = linked_coll.all_objects
+    instancer_matrix = instancer.matrix_world.copy()
+    coll_instance_offset = linked_coll.instance_offset
+    coll_translated = instancer_matrix @ Matrix.Translation(-coll_instance_offset)
+    linked_meshes = [obj.data for obj in linked_coll.all_objects]
+    for obj in linked_objs:
+        bpy.data.objects.remove(obj)
+    for mesh in linked_meshes:
+        bpy.data.meshes.remove(mesh)
+    bpy.data.collections.remove(linked_coll, do_unlink=True)
+
+    with bpy.data.libraries.load(coll_path, relative=False) as (
+            data_from, data_to):
+        data_to.collections.append(linked_coll_name)
+    new_collection = bpy.data.collections[linked_coll_name]
+    new_collection.name = instancer.name
+    scene = bpy.context.scene
+    scene.collection.children.link(new_collection)
+    for obj in new_collection.all_objects:
+        obj.matrix_world = coll_translated @ obj.matrix_world
+    return new_collection
+
+def cut_object(obj: bpy.types.Object, 
+        cut_plane: dict[str,Vector]) -> bpy.types.Object:
+    ''' Duplicate obj, bisect it by cut_plane and return the new cut object '''
+    make_active(obj)
+    bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
+    cut = bpy.context.object
+    bpy.ops.object.mode_set(mode = 'EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+            
+    bpy.ops.mesh.bisect(plane_co=cut_plane['location'], 
+            plane_no=cut_plane['direction'], use_fill=True, clear_inner=True, 
+            clear_outer=True)
+
+    bpy.ops.object.mode_set(mode = 'OBJECT')
+    return cut
+
+def create_lineart(source: 'Drawing_subject', style: str, 
+        la_source: 'Drawing_subject'=None) -> bpy.types.Object:
+    """ Create source.grease_pencil if needed and add a lineart modifier 
+    with style to it """
+    if not la_source:
+        la_source = source
+    if not source.grease_pencil:
+        source.grease_pencil = create_grease_pencil(
+                prj.GREASE_PENCIL_PREFIX + source.obj.name)
+    add_line_art_mod(source.grease_pencil,
+            la_source.lineart_source, la_source.lineart_source_type, style)
+    return source.grease_pencil
+
+def create_grease_pencil(name: str) -> bpy.types.Object:
+    """ Create a grease pencil """
+    gp = bpy.data.grease_pencils.new(name)
+
+    gp_layer = gp.layers.new(prj.GREASE_PENCIL_LAYER)
     gp_layer.frames.new(1)
     
-    gp_mat = bpy.data.materials.new(GREASE_PENCIL_MAT)
+    gp_mat = bpy.data.materials.new(prj.GREASE_PENCIL_MAT)
     bpy.data.materials.create_gpencil_data(gp_mat)
     gp.materials.append(gp_mat)
 
-    obj = bpy.data.objects.new(gp_name, gp)
+    obj = bpy.data.objects.new(name, gp)
     bpy.context.collection.objects.link(obj)
+    return obj
+
+def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object, 
+        source_type: str, style: str) -> None:
+    """ Add a line art modifier to gp from source of the source_type 
+    with style """
+
+    gp_layer = gp.data.layers.new(prj.STYLES[style]['name'])
+    gp_layer.frames.new(1)
+    gp_mat_name = prj.GREASE_PENCIL_MAT + '_' + prj.STYLES[style]['name']
+    if gp_mat_name not in bpy.data.materials:
+        gp_mat = bpy.data.materials.new(gp_mat_name)
+    else:
+        gp_mat = bpy.data.materials[gp_mat_name]
+    if not gp_mat.is_grease_pencil:
+        bpy.data.materials.create_gpencil_data(gp_mat)
+    gp.data.materials.append(gp_mat)
 
     ## Create and setup lineart modifier
-    obj.grease_pencil_modifiers.new(GREASE_PENCIL_MOD, 'GP_LINEART')
-    gp_mod = obj.grease_pencil_modifiers[GREASE_PENCIL_MOD]
+    gp_mod_name = prj.GREASE_PENCIL_MOD + '_' + prj.STYLES[style]['name']
+    gp.grease_pencil_modifiers.new(gp_mod_name, 'GP_LINEART')
+    gp_mod = gp.grease_pencil_modifiers[gp_mod_name]
     gp_mod.target_layer = gp_layer.info
     gp_mod.target_material = gp_mat
-    gp_mod.chaining_geometry_threshold = 0
-    gp_mod.chaining_image_threshold = 0
+    gp_mod.chaining_image_threshold = prj.STYLES[style]['chaining_threshold']
     gp_mod.use_multiple_levels = True
-    gp_mod.level_start = occl_start
-    gp_mod.level_end = occl_end
+    gp_mod.level_start = prj.STYLES[style]['occlusion_start']
+    gp_mod.level_end = prj.STYLES[style]['occlusion_end']
     gp_mod.source_type = source_type
     if source_type == 'OBJECT':
         gp_mod.source_object = source
     elif source_type == 'COLLECTION':
         gp_mod.source_collection = source
-
-    return obj
 
 def mesh_by_verts(obj_name: str, verts: list[Vector]) -> bpy.types.Object:
     """ Create a mesh object from verts """

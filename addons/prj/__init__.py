@@ -11,7 +11,21 @@ import os, pathlib
 ADDONS_PATH = str(pathlib.Path(__file__).parent.absolute())
 MAIN_PATH = 'main.py'
 GREASE_PENCIL_PREFIX = 'prj_'
+GREASE_PENCIL_LAYER = 'prj_lay'
+GREASE_PENCIL_MAT = 'prj_mat'
+GREASE_PENCIL_MOD = 'prj_la'
 SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
+STYLES = {'a': {'name': 'all', 'occlusion_start': 0, 'occlusion_end': 128,
+            'chaining_threshold': 0},
+        'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 1,
+            'chaining_threshold': 0},
+        'c': {'name': 'cut', 'occlusion_start': 0, 'occlusion_end': 128,
+            'chaining_threshold': 0},
+        'h': {'name': 'hid', 'occlusion_start': 1, 'occlusion_end': 128,
+            'chaining_threshold': 0},
+        'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
+            'chaining_threshold': 0},
+        }
 prj_cmd = lambda flags, objects: [bpy.app.binary_path, "--background", bpy.data.filepath,
         "--python", ADDONS_PATH + "/" + MAIN_PATH, "--", flags, objects]
 renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
