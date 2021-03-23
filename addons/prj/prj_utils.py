@@ -10,6 +10,12 @@ import prj
 
 point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, cam, v)
 
+def put_to_last(item, l: list) -> list:
+    ''' Move item to the last element of l and return the edited list '''
+    if item not in l:
+        return l
+    return sorted(l, key=lambda k: k==True)
+
 def apply_mod(obj, mod_type: list[str] = []) -> None:
     ''' Apply modifier of mod_type or all modifiers '''
 

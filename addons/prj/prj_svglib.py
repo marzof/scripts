@@ -15,9 +15,12 @@ from svgwrite.extensions import Inkscape
 
 tuple_points = lambda x: [tuple([float(n) for n in i.split(',')]) 
         for i in x.split(' ')]
-get_g_polylines = lambda group: list(group.root.iterdescendants('polyline'))
+get_xml_elements = lambda container, element: list(
+        container.iterdescendants(element))
 get_pl_points = lambda polylines: [tuple_points(pt.attrib['points']) 
         for pt in polylines]
+scale_move_round_points = lambda points, scale, offset, rnd: numpy.round(
+        numpy.multiply([numpy.subtract(p, offset) for p in points], scale), rnd)
 
 RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
@@ -34,46 +37,125 @@ class Svg_drawing:
         base_offset, base_size = self.__frame_loc_size(frame_name)
         base_ratio = context.frame_size / base_size[0]
 
+        self.offset = base_offset
         self.px_to_mm_factor = 10 * base_ratio
         self.unit_to_px_factor = RESOLUTION_FACTOR * base_ratio
         self.px2mm = lambda x: self.px_to_mm_factor * x
         self.subject = self.original_svg.find_id(subject_name)
         self.layers = {}
-        for g in self.subject.root.iterdescendants('g'):
+        for g in get_xml_elements(self.subject.root, 'g'):
             g_id = g.attrib['id']
             if g_id in [prj.STYLES[style]['name'] for style in prj.STYLES]:
                 self.layers[g_id] = g
-        self.svg = self.__write(size=base_size[0], offset=base_offset, 
-                subject=self.layers)
+        self.svg = self.__write(size=base_size[0], subject=self.layers)
 
-    def __write(self, size: tuple[float], offset: list[float], 
+    def __transfer_points(self, layer, offset):
+        """ Get polylines points, scale, move and round them 
+        and return as list of tuples """
+        polylines = get_xml_elements(self.layers[layer], 'polyline')
+        pl_points = get_pl_points(polylines)
+        smrp = [scale_move_round_points(pl_p, self.unit_to_px_factor, 
+            offset, 4) for pl_p in pl_points]
+        return [tuple(map(tuple, p)) for p in smrp]
+
+    def __write(self, size: tuple[float], 
             subject: svgutils.compose.Element) -> svgwrite.drawing.Drawing:
         """ Write svg with subject scaled to fit size and offset """
         drawing = svgwrite.drawing.Drawing(filename= self.path + '_edit.svg',
                 size=(str(self.px2mm(size)) + 'mm', str(self.px2mm(size)) + 'mm'))
         ink_drawing = Inkscape(drawing)
-        for layer in self.layers:
-            group = ink_drawing.layer(label=layer)
-            for pl in list(self.layers[layer].iterdescendants('polyline')):
-                pts = tuple_points(pl.attrib['points'])
-                scaled_pts = numpy.multiply([numpy.subtract(p, offset) for p in pts], 
-                    self.unit_to_px_factor)
-                new_pts = [tuple(p) for p in scaled_pts]
 
-                polyline = drawing.polyline(points = new_pts)
-                attrib = {'stroke': '#000000', 'stroke-opacity': '1', 'id': 'pl',
-                        'stroke-linecap': 'round', 'stroke-width': '2'} #, 'style': 'fill: #f00'}
-                polyline.update(attrib)
-                group.add(polyline)
-            drawing.add(group)
+        layers = [*self.layers]
+        if 'cut' in self.layers:
+            layers.remove('cut')
+
+        for layer in layers:
+            style_layer = ink_drawing.layer(label=layer)
+
+            points = self.__transfer_points(layer, self.offset)
+
+            for id_no, pl_pts in enumerate(points):
+                polyline = drawing.polyline(points = pl_pts)
+                polyline.update({'stroke': '#000000', 'stroke-opacity': '1', 
+                        'id': 'pl' + str(id_no), 'stroke-linecap': 'round', 
+                        'stroke-width': '.1', 'style': 'fill: none'})
+                style_layer.add(polyline)
+
+            drawing.add(style_layer)
+
+        ################### PREPARE CUT ####################
+        if 'cut' in self.layers:
+            layer = 'cut'
+            cut_layer = ink_drawing.layer(label=layer)
+
+            points = self.__transfer_points(layer, self.offset)
+
+            ## Break polylines into 2-points segments and populate pts_dict
+            pts_dict = {}
+            cut_pl_no = 0
+            for id_no, pl_pts in enumerate(points):
+                pts_couples = [(pl_pts[i], pl_pts[i+1]) 
+                        for i in range(len(pl_pts)-1)]
+                for couple in pts_couples:
+                    for po in couple:
+                        if po not in pts_dict:
+                            pts_dict[po] = [cut_pl_no]
+                        elif len(pts_dict[po]) < 2:
+                            pts_dict[po].append(cut_pl_no)
+                        ## Add a third value to distinguish points with
+                        ## three or more lines pointing to them
+                        elif po + (id_no,) not in pts_dict:
+                            pts_dict[po + (id_no,)] = [cut_pl_no]
+                        else:
+                            pts_dict[po + (id_no,)].append(cut_pl_no)
+                    cut_pl_no += 1
+
+            ## Reconnect segments from points in pts_dict
+            cut_polylines = []
+            pl_ids = list(range(len(pts_dict)))
+            ordered_pts = []
+            pl_id = pl_ids[0] 
+            starts_with = [pt for pt, idx in pts_dict.items()][0]
+            while len(pts_dict) > 0:
+                ## If cut object is composed by multiple closed elements 
+                ## it needs to restart from another point (pl_id)
+                if pl_id not in pl_ids:
+                    ## Save last ordered list of points and start a new one
+                    cut_polylines.append(ordered_pts)
+                    ordered_pts = []
+                    pl_id = pl_ids[0] 
+                    starts_with = [pt for pt, idx in pts_dict.items()][0]
+                for pt, idx in pts_dict.items():
+                    if pl_id in idx:
+                        ## Some pt could contain more than 2 value: 
+                        ## need just the first two
+                        ordered_pts.append((pt[0], pt[1]))
+                        pl_ids.remove(pl_id)
+                        pl_id = [v for v in pts_dict[pt][:2] if v != pl_id][0]
+                        break
+                del(pts_dict[pt])
+            ## Close last perimeter connecting to starting point
+            ordered_pts.append(starts_with)
+            cut_polylines.append(ordered_pts)
+
+            for cut_pl in cut_polylines:
+                polyline = drawing.polyline(points = cut_pl)
+                polyline.update({'stroke': '#000000', 'stroke-opacity': '1', 
+                        'id': 'pl', 'stroke-linecap': 'round', 
+                        'stroke-width': '.35', 'style': 'fill: #f00'})
+                cut_layer.add(polyline)
+            drawing.add(cut_layer)
+        ################ END CUT ###################
+
         drawing.save(pretty=True)
         return drawing
+
 
     def __frame_loc_size(self, frame_name: str) -> tuple[tuple[float],list[float]]: 
         """ Get dimensions of rect in svg """
         min_val, max_val = math.inf, 0.0
         g = self.original_svg.find_id(frame_name)
-        pl = get_g_polylines(g)
+        pl = get_xml_elements(g.root, 'polyline')
         pts = get_pl_points(pl)
         for p in pts:
             for co in p:
@@ -85,73 +167,4 @@ class Svg_drawing:
                     extension = co
         size = numpy.subtract(extension, origin)
         return origin, size 
-
-
-def write_svg(svg, drawing_g, frame_g, frame_size, svg_path):
-    origin, dimensions, factor = get_size(frame_g, frame_size)
-    mm_factor = 10 * frame_size / dimensions[0]
-    drw = svgwrite.drawing.Drawing(filename= svg_path + '.edit',
-            size=(str(dimensions[0] * mm_factor) + 'mm', 
-                str(dimensions[1] * mm_factor) + 'mm'))
-    group = drw.g()
-    pts_dict = {}
-    for i, pl in enumerate(list(drawing_g.root.iterdescendants('polyline'))):
-        #print('pl', pl)
-        pts = tuple_points(pl.attrib['points'])
-        #print('pts', pts)
-        new_pts = [tuple(numpy.multiply(numpy.subtract(p, origin), factor)) 
-                for p in pts]
-        #print('new_pts', new_pts)
-        two_points = [str(new_pts[0]), str(new_pts[1])]
-        #print('two_points', two_points)
-        four_coords = re.findall('\d*\.\d*', ''.join(two_points))
-        coords = [tuple(four_coords[:2]), tuple(four_coords[2:])]
-        #print(coords)
-
-        polyline = drw.polyline(points = coords)
-        attrib = {'stroke': '#000000', 'stroke-opacity': '1', 'id': 'pl',
-                'stroke-linecap': 'round', 'stroke-width': '2'} #, 'style': 'fill: #f00'}
-        polyline.update(attrib)
-        group.add(polyline)
-    drw.add(group)
-
-## To join cut (continue) polylines
-#        for po in two_points:
-#            if po not in pts_dict:
-#                pts_dict[po] = [i]
-#            else:
-#                pts_dict[po].append(i)
-#        print(i, new_pts)
-#    print(pts_dict)
-
-#    ordered_pts = []
-#    i = 0
-#    while len(pts_dict) > 0:
-#        for pt, idx in pts_dict.items():
-#            if i in idx:
-#                str_coords = re.findall('\d*\.\d*', pt)
-#                coords = [float(v) for v in str_coords]
-#                ordered_pts.append(coords)
-#                i = [v for v in pts_dict[pt] if v != i][0]
-#                break
-#        del(pts_dict[pt])
-#    ordered_pts.append(ordered_pts[0])
-#    print('ORDERED\n', ordered_pts)
-#    polyline = drw.polyline(points = ordered_pts)
-#    attrib = {'stroke': '#000000', 'stroke-opacity': '1', 'id': 'pl',
-#            'stroke-linecap': 'round', 'stroke-width': '2'} #, 'style': 'fill: #f00'}
-#    polyline.update(attrib)
-#    group.add(polyline)
-#    drw.add(group)
-
-    drw.save(pretty=True)
-
-    #f = open(svg_path + '.edit', 'r')
-    #svg = f.read()
-    #f.close()
-    #svg = re.sub('(<svg.*)>', r'\1%s' % sodipodi_insertion, svg, count=1)
-    #f = open(svg_path + '.edit', 'w')
-    #f.write(svg)
-    #f.close()
-
 

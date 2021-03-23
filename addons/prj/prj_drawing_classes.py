@@ -114,7 +114,7 @@ class Draw_maker:
 
         ## Cut has to be the last style
         cut_flag = 'c'
-        draw_style = [l for l in draw_style if l != cut_flag] + [cut_flag]
+        draw_style = prj_utils.put_to_last('c', draw_style)
         cuts_collection = bpy.data.collections.new(subject.name + '_cuts') \
                 if cut_flag in draw_style else None
         for d_style in draw_style:
