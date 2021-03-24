@@ -97,6 +97,7 @@ class Drawing_context:
         
         return frame_obj
 
+
 class Draw_maker:
     draw_context: Drawing_context
 
@@ -112,15 +113,17 @@ class Draw_maker:
     def draw(self, subject: 'Drawing_subject', draw_style: str, 
             remove: bool = True) -> str:
 
-        ## Cut has to be the last style
         cut_flag = 'c'
-        draw_style = prj_utils.put_to_last('c', draw_style)
+        la_gps = []
+        ## Cut has to be the last style
+        draw_style = prj_utils.move_to_last(cut_flag, list(draw_style))
         cuts_collection = bpy.data.collections.new(subject.name + '_cuts') \
                 if cut_flag in draw_style else None
         for d_style in draw_style:
             draw_subject = subject
 
             if d_style == cut_flag and subject.cut_objects:
+
                 for ob in subject.cut_objects:
                     prj_utils.apply_mod(ob)
                     cut = prj_utils.cut_object(obj = ob, 
@@ -140,9 +143,13 @@ class Draw_maker:
                 ## TODO
                 pass
             
-            la_gp = prj_utils.create_lineart(source=subject, style=d_style, 
-                    la_source=draw_subject)
+            la_gps.append(prj_utils.create_lineart(source=subject, style=d_style, 
+                    la_source=draw_subject))
+            ## Hide grease pencil line art to keep netxt calculations fast
+            la_gps[-1].hide_viewport = True
 
+        for la_gp in la_gps:
+            la_gp.hide_viewport = False
         prj_utils.make_active(la_gp)
         bpy.ops.wm.gpencil_export_svg(filepath=subject.get_svg_path(), 
                 selected_object_type='VISIBLE')

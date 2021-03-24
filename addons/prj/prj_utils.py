@@ -10,11 +10,20 @@ import prj
 
 point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, cam, v)
 
-def put_to_last(item, l: list) -> list:
+def put_in_dict(dic: dict, key, value) -> None:
+    """ Check if key is in dic and add value to dic[key] """
+    if key not in dic:
+        dic[key] = [value]
+    else:
+        dic[key].append(value)
+
+def move_to_last(item, l: list) -> list:
     ''' Move item to the last element of l and return the edited list '''
     if item not in l:
         return l
-    return sorted(l, key=lambda k: k==True)
+    to_last = l.pop(l.index(item))
+    l.append(to_last)
+    return l
 
 def apply_mod(obj, mod_type: list[str] = []) -> None:
     ''' Apply modifier of mod_type or all modifiers '''
@@ -68,7 +77,7 @@ def cut_object(obj: bpy.types.Object,
     ''' Duplicate obj, bisect it by cut_plane and return the new cut object '''
     make_active(obj)
     bpy.ops.object.duplicate(linked=False, mode='TRANSLATION')
-    cut = bpy.context.object
+    cut_obj = bpy.context.object
     bpy.ops.object.mode_set(mode = 'EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
             
@@ -77,7 +86,7 @@ def cut_object(obj: bpy.types.Object,
             clear_outer=True)
 
     bpy.ops.object.mode_set(mode = 'OBJECT')
-    return cut
+    return cut_obj
 
 def create_lineart(source: 'Drawing_subject', style: str, 
         la_source: 'Drawing_subject'=None) -> bpy.types.Object:
