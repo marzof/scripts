@@ -61,30 +61,40 @@ class Svg_drawing:
                 size=(str(self.px2mm(size))+'mm', str(self.px2mm(size)) + 'mm'))
         ink_drawing = Inkscape(drawing)
 
-        layers = [*self.layers]
-        if 'cut' in self.layers:
-            prj_utils.move_to_last('cut', layers)
+        layers = prj_utils.move_to_last('cut', [*self.layers])
 
-        ## TODO clean up
+        fill = 'none'
+        closed = False
         layer_objs = []
         for layer in layers:
-            pts = self.__transfer_points(layer, self.offset)
-            if layer == 'cut':
-                pts_dict = self.__split_and_collect(pts)
-                cut_polylines = self.__reshape_polylines(pts_dict)
-                pts = [cut_pl for cut_pl in cut_polylines]
             layer_objs.append(Layer(
                 name = layer, 
                 drawing = drawing,
                 layer = ink_drawing.layer(label=layer), 
-                points = pts
                 ))
+
+            pts = self.__transfer_points(layer, self.offset)
+            if layer == 'cut':
+                fill = '#f00'
+                closed = True
+                #pts_dict = self.__split_and_collect(pts)
+                #cut_polylines = self.__reshape_polylines(pts_dict)
+                #pts = [cut_pl for cut_pl in cut_polylines]
+
+            polylines = []
+            for id_no, pl_pts in enumerate(pts):
+                polylines.append(Polyline(id_no, pl_pts, drawing, closed))
+
+                polylines[-1].set_attribute({'stroke': '#000000', 
+                    'stroke-opacity': '1', 'id': 'pl' + str(id_no), 
+                    'stroke-linecap': 'round', 'stroke-width': '.1', 
+                    'style': 'fill: ' + fill})
+                layer_objs[-1].add_entity(polylines[-1].polyline)
+
             drawing.add(layer_objs[-1].layer)
 
         drawing.save(pretty=True)
         return drawing
-
-
 
     def __transfer_points(self, layer: str, offset: tuple[float]) -> \
             list[tuple[tuple]]:
@@ -96,25 +106,6 @@ class Svg_drawing:
             offset, self.ROUNDING) for pl_p in pl_points]
         return [tuple(map(tuple, p)) for p in smrp]
 
-    def __split_and_collect(self, points: list[tuple[tuple]]) -> \
-            dict[tuple[int],list[int]]:
-        """ Break polylines into 2-points segments and populate a dict """
-        dic = {}
-        points2couples = {pl_id: [(pl_pts[i], pl_pts[i+1]) for i in 
-            range(len(pl_pts)-1)] for pl_id, pl_pts in enumerate(points)}
-        points = [(pt, pl) for pl in points2couples 
-            for pt_couple in points2couples[pl] for pt in pt_couple]
-        for pl_idx, pt_pl in enumerate(points):
-            idx = pl_idx//2
-            pt, pl = pt_pl[0], pt_pl[1]
-            prj_utils.put_in_dict(dic, pt, idx)
-            if len(dic[pt]) > 2:
-                ## Add a third value to distinguish points with
-                ## three or more lines pointing to them
-                dic[pt].remove(idx)
-                pt += (pl,)
-                prj_utils.put_in_dict(dic, pt, idx)
-        return dic
 
     def __frame_loc_size(self, frame_name: str) -> \
             tuple[tuple[float],list[float]]: 
@@ -133,6 +124,24 @@ class Svg_drawing:
                     extension = co
         size = numpy.subtract(extension, origin)
         return origin, size 
+
+
+class Polyline:
+
+    def __init__(self, pl_id, points, drawing, closed):
+        self.id = pl_id
+        self.points = points if not closed else self.__get_closed_pl(points)
+        self.drawing = drawing
+        self.polyline = drawing.polyline(points = self.points)
+        self.closed = closed
+
+    def __get_closed_pl(self, points):
+        pts_dict = self.__split_and_collect(points)
+        cut_polylines = self.__reshape_polylines(pts_dict)
+        return [cut_pl for cut_pl in cut_polylines]
+
+    def set_attribute(self, dic):
+        self.polyline.update(dic)
 
     def __reshape_polylines(self, pts_dict):
         ## Reconnect segments from points in pts_dict
@@ -164,28 +173,34 @@ class Svg_drawing:
         cut_polylines.append(ordered_pts)
         return cut_polylines
 
+    def __split_and_collect(self, points: list[tuple[tuple]]) -> \
+            dict[tuple[int],list[int]]:
+        """ Break polylines into 2-points segments and populate a dict """
+        dic = {}
+        points2couples = {pl_id: [(pl_pts[i], pl_pts[i+1]) for i in 
+            range(len(pl_pts)-1)] for pl_id, pl_pts in enumerate(points)}
+        points = [(pt, pl) for pl in points2couples 
+            for pt_couple in points2couples[pl] for pt in pt_couple]
+        for pl_idx, pt_pl in enumerate(points):
+            idx = pl_idx//2
+            pt, pl = pt_pl[0], pt_pl[1]
+            prj_utils.put_in_dict(dic, pt, idx)
+            if len(dic[pt]) > 2:
+                ## Add a third value to distinguish points with
+                ## three or more lines pointing to them
+                dic[pt].remove(idx)
+                pt += (pl,)
+                prj_utils.put_in_dict(dic, pt, idx)
+        return dic
+
 
 class Layer:
-    ## TODO clean up and rationalize
 
-    polylines: list
-
-    def __init__(self, name, drawing, layer, points):
+    def __init__(self, name, drawing, layer): #, points):
         self.name = name
         self.drawing = drawing
         self.layer = layer
-        self.points = points
 
-        self.polylines = self.add_polylines()
-        for pl in self.polylines:
-            self.layer.add(pl)
+    def add_entity(self, entity):
+        self.layer.add(entity)
 
-    def add_polylines(self):
-        pl_list = []
-        fill = '#f00' if self.name == 'cut' else 'none'
-        for id_no, pl_pts in enumerate(self.points):
-            pl_list.append(self.drawing.polyline(points = pl_pts))
-            pl_list[-1].update({'stroke': '#000000', 'stroke-opacity': '1', 
-                    'id': 'pl' + str(id_no), 'stroke-linecap': 'round', 
-                    'stroke-width': '.1', 'style': 'fill: ' + fill})
-        return pl_list
