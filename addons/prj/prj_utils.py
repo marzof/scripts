@@ -10,8 +10,8 @@ import prj
 
 point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, cam, v)
 
-def put_in_dict(dic: dict, key, value) -> None:
-    """ Check if key is in dic and add value to dic[key] """
+def put_in_dict(dic: dict, key: list, value) -> None:
+    """ Check if key is in dic and append value to the list dic[key] """
     if key not in dic:
         dic[key] = [value]
     else:
