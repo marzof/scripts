@@ -149,9 +149,9 @@ class Cam():
                 cleaned_objects = self.__clean_and_prepare(contained_objects, ob)
             elif ob.type == 'CURVE':
                 bpy.ops.object.convert(target='MESH')
-                apply_mod(ob, type=['MIRROR', 'SOLIDIFY', 'BEVEL'])
+                apply_mod(ob, type=['MIRROR', 'SUBSURF', 'SOLIDIFY', 'BEVEL'])
             else:
-                apply_mod(ob, type=['MIRROR', 'SOLIDIFY', 'BEVEL'])
+                apply_mod(ob, type=['MIRROR', 'SUBSURF', 'SOLIDIFY', 'BEVEL'])
 
             new_ob = bpy.context.selected_objects
             self.cut_objects[ob] = new_ob
@@ -178,7 +178,7 @@ class Cam():
                     ob.data = ob.data.copy()
                 ob.select_set(True)
                 bpy.context.view_layer.objects.active = ob
-                apply_mod(ob, type=['MIRROR', 'SOLIDIFY', 'BEVEL'])
+                apply_mod(ob, type=['MIRROR', 'SUBSURF', 'SOLIDIFY', 'BEVEL'])
             else:
                 print('to delete', ob.name)
                 to_delete.append(ob)
