@@ -36,14 +36,14 @@ class Drawing_context:
     style: str
     subjects: list[bpy.types.Object]
     camera: bpy.types.Object ## bpy.types.Camera 
-    frame: bpy.types.Object ## bpy.types.GreasePencil (lineart)
     frame_size: float ## tuple[float, float] ... try?
     camera_frame: dict[str,Vector]
 
 
-    FRAME_NAME: str = 'frame'
     DEFAULT_STYLE: str = 'cp'
     RENDER_PATH: str = bpy.path.abspath(bpy.context.scene.render.filepath)
+    RENDER_RESOLUTION_X: int = bpy.context.scene.render.resolution_x
+    RENDER_RESOLUTION_Y: int = bpy.context.scene.render.resolution_y
 
     def __init__(self, args: list[str]):
         self.args = args
@@ -76,28 +76,13 @@ class Drawing_context:
         for ob in all_objs:
             if bpy.data.objects[ob].type == 'CAMERA':
                 cam = bpy.data.objects[ob]
-            if prj.renderables(bpy.data.objects[ob]):
+            elif prj.is_renderables(bpy.data.objects[ob]):
                 objs.append(bpy.data.objects[ob])
         if not objs:
             objs = [ob for ob in bpy.context.selectable_objects 
-                    if prj.renderables(ob)]
+                    if prj.is_renderables(ob)]
         return objs, cam
         
-    def create_frame(self) -> bpy.types.Object:
-        """ Create a plane at the clip end of cam with same size of cam frame """
-
-        ## Get frame verts by camera dimension and put it at the camera clip end
-        z = -(self.camera.data.clip_end - .01)
-        verts = [v[:2] + (z,) for v in self.camera.data.view_frame()]
-        frame_obj = prj_utils.mesh_by_verts(self.FRAME_NAME, verts)
-
-        ## Align frame to camera orientation and position
-        frame_obj.matrix_world = self.camera.matrix_world
-        self.frame = frame_obj
-        
-        return frame_obj
-
-
 class Draw_maker:
     draw_context: Drawing_context
 
@@ -137,7 +122,7 @@ class Draw_maker:
 
                 scene = bpy.context.scene
                 scene.collection.children.link(cuts_collection)
-                draw_subject = Drawing_subject(to_draw, self)
+                draw_subject = Drawing_subject(to_draw, self.drawing_context)
 
             elif d_style == 'b':
                 ## TODO
@@ -159,7 +144,6 @@ class Draw_maker:
 
 class Drawing_subject:
     obj: bpy.types.Object
-    draw_maker: Draw_maker
     drawing_context: Drawing_context
     visible: bool
     frontal: bool
@@ -170,13 +154,12 @@ class Drawing_subject:
     objects_visibility: dict[str, list[bpy.types.Object]]
     cut_objects: list[bpy.types.Object]
 
-    def __init__(self, obj, draw_maker):
+    def __init__(self, obj, draw_context):
         self.obj = obj
         if (type(obj) == bpy.types.Object and obj.type == 'EMPTY'):
             self.obj = prj_utils.make_local_collection(self.obj)
         self.name = obj.name
-        self.draw_maker = draw_maker
-        self.drawing_context = draw_maker.drawing_context
+        self.drawing_context = draw_context
 
         if type(self.obj) == bpy.types.Collection:
             self.type = 'COLLECTION'
@@ -199,11 +182,11 @@ class Drawing_subject:
                     and ob in self.objects_visibility['behind']:
                 self.cut_objects.append(ob) 
 
-    def set_draw_maker(self, draw_maker: Draw_maker) -> None:
-        self.draw_maker = draw_maker
+    #def set_draw_maker(self, draw_maker: Draw_maker) -> None:
+    #    self.draw_maker = draw_maker
 
-    def get_draw_maker(self) -> Draw_maker:
-        return self.draw_maker
+    #def get_draw_maker(self) -> Draw_maker:
+    #    return self.draw_maker
 
     def set_drawing_context(self, draw_context: Drawing_context) -> None:
         self.drawing_context = draw_context

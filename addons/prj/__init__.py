@@ -28,7 +28,7 @@ STYLES = {'a': {'name': 'all', 'occlusion_start': 0, 'occlusion_end': 128,
         }
 prj_cmd = lambda flags, objects: [bpy.app.binary_path, "--background", bpy.data.filepath,
         "--python", ADDONS_PATH + "/" + MAIN_PATH, "--", flags, objects]
-renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
+is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
         in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
 
 class Prj(bpy.types.Operator):
@@ -40,7 +40,7 @@ class Prj(bpy.types.Operator):
     def get_objects(self, selection):
         ''' Get objects based on selection '''
         objs = [obj.name.replace(';', '_') for obj in selection 
-                if renderables(obj)]
+                if is_renderables(obj)]
         return objs
 
     def get_camera(self, selection):

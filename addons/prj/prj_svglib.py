@@ -3,7 +3,6 @@
 
 
 import svgwrite
-import svgutils
 #import xml.etree.ElementTree as ET
 import numpy
 import math
@@ -22,132 +21,167 @@ get_pl_points = lambda polylines: [tuple_points(pt.attrib['points'])
         for pt in polylines]
 scale_move_round_points = lambda points, scale, offset, rnd: numpy.round(
         numpy.multiply([numpy.subtract(p, offset) for p in points], scale), rnd)
-flatten = lambda t: [item for sublist in t for item in sublist]
 
-attributes = lambda id_val: {
-        'prj': {'stroke': '#000000', 'stroke-opacity': '1', 'id': id_val, 
+
+POLYLINE_TAG: str = 'polyline'
+SVG_ATTRIBUTES = {
+        'prj': {'stroke': '#000000', 'stroke-opacity': '1',
             'stroke-linecap': 'round', 'stroke-width': '.1', 
             'style': 'fill: none'},
-        'cut': {'stroke': '#000000', 'stroke-opacity': '1', 'id': id_val, 
+        'cut': {'stroke': '#000000', 'stroke-opacity': '1',
             'stroke-linecap': 'round', 'stroke-width': '.35', 
-            'style': 'fill: #f00'},
+            'style': 'fill: none'},
+            #'style': 'fill: #f00'},
         }
 
-RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
-POLYLINE_TAG: str = 'polyline'
+class Svg_entity:
+    obj: svgwrite.base.BaseElement
 
+    def __init__(self, entity_type, obj):
+        self.type: str = entity_type
+        self.obj = obj
 
-class Svg_drawing:
-    original_svg : svgutils.compose.SVG
-    ROUNDING: int = 4
-
-    def __init__(self, filepath: str, context: Drawing_context, subject: str):
-        self.path = filepath
-        self.original_svg = svgutils.compose.SVG(filepath)
-        self.drawing_context = context
-
-        subject_name = prj.SVG_GROUP_PREFIX + subject
-        frame_name = prj.SVG_GROUP_PREFIX + context.FRAME_NAME
-        base_offset, base_size = self.__frame_loc_size(frame_name)
-        base_ratio = context.frame_size / base_size[0]
-
-        self.offset = base_offset
-        self.px_to_mm_factor = 10 * base_ratio
-        self.unit_to_px_factor = RESOLUTION_FACTOR * base_ratio
-        self.px2mm = lambda x: self.px_to_mm_factor * x
-        self.subject = self.original_svg.find_id(subject_name)
-        self.original_layers = {}
-        for g in get_xml_elements(self.subject.root, 'g'):
-            g_id = g.attrib['id']
-            if g_id in [prj.STYLES[style]['name'] for style in prj.STYLES]:
-                self.original_layers[g_id] = g
-        self.layers = {}
-        self.svg = self.__write(size=base_size[0], subject=self.original_layers)
-
-    def __write(self, size: tuple[float], 
-            subject: svgutils.compose.Element) -> svgwrite.drawing.Drawing:
-        """ Write svg with subject scaled to fit size and offset """
-
-        drawing = svgwrite.drawing.Drawing(filename= self.path + '_edit.svg',
-                size=(str(self.px2mm(size))+'mm', str(self.px2mm(size)) + 'mm'))
-        ink_drawing = Inkscape(drawing)
-
-        layer_labels = prj_utils.move_to_last('cut', [*self.original_layers])
-
-        for layer_label in layer_labels:
-            lay = Layer(label = layer_label, drawing = drawing,
-                layer = ink_drawing.layer(label=layer_label))
-            self.layers[lay.label] = lay
-
-            polylines_xml = get_xml_elements(self.original_layers[lay.label], 
-                    POLYLINE_TAG)
-            layer_points = relocate_points(polylines_xml, 
-                    self.unit_to_px_factor, self.offset, self.ROUNDING)
-
-            for polyline_points in layer_points:
-                pl = Polyline(polyline_points, drawing, lay)
-                pl.set_attribute(attributes(pl.id)[lay.label])
-                prj_utils.put_in_dict(lay.entities, POLYLINE_TAG, pl)
-
-            if lay.label == 'cut':
-                lay.entities[POLYLINE_TAG] = join_polylines(
-                        lay.entities[POLYLINE_TAG], drawing, lay)
-            for pl in lay.entities[POLYLINE_TAG]:
-                lay.layer.add(pl.polyline)
-            drawing.add(lay.layer)
-
-        drawing.save(pretty=True)
-        return drawing
-
-    def __frame_loc_size(self, frame_name: str) -> \
-            tuple[tuple[float],list[float]]: 
-        """ Get dimensions of rect in svg """
-        min_val, max_val = math.inf, 0.0
-        g = self.original_svg.find_id(frame_name)
-        polylines = get_xml_elements(g.root, POLYLINE_TAG)
-        points = get_pl_points(polylines)
-        point_coords = [co for p in points for co in p]
-        for co in point_coords:
-            if sum(co) < min_val:
-                min_val, origin = sum(co), co
-            if sum(co) > max_val:
-                max_val, extension = sum(co), co
-        size = numpy.subtract(extension, origin)
-        return origin, size 
-
-def relocate_points(polylines: 'lxml.etree._Element', factor: float, 
-        offset: tuple[float], rounding: int) -> list[list[tuple]]:
-    """ Get polylines points, scale, move and round them 
-    and return as list of tuples """
-    pl_points = get_pl_points(polylines)
-    smrp = [scale_move_round_points(pl_p, factor, offset, rounding) 
-            for pl_p in pl_points]
-    return [list(map(tuple, p)) for p in smrp]
-
-class Layer:
+class Svg_container(Svg_entity):
     entities: dict[str,list[svgwrite.base.BaseElement]]
 
-    def __init__(self, label: str, drawing:svgwrite.drawing.Drawing, 
-            layer: svgwrite.container.Group):
-        self.label = label
-        self.drawing = drawing
-        self.layer = layer
+    def __init__(self):
         self.entities = {}
 
-class Polyline:
-    polyline: svgwrite.shapes.Polyline
+    def drawing_container(self, container: 'Svg_container') -> 'Svg_drawing':
+        if isinstance(container, Svg_drawing):
+            return container
+        return self.drawing_container(container.container)
 
-    def __init__(self, points: list[tuple], drawing: svgwrite.drawing.Drawing, 
-            layer: Layer, pl_id: str = 'pl'):
-        self.id = pl_id
-        self.points = points
-        self.drawing = drawing
-        self.layer = layer
-        self.type: str = POLYLINE_TAG
-        self.polyline = drawing.polyline(points = self.points)
+    def add_entity(self, class_type, data) -> Svg_entity:
+        entity = class_type(data, self)
+        if entity.type not in entity.container.entities:
+            entity.container.entities[entity.type] = []
+        entity.container.entities[entity.type].append(entity)
+        self.obj.add(entity.obj)
+        return entity
+
+class Svg_graphics(Svg_entity):
 
     def set_attribute(self, dic: dict[str, str]) -> None:
-        self.polyline.update(dic)
+        self.obj.update(dic)
+
+
+class Layer(Svg_container):
+    drawing: 'Svg_drawing'
+    obj: svgwrite.container.Group
+
+    def __init__(self, label: str, container: Svg_container):
+        Svg_container.__init__(self)
+        self.label = label
+        self.container = container
+        self.drawing = self.drawing_container(self.container)
+        Svg_entity.__init__(self, 
+                entity_type = 'layer',
+                obj = Inkscape(self.drawing.obj).layer(label=label)
+                )
+
+class Polyline(Svg_graphics):
+    obj: svgwrite.shapes.Polyline
+
+    def __init__(self, points: list[list[float]], container: Svg_container): 
+        self.points = points
+        self.container = container
+        self.drawing = container.drawing
+        Svg_entity.__init__(self, 
+                entity_type = 'polyline',
+                obj = container.drawing.obj.polyline(points = self.points)
+                )
+
+class Path(Svg_graphics):
+    obj: svgwrite.path.Path
+
+    def __init__(self, coords, container: Svg_container): 
+        self.container = container
+        self.drawing = container.drawing
+        Svg_entity.__init__(self, 
+                entity_type = 'path',
+                obj = container.drawing.obj.path(coords)
+                )
+
+class Svg_drawing(Svg_container):
+
+    def __init__(self, filepath: str, size = ('100mm', '100mm')):
+        Svg_container.__init__(self)
+        self.path = filepath
+        self.size = size
+        self.drawing = self
+
+    def __enter__(self) -> 'Svg_drawing':
+        self.obj = svgwrite.drawing.Drawing(
+                filename= self.path + '_edit.svg', size=self.size)
+        return self
+
+    def __exit__(self, type, value, traceback) -> None:
+        self.obj.save(pretty=True)
+
+
+        #subject_name = prj.SVG_GROUP_PREFIX + subject
+        ####### Pass to main ->
+        #frame_name = prj.SVG_GROUP_PREFIX + context.FRAME_NAME
+        #frame = self.original_svg.find_id(frame_name)
+        #base_offset, base_size = get_rect_dimensions(frame)
+        #base_ratio = context.frame_size / base_size[0]
+
+        #self.offset = base_offset
+        #self.px_to_mm_factor = 10 * base_ratio
+        #self.unit_to_px_factor = RESOLUTION_FACTOR * base_ratio
+        #self.px2mm = lambda x: self.px_to_mm_factor * x
+        ######## <-
+        #self.subject = self.original_svg.find_id(subject_name)
+        #self.original_layers = {}
+        #for g in get_xml_elements(self.subject.root, 'g'):
+        #    g_id = g.attrib['id']
+        #    if g_id in [prj.STYLES[style]['name'] for style in prj.STYLES]:
+        #        self.original_layers[g_id] = g
+        #self.layers = {}
+        #self.svg = self.__write(size=base_size[0], subject=self.original_layers)
+
+    ## TODO add method to convert polylines to paths 
+    ## see https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial/Paths
+    # def __write(self, size: tuple[float], 
+    #         subject: svgutils.compose.Element) -> svgwrite.drawing.Drawing:
+    #     """ Write svg with subject scaled to fit size and offset """
+
+    #     drawing = svgwrite.drawing.Drawing(filename= self.path + '_edit.svg',
+    #             size=(str(self.px2mm(size))+'mm', str(self.px2mm(size)) + 'mm'))
+    #     ink_drawing = Inkscape(drawing)
+
+    #     layer_labels = prj_utils.move_to_last('cut', [*self.original_layers])
+
+    #     for layer_label in layer_labels:
+    #         lay = Layer(label = layer_label, drawing = drawing,
+    #             layer = ink_drawing.layer(label=layer_label))
+    #         self.layers[lay.label] = lay
+
+    #         polylines_xml = get_xml_elements(self.original_layers[lay.label], 
+    #                 POLYLINE_TAG)
+    #         layer_points = relocate_points(polylines_xml, 
+    #                 self.unit_to_px_factor, self.offset, self.ROUNDING)
+
+    #         for polyline_points in layer_points:
+    #             pl = Polyline(polyline_points, drawing, lay)
+    #             pl.set_attribute(attributes(pl.id)[lay.label])
+    #             prj_utils.put_in_dict(lay.entities, POLYLINE_TAG, pl)
+
+    #         if lay.label == 'cut':
+    #             lay.entities[POLYLINE_TAG] = join_polylines(
+    #                     lay.entities[POLYLINE_TAG], drawing, lay)
+    #         for pl in lay.entities[POLYLINE_TAG]:
+    #             lay.layer.add(pl.polyline)
+    #         drawing.add(lay.layer)
+
+    #     drawing.save(pretty=True)
+    #     return drawing
+
+
+
+
+
 
 def join_polylines(pl_list: list[Polyline], drawing: svgwrite.drawing.Drawing, 
         layer: Layer) -> list[Polyline]:
@@ -213,3 +247,17 @@ def __split_and_collect(pl_points: list[tuple[tuple]]) -> \
             prj_utils.put_in_dict(dic, pt, idx)
     return dic
 
+## To archive
+def get_rect_dimensions(rect) -> tuple[tuple[float], list[float]]: 
+    """ Get dimensions of polyline rect in svg """
+    min_val, max_val = math.inf, 0.0
+    polylines = get_xml_elements(rect.root, POLYLINE_TAG)
+    points = get_pl_points(polylines)
+    point_coords = [co for p in points for co in p]
+    for co in point_coords:
+        if sum(co) < min_val:
+            min_val, origin = sum(co), co
+        if sum(co) > max_val:
+            max_val, extension = sum(co), co
+    size = numpy.subtract(extension, origin)
+    return origin, size 

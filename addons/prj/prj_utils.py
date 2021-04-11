@@ -48,12 +48,16 @@ def apply_mod(obj, mod_type: list[str] = []) -> None:
 def make_local_collection(instancer: bpy.types.Object) -> bpy.types.Collection:
     ''' Convert linked collection in instancer (empty) to local collection '''
     linked_coll = instancer.instance_collection
+
+    ## -> get_data_from_collection(linked_coll)
     coll_path = linked_coll.library.filepath
     linked_coll_name = linked_coll.name
-    linked_objs = linked_coll.all_objects
     instancer_matrix = instancer.matrix_world.copy()
     coll_instance_offset = linked_coll.instance_offset
     coll_translated = instancer_matrix @ Matrix.Translation(-coll_instance_offset)
+    
+    ## -> remove_obj_and_mesh()
+    linked_objs = linked_coll.all_objects
     linked_meshes = [obj.data for obj in linked_coll.all_objects]
     for obj in linked_objs:
         bpy.data.objects.remove(obj)
