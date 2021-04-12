@@ -52,14 +52,19 @@ def draw_subject(subject: 'bpy.types.Object', context: Drawing_context):
         print(subject.name, 'is visible')
         return draw_maker.draw(draw_subj, context.style)
 
-def pl_to_path_points(pl_points: str, scale_factor: float = 1, 
-        offset: float = 0, rounding = 16) -> str:
-    coords = 'M '
-    coords_iter = re.finditer(r'[\d\.]+', pl_points)
+def format_points(pl_points: str, scale_factor: float = 1, 
+        offset: float = 0, rounding = 16) -> dict:
+    """ Get pl_points from svg and return the edited coords 
+    (scaled, moved and rounded) as both string and list of tuple of float """
+    coords = {'path_string': 'M ', 'polyline_string': '', 'values': []}
+    coords_iter = re.finditer(r'([\d\.]+),([\d\.]+)', pl_points)
     for i, coord in enumerate(coords_iter, 1):
-        separator = ',' if i % 2 else ' '
-        co = round(float(coord.group()) * scale_factor, rounding)
-        coords += str(co) + separator
+        x = round(float(coord.group(1)) * scale_factor, rounding)
+        y = round(float(coord.group(2)) * scale_factor, rounding)
+        string = f'{str(x)},{str(y)} '
+        coords['path_string'] += string
+        coords['polyline_string'] += string
+        coords['values'].append((x, y))
     return coords
 
 
@@ -85,29 +90,16 @@ for svg_file in svg_files:
     svg_root = ET.parse(svg_file).getroot()
     groups = [g for g in svg_root.iter(g_tag) if g.attrib['id'] in styles]
     with Svg_drawing(svg_file, svg_size) as svg:
-        for group in groups:
-            layer_label = group.attrib['id']
-            layer = svg.add_entity(Layer, layer_label) 
-            for pl in group.iter(pl_tag):
-                coords = pl_to_path_points(pl.attrib['points'], 
+        for g in groups:
+            layer_label = g.attrib['id']
+            layer = svg.add_entity(Layer, label = layer_label) 
+            for pl in g.iter(pl_tag):
+                coords = format_points(pl.attrib['points'], 
                         scale_factor=factor, rounding=ROUNDING)
-                path = layer.add_entity(Path, coords)
+                path = layer.add_entity(Path, 
+                        coords_string = coords['path_string'], 
+                        coords_values = coords['values'])
                 path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
+        #prj_svglib.join_paths(layer)
 
-        #frame_name = prj.SVG_GROUP_PREFIX + draw_context.FRAME_NAME
-        #frame = svg_draw.svg.find_id(frame_name) 
-        #    ## svg_draw.svg = svgutils.compose.SVG(filepath)
-        #    ## replacing self.original_svg  
-        #base_offset, base_size = prj_utils.get_rect_dimensions(frame)
-        #    ## move prj_svglib.get_rect_dimensions() to prj_utils
-        #base_ratio = draw_context.frame_size / base_size[0]
-        #px_to_mm_factor = 10 * base_ratio
-        #unit_to_px_factor = RESOLUTION_FACTOR * base_ratio
-        #px2mm = lambda x: self.px_to_mm_factor * x
-
-        ## scaled_svg = Svg_drawing(filepath=svg_path)
-        ## prepare entities, layers and add to scaled_svg
-
-        #svg = Svg_drawing(filepath=svg_path, context= draw_context, 
-        #        subject=subj.name)
-#        drawings.append(svg_to)
+    #drawings.append(svg_to)
