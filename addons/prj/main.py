@@ -39,7 +39,7 @@ format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
 
 ARGS: list[str] = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
 RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
-ROUNDING: int = 4
+ROUNDING: int = 3
 
 drawings: list[Svg_drawing] = []
 svg_files: str = []
@@ -86,6 +86,7 @@ for subject in draw_context.subjects:
     drawing = draw_subject(subject, draw_context)
     svg_files.append(drawing)
 
+#svg_files = ['/home/mf/Documents/TODO/svg_composition/graph/Cube.svg']
 for svg_file in svg_files:
     svg_root = ET.parse(svg_file).getroot()
     groups = [g for g in svg_root.iter(g_tag) if g.attrib['id'] in styles]
@@ -93,13 +94,61 @@ for svg_file in svg_files:
         for g in groups:
             layer_label = g.attrib['id']
             layer = svg.add_entity(Layer, label = layer_label) 
-            for pl in g.iter(pl_tag):
+            ## TODO put order here and fix handling of multiple cut 
+            points = {}
+            seq = []
+            coords_list = []
+            for i, pl in enumerate(g.iter(pl_tag)):
                 coords = format_points(pl.attrib['points'], 
                         scale_factor=factor, rounding=ROUNDING)
+                coords_list.append(coords)
+                if layer.label == 'cut':
+                    #print('pl #', i, coords['values'])
+                    #print('points', points)
+                    if coords['values'][0] not in points:
+                        points[(coords['values'][0])] = []
+                    elif not seq:
+                        seq.append(points[coords['values'][0]][0])
+                        seq.append(i)
+                    else:
+                        #print('else first', i, points[coords['values'][0]])
+                        if seq[-1] == points[coords['values'][0]][0]:
+                            seq.append(i)
+                    points[(coords['values'][0])].append(i)
+                    #print('seq first', seq)
+                    #print('points', points)
+                    if coords['values'][-1] not in points:
+                        points[(coords['values'][-1])] = []
+                    elif not seq:
+                        seq.append(points[coords['values'][-1]][0])
+                        seq.append(i)
+                    else:
+                        #print('else last', i, points[coords['values'][-1]])
+                        if seq[-1] == i:
+                            seq.append(points[coords['values'][-1]][0])
+                    points[(coords['values'][-1])].append(i)
+                    #print('seq last', seq)
+                    #print('points', points)
                 path = layer.add_entity(Path, 
                         coords_string = coords['path_string'], 
                         coords_values = coords['values'])
+                print(coords['path_string'])
                 path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
+            #print('points', points)
+            joined_path = 'M '
+            joined_path_values = []
+            for i in seq[:-1]:
+                #print(coords_list[i]['path_string'])
+                co = coords_list[i]['values'][1:]
+                joined_path += (' '.join([f'{c[0]},{c[1]}' for c in co])) + ' '
+                joined_path_values += co
+            print(joined_path_values)
+            print(joined_path)
+            if layer.label == 'cut':
+                path = layer.add_entity(Path, 
+                        coords_string = joined_path,
+                        coords_values = joined_path_values)
+            # # # # # # # # # # # # # #
         #prj_svglib.join_paths(layer)
 
     #drawings.append(svg_to)

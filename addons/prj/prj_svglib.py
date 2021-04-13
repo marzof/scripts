@@ -124,8 +124,11 @@ class Svg_drawing(Svg_container):
         self.obj.save(pretty=True)
 
 
-def join_polylines(pl_list: list[Polyline], drawing: svgwrite.drawing.Drawing, 
-        layer: Layer) -> list[Polyline]:
+def join_polylines(
+        pl_list: list[Polyline], 
+        drawing: svgwrite.drawing.Drawing, 
+        layer: Layer
+        ) -> list[Polyline]:
     joined_pl = []
     pl_points = [pl.points for pl in pl_list]
     points_polylines_dict = __split_and_collect(pl_points)
