@@ -30,8 +30,8 @@ SVG_ATTRIBUTES = {
             'style': 'fill: none'},
         'cut': {'stroke': '#000000', 'stroke-opacity': '1',
             'stroke-linecap': 'round', 'stroke-width': '.35', 
-            'style': 'fill: none'},
-            #'style': 'fill: #f00'},
+            #'style': 'fill: none'},
+            'style': 'fill: #f00'},
         }
 
 class Svg_entity:
@@ -122,73 +122,6 @@ class Svg_drawing(Svg_container):
 
     def __exit__(self, type, value, traceback) -> None:
         self.obj.save(pretty=True)
-
-
-def join_polylines(
-        pl_list: list[Polyline], 
-        drawing: svgwrite.drawing.Drawing, 
-        layer: Layer
-        ) -> list[Polyline]:
-    joined_pl = []
-    pl_points = [pl.points for pl in pl_list]
-    points_polylines_dict = __split_and_collect(pl_points)
-    cut_polylines_points = __reshape_polylines(points_polylines_dict)
-    for polyline in cut_polylines_points:
-        pl = Polyline(polyline, drawing, layer)
-        pl.set_attribute(attributes('pl')[layer.label])
-        joined_pl.append(pl)
-    return joined_pl
-
-def __reshape_polylines(pts_dict: dict[tuple[float],list[int]]) -> \
-        list[list[tuple[float]]]:
-    """ Reconnect segments from points in pts_dict """
-    cut_polylines = []
-    pl_ids = list(range(len(pts_dict)))
-    ordered_pts = []
-    pl_id = pl_ids[0] 
-    starts_with = [pt for pt, idx in pts_dict.items()][0]
-    while len(pts_dict) > 0:
-        ## If cut object is composed by multiple closed elements 
-        ## it needs to restart from another point (pl_id)
-        if pl_id not in pl_ids:
-            ## Save last ordered list of points and start a new one
-            cut_polylines.append(ordered_pts)
-            ordered_pts = []
-            pl_id = pl_ids[0] 
-            starts_with = [pt for pt, idx in pts_dict.items()][0]
-        for pt, idx in pts_dict.items():
-            if pl_id in idx:
-                ## Some pt could contain more than 2 value: 
-                ## need just the first two
-                ordered_pts.append((pt[0], pt[1]))
-                pl_ids.remove(pl_id)
-                pl_id = [v for v in pts_dict[pt][:2] if v != pl_id][0]
-                break
-        del(pts_dict[pt])
-    ## Close last perimeter connecting to starting point
-    ordered_pts.append(starts_with)
-    cut_polylines.append(ordered_pts)
-    return cut_polylines
-
-def __split_and_collect(pl_points: list[tuple[tuple]]) -> \
-        dict[tuple[float],list[int]]:
-    """ Break polylines into 2-points segments and populate a dict """
-    dic = {}
-    two_points_split_dict = {pl_id: [(pl_pts[i], pl_pts[i+1]) for i in 
-        range(len(pl_pts)-1)] for pl_id, pl_pts in enumerate(pl_points)}
-    point_polyline_tuples = [(pt, pl) for pl in two_points_split_dict 
-        for pt_couple in two_points_split_dict[pl] for pt in pt_couple]
-    for pl_idx, pt_pl in enumerate(point_polyline_tuples):
-        idx = pl_idx//2
-        pt, pl = pt_pl[0], pt_pl[1]
-        prj_utils.put_in_dict(dic, pt, idx)
-        if len(dic[pt]) > 2:
-            ## Add a third value to distinguish points with
-            ## three or more lines pointing to them
-            dic[pt].remove(idx)
-            pt += (pl,)
-            prj_utils.put_in_dict(dic, pt, idx)
-    return dic
 
 ## To archive
 def get_rect_dimensions(rect) -> tuple[tuple[float], list[float]]: 

@@ -27,6 +27,7 @@ import sys
 import numpy
 import prj
 import re
+import itertools
 from prj.prj_drawing_classes import Drawing_context, Draw_maker, Drawing_subject
 from prj.prj_svglib import Svg_drawing, Layer, Path, Polyline, SVG_ATTRIBUTES
 from prj import prj_utils
@@ -44,7 +45,7 @@ ROUNDING: int = 3
 drawings: list[Svg_drawing] = []
 svg_files: str = []
 
-def draw_subject(subject: 'bpy.types.Object', context: Drawing_context): 
+def draw_subject(subject: 'bpy.types.Object', context: Drawing_context) -> str: 
     """ Draw subject in svg and return its filepath """
     print('Subject:', subject.name)
     draw_subj = Drawing_subject(subject, context)
@@ -52,25 +53,68 @@ def draw_subject(subject: 'bpy.types.Object', context: Drawing_context):
         print(subject.name, 'is visible')
         return draw_maker.draw(draw_subj, context.style)
 
-def format_points(pl_points: str, scale_factor: float = 1, 
-        offset: float = 0, rounding = 16) -> dict:
+def transform_points(pl_points: str, scale_factor: float = 1, 
+        offset: float = 0, rounding = 16) -> list[tuple[float]]:
     """ Get pl_points from svg and return the edited coords 
-    (scaled, moved and rounded) as both string and list of tuple of float """
-    coords = {'path_string': 'M ', 'polyline_string': '', 'values': []}
+        (scaled, moved and rounded) as list of tuple of float """
+    coords = []
     coords_iter = re.finditer(r'([\d\.]+),([\d\.]+)', pl_points)
-    for i, coord in enumerate(coords_iter, 1):
+    for coord in coords_iter:
         x = round(float(coord.group(1)) * scale_factor, rounding)
         y = round(float(coord.group(2)) * scale_factor, rounding)
-        string = f'{str(x)},{str(y)} '
-        coords['path_string'] += string
-        coords['polyline_string'] += string
-        coords['values'].append((x, y))
+        coords.append((x, y))
     return coords
 
+def get_path_coords(coords: list[tuple[float]]) -> str:
+    """ Return the coords as string for paths """
+    string_coords = 'M '
+    for co in coords:
+        string_coords += f'{str(co[0])},{str(co[1])} '
+    return string_coords
+
+def get_polyline_coords(coords: list[tuple[float]]) -> str:
+    """ Return the coords as string for polyline """
+    string_coords = ''
+    for co in coords:
+        string_coords += f'{str(co[0])},{str(co[1])} '
+    return string_coords
+
+def join_coords(coords: list[tuple[float]]) -> list[list[tuple[float]]]:
+    """ Join coords list (as from polyline) and put new coords lists in seqs """
+    seqs = []
+    for coord in coords:
+        seqs = add_tail(seqs, coord)
+    return seqs
+
+def add_tail(sequences: list[list], tail: list) -> list[list[tuple[float]]]:
+    """ Add tail to sequences and join it to every sequence 
+        whith corresponding ends """
+    to_del = []
+    new_seq = tail
+    last_joined = None
+    seqs = [seq for seq in sequences for t in [0, -1]]
+    for i, seq in enumerate(seqs):
+        t = -(i%2) ## -> alternate 0 and -1
+        ends = [seq[0], seq[-1]]
+        if new_seq[t] not in ends or last_joined == seq:
+            continue
+        index = -ends.index(new_seq[t]) ## -> 0 | 1
+        step = (-2 * index) - 1 ## -> -1 | 1
+        val = 1 if t == 0 else -1 ## -> 1 | -1 | 1 | -1
+        ## Cut first or last and reverse f necessary
+        seq_to_check = new_seq[1+t:len(new_seq)+t][::step*val]
+        ## Compose accordingly
+        new_seq = [ii for i in [seq,seq_to_check][::step] for ii in i]
+        last_joined = seq
+        if seq not in to_del:
+            to_del.append(seq)
+    for s in to_del:
+        sequences.remove(s)
+    sequences.append(new_seq)
+    return sequences
 
 draw_context = Drawing_context(args = ARGS)
 
-## TODO Clean up 
 svg_size = format_svg_size(draw_context.frame_size * 10, 
         draw_context.frame_size * 10)
 factor = draw_context.frame_size/draw_context.RENDER_RESOLUTION_X * \
@@ -78,7 +122,6 @@ factor = draw_context.frame_size/draw_context.RENDER_RESOLUTION_X * \
 pl_tag = '{http://www.w3.org/2000/svg}polyline'
 g_tag = '{http://www.w3.org/2000/svg}g'
 styles = [prj.STYLES[d_style]['name'] for d_style in draw_context.style]
-# # # # # 
 
 draw_maker = Draw_maker(draw_context)
 
@@ -86,7 +129,6 @@ for subject in draw_context.subjects:
     drawing = draw_subject(subject, draw_context)
     svg_files.append(drawing)
 
-#svg_files = ['/home/mf/Documents/TODO/svg_composition/graph/Cube.svg']
 for svg_file in svg_files:
     svg_root = ET.parse(svg_file).getroot()
     groups = [g for g in svg_root.iter(g_tag) if g.attrib['id'] in styles]
@@ -94,61 +136,17 @@ for svg_file in svg_files:
         for g in groups:
             layer_label = g.attrib['id']
             layer = svg.add_entity(Layer, label = layer_label) 
-            ## TODO put order here and fix handling of multiple cut 
-            points = {}
-            seq = []
-            coords_list = []
-            for i, pl in enumerate(g.iter(pl_tag)):
-                coords = format_points(pl.attrib['points'], 
-                        scale_factor=factor, rounding=ROUNDING)
-                coords_list.append(coords)
-                if layer.label == 'cut':
-                    #print('pl #', i, coords['values'])
-                    #print('points', points)
-                    if coords['values'][0] not in points:
-                        points[(coords['values'][0])] = []
-                    elif not seq:
-                        seq.append(points[coords['values'][0]][0])
-                        seq.append(i)
-                    else:
-                        #print('else first', i, points[coords['values'][0]])
-                        if seq[-1] == points[coords['values'][0]][0]:
-                            seq.append(i)
-                    points[(coords['values'][0])].append(i)
-                    #print('seq first', seq)
-                    #print('points', points)
-                    if coords['values'][-1] not in points:
-                        points[(coords['values'][-1])] = []
-                    elif not seq:
-                        seq.append(points[coords['values'][-1]][0])
-                        seq.append(i)
-                    else:
-                        #print('else last', i, points[coords['values'][-1]])
-                        if seq[-1] == i:
-                            seq.append(points[coords['values'][-1]][0])
-                    points[(coords['values'][-1])].append(i)
-                    #print('seq last', seq)
-                    #print('points', points)
-                path = layer.add_entity(Path, 
-                        coords_string = coords['path_string'], 
-                        coords_values = coords['values'])
-                print(coords['path_string'])
-                path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
-            #print('points', points)
-            joined_path = 'M '
-            joined_path_values = []
-            for i in seq[:-1]:
-                #print(coords_list[i]['path_string'])
-                co = coords_list[i]['values'][1:]
-                joined_path += (' '.join([f'{c[0]},{c[1]}' for c in co])) + ' '
-                joined_path_values += co
-            print(joined_path_values)
-            print(joined_path)
-            if layer.label == 'cut':
-                path = layer.add_entity(Path, 
-                        coords_string = joined_path,
-                        coords_values = joined_path_values)
-            # # # # # # # # # # # # # #
-        #prj_svglib.join_paths(layer)
 
-    #drawings.append(svg_to)
+            coords = [transform_points(pl.attrib['points'], scale_factor=factor, 
+                rounding=ROUNDING) for pl in g.iter(pl_tag)]
+
+            if layer.label == 'cut':
+                coords = join_coords(coords)
+
+            for coord in coords:
+                path = layer.add_entity(Path, 
+                        coords_string = get_path_coords(coord), 
+                        coords_values = coord)
+                path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
+
+        drawings.append(svg)
