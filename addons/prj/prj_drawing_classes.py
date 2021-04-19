@@ -25,11 +25,12 @@
 
 import bpy
 import os
-import mathutils
-from mathutils import Vector
+from mathutils import Vector, geometry
 import prj
 from prj import prj_utils
 
+format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
+RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
 class Drawing_context:
     args: list[str]
@@ -40,7 +41,7 @@ class Drawing_context:
     camera_frame: dict[str,Vector]
 
 
-    DEFAULT_STYLE: str = 'cp'
+    DEFAULT_STYLE: str = 'pc'
     RENDER_PATH: str = bpy.path.abspath(bpy.context.scene.render.filepath)
     RENDER_RESOLUTION_X: int = bpy.context.scene.render.resolution_x
     RENDER_RESOLUTION_Y: int = bpy.context.scene.render.resolution_y
@@ -51,15 +52,25 @@ class Drawing_context:
         self.subjects, self.camera = self.__get_objects()
 
         self.frame_size = self.camera.data.ortho_scale
+        self.camera_frame = {
+                'location': self.__get_camera_frame()['cam_frame_loc'], 
+                'direction': self.__get_camera_frame()['cam_frame_norm']}
 
+        self.svg_size = format_svg_size(self.frame_size * 10, 
+                self.frame_size * 10)
+        self.svg_factor = self.frame_size/self.RENDER_RESOLUTION_X * \
+                RESOLUTION_FACTOR
+        self.svg_styles = [prj.STYLES[d_style]['name'] for d_style in 
+                self.style]
+
+    def __get_camera_frame(self) -> dict[str, Vector]:
         cam_frame_local = [v * Vector((1,1,self.camera.data.clip_start)) 
                 for v in self.camera.data.view_frame()]
         cam_frame = [self.camera.matrix_world @ v 
                 for v in cam_frame_local]
-        cam_frame_norm = mathutils.geometry.normal(cam_frame[:3])
         cam_frame_loc = (cam_frame[0] + cam_frame[2]) / 2
-        self.camera_frame = {'location': cam_frame_loc, 
-                'direction': cam_frame_norm}
+        cam_frame_norm = geometry.normal(cam_frame[:3])
+        return {'cam_frame_loc': cam_frame_loc, 'cam_frame_norm': cam_frame_norm}
 
 
     def __get_style(self) -> str:
@@ -67,6 +78,8 @@ class Drawing_context:
             if a.startswith('-')])
         if len(style) == 0:
             return self.DEFAULT_STYLE
+        ## Cut has to be the last style
+        style = [l for l in style if l != 'c'] + ['c']
         return style
 
     def __get_objects(self) -> tuple[list[bpy.types.Object], bpy.types.Object]:
@@ -94,52 +107,32 @@ class Draw_maker:
 
     def get_drawing_context(self) -> Drawing_context:
         return self.drawing_context
+    
 
     def draw(self, subject: 'Drawing_subject', draw_style: str, 
             remove: bool = True) -> str:
+        """ Create a grease pencil for subject and add a lineart modifier for
+            every draw_style. 
+            Then export the grease pencil and return its filepath """
+        ## TODO back style
 
-        cut_flag = 'c'
-        la_gps = []
-        ## Cut has to be the last style
-        draw_style = prj_utils.move_to_last(cut_flag, list(draw_style))
-        cuts_collection = bpy.data.collections.new(subject.name + '_cuts') \
-                if cut_flag in draw_style else None
+        lineart_gps = []
         for d_style in draw_style:
-            draw_subject = subject
+            draw_subject = subject.get_subject(d_style)
+            if not draw_subject:
+                continue
+            lineart_gps.append(prj_utils.create_lineart(source=subject, 
+                style=d_style, la_source=draw_subject))
+            ## Hide grease pencil line art to keep next calculations fast
+            lineart_gps[-1].hide_viewport = True
+        for lineart_gp in lineart_gps:
+            lineart_gp.hide_viewport = False
 
-            if d_style == cut_flag and subject.cut_objects:
-
-                for ob in subject.cut_objects:
-                    prj_utils.apply_mod(ob)
-                    cut = prj_utils.cut_object(obj = ob, 
-                            cut_plane = self.drawing_context.camera_frame)
-                    cut.location = cut.location + \
-                            self.drawing_context.camera_frame['direction']
-                    to_draw = cut
-                    if subject.type == 'COLLECTION':
-                        cuts_collection.objects.link(cut)
-                        to_draw = cuts_collection
-
-                scene = bpy.context.scene
-                scene.collection.children.link(cuts_collection)
-                draw_subject = Drawing_subject(to_draw, self.drawing_context)
-
-            elif d_style == 'b':
-                ## TODO
-                pass
-            
-            la_gps.append(prj_utils.create_lineart(source=subject, style=d_style, 
-                    la_source=draw_subject))
-            ## Hide grease pencil line art to keep netxt calculations fast
-            la_gps[-1].hide_viewport = True
-
-        for la_gp in la_gps:
-            la_gp.hide_viewport = False
-        prj_utils.make_active(la_gp)
+        prj_utils.make_active(lineart_gps[0])
         bpy.ops.wm.gpencil_export_svg(filepath=subject.get_svg_path(), 
                 selected_object_type='VISIBLE')
         if remove:
-            bpy.data.objects.remove(la_gp, do_unlink=True)
+            bpy.data.objects.remove(lineart_gps[0], do_unlink=True)
         return subject.svg_path
 
 class Drawing_subject:
@@ -177,16 +170,9 @@ class Drawing_subject:
                 linked = self.type == 'COLLECTION')
         self.visible = self.visibility['framed']
         self.grease_pencil = None
-        for ob in self.objects:
-            if ob in self.objects_visibility['frontal'] \
-                    and ob in self.objects_visibility['behind']:
-                self.cut_objects.append(ob) 
-
-    #def set_draw_maker(self, draw_maker: Draw_maker) -> None:
-    #    self.draw_maker = draw_maker
-
-    #def get_draw_maker(self) -> Draw_maker:
-    #    return self.draw_maker
+        self.cut_objects = [ob for ob in self.objects 
+                if ob in self.objects_visibility['frontal'] 
+                and ob in self.objects_visibility['behind']]
 
     def set_drawing_context(self, draw_context: Drawing_context) -> None:
         self.drawing_context = draw_context
@@ -222,3 +208,25 @@ class Drawing_subject:
                 if not visibility[k] and framed[k]:
                     visibility[k] = framed[k]
         return visibility, objects_visibility
+
+    def get_subject(self, style: str) -> 'Drawing_subject':
+        if style != 'c':
+            return self
+        if not self.cut_objects:
+            return None
+
+        cuts_collection = bpy.data.collections.new(self.name + '_cuts')
+        for ob in self.cut_objects:
+            prj_utils.apply_mod(ob)
+            cut = prj_utils.cut_object(obj = ob, 
+                    cut_plane = self.drawing_context.camera_frame)
+            cut.location = cut.location + \
+                    self.drawing_context.camera_frame['direction']
+            to_draw = cut
+            if self.type == 'COLLECTION':
+                cuts_collection.objects.link(cut)
+                to_draw = cuts_collection
+
+        scene = bpy.context.scene
+        scene.collection.children.link(cuts_collection)
+        return Drawing_subject(to_draw, self.drawing_context)

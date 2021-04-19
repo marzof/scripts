@@ -2,20 +2,11 @@
 # -*- coding: utf-8 -*- 
 
 import bpy, bmesh
-from mathutils import Matrix
-from mathutils import Vector
-from mathutils import geometry
+from mathutils import Matrix, Vector, geometry
 from bpy_extras.object_utils import world_to_camera_view
 import prj
 
 point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, cam, v)
-
-def put_in_dict(dic: dict, key: list, value) -> None:
-    """ Check if key is in dic and append value to the list dic[key] """
-    if key not in dic:
-        dic[key] = [value]
-    else:
-        dic[key].append(value)
 
 def move_to_last(item, l: list) -> list:
     ''' Move item to the last element of l and return the edited list '''
@@ -99,13 +90,13 @@ def create_lineart(source: 'Drawing_subject', style: str,
     if not la_source:
         la_source = source
     if not source.grease_pencil:
-        source.grease_pencil = create_grease_pencil(
+        source.grease_pencil = __create_grease_pencil(
                 prj.GREASE_PENCIL_PREFIX + source.obj.name)
-    add_line_art_mod(source.grease_pencil,
+    __add_line_art_mod(source.grease_pencil,
             la_source.lineart_source, la_source.lineart_source_type, style)
     return source.grease_pencil
 
-def create_grease_pencil(name: str) -> bpy.types.Object:
+def __create_grease_pencil(name: str) -> bpy.types.Object:
     """ Create a grease pencil """
     gp = bpy.data.grease_pencils.new(name)
 
@@ -120,7 +111,7 @@ def create_grease_pencil(name: str) -> bpy.types.Object:
     bpy.context.collection.objects.link(obj)
     return obj
 
-def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object, 
+def __add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object, 
         source_type: str, style: str) -> None:
     """ Add a line art modifier to gp from source of the source_type 
     with style """
@@ -151,23 +142,6 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
         gp_mod.source_object = source
     elif source_type == 'COLLECTION':
         gp_mod.source_collection = source
-
-def mesh_by_verts(obj_name: str, verts: list[Vector]) -> bpy.types.Object:
-    """ Create a mesh object from verts """
-    mesh = bpy.data.meshes.new(obj_name)
-    obj = bpy.data.objects.new(obj_name, mesh)
-    bpy.context.collection.objects.link(obj)
-
-    bm = bmesh.new()
-    bm.from_object(obj, bpy.context.view_layer.depsgraph)
-    for v in verts:
-        bm.verts.new(v)
-
-    bmesh.ops.contextual_create(bm, geom=bm.verts)
-    bm.to_mesh(mesh)
-    bm.free()
-
-    return obj
 
 def make_active(obj: bpy.types.Object) -> None:
     """ Deselect all and make obj active """
@@ -247,6 +221,7 @@ def in_frame(cam: bpy.types.Object,
     behind = False
     return {'framed': framed, 'frontal': frontal, 'behind': behind}
 
+# # # # ARCHIVE # # # #
 def localize_obj(container: bpy.types.Object, 
         inner_obj: bpy.types.Object) -> bpy.types.Object:
     """ Make inner_obj located as if it was local based on container matrix """
@@ -255,4 +230,28 @@ def localize_obj(container: bpy.types.Object,
     cnt_translated = cnt_matrix @ Matrix.Translation(-cnt_instance_offset)
     inner_obj.matrix_world = cnt_translated @ inner_obj.matrix_world
     return inner_obj
+
+def put_in_dict(dic: dict, key: list, value) -> None:
+    """ Check if key is in dic and append value to the list dic[key] """
+    if key not in dic:
+        dic[key] = [value]
+    else:
+        dic[key].append(value)
+
+def mesh_by_verts(obj_name: str, verts: list[Vector]) -> bpy.types.Object:
+    """ Create a mesh object from verts """
+    mesh = bpy.data.meshes.new(obj_name)
+    obj = bpy.data.objects.new(obj_name, mesh)
+    bpy.context.collection.objects.link(obj)
+
+    bm = bmesh.new()
+    bm.from_object(obj, bpy.context.view_layer.depsgraph)
+    for v in verts:
+        bm.verts.new(v)
+
+    bmesh.ops.contextual_create(bm, geom=bm.verts)
+    bm.to_mesh(mesh)
+    bm.free()
+
+    return obj
 
