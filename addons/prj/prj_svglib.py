@@ -31,6 +31,9 @@ class Svg_entity:
     def __init__(self, entity_type, obj):
         self.type: str = entity_type
         self.obj = obj
+        
+    def set_id(self, entity_id: id):
+        self.obj.__setitem__('id', entity_id)
 
 class Svg_container(Svg_entity):
     entities: dict[str,list[svgwrite.base.BaseElement]]
@@ -44,7 +47,6 @@ class Svg_container(Svg_entity):
         return self.drawing_container(container.container)
 
     def add_entity(self, class_type, **data) -> Svg_entity:
-        print(class_type, self)
         entity = class_type(**data, container = self)
         if entity.type not in entity.container.entities:
             entity.container.entities[entity.type] = []

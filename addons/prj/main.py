@@ -33,6 +33,7 @@ print('\n\n\n###################################\n\n\n')
 
 ARGS: list[str] = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
 ROUNDING: int = 3
+SVG_ID = 'svg'
 svg_suffix = '.edit.svg'
 svg_suffix = ''
 
@@ -42,7 +43,8 @@ def draw_subject(subject: 'bpy.types.Object', context: Drawing_context) -> str:
     draw_subj = Drawing_subject(subject, context)
     if draw_subj.visible:
         print(subject.name, 'is visible')
-        return draw_maker.draw(draw_subj, context.style)
+        drawing = draw_maker.draw(draw_subj, context.style)
+        return drawing
 
 def redraw_svg(svg_file:str, svg_size: tuple[str], factor: float,
         styles: list[str]) -> Svg_drawing:
@@ -50,10 +52,11 @@ def redraw_svg(svg_file:str, svg_size: tuple[str], factor: float,
         edited to fit scaled size and joined if cut """
     groups = prj_svglib.get_svg_groups(svg_file, styles)
     with Svg_drawing(svg_file + svg_suffix, svg_size) as svg:
-        svg.obj.__setitem__('id', 'all')
+        svg.set_id(SVG_ID)
         for g in groups:
             layer_label = g.attrib['id']
             layer = svg.add_entity(Layer, label = layer_label) 
+            layer.set_id(layer_label)
 
             pl_coords = [prj_svglib.transform_points(pl.attrib['points'], 
                 scale_factor=factor, rounding=ROUNDING) for pl in g.iter(PL_TAG)]
@@ -84,5 +87,8 @@ for svg_file in svg_files:
     drawings.append(svg)
 
 with Svg_drawing('composition.svg', draw_context.svg_size) as composition:
-    for svg_file in svg_files:
-        composition.add_entity(Use, link = svg_file + svg_suffix + '#all')
+    for style in draw_context.svg_styles:
+        layer = composition.add_entity(Layer, label = style)
+        for svg_file in svg_files:
+            layer.add_entity(Use, link = f'{svg_file}{svg_suffix}#{style}')
+

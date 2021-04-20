@@ -108,32 +108,45 @@ class Draw_maker:
     def get_drawing_context(self) -> Drawing_context:
         return self.drawing_context
     
+    def export_grease_pencil(self, grease_pencil: bpy.types.Object, 
+            remove: bool) -> str:
+        """ Export grease_pencil to svg and return its path """
+        prj_utils.make_active(grease_pencil)
+        bpy.ops.wm.gpencil_export_svg(filepath=self.subject.get_svg_path(), 
+                selected_object_type='VISIBLE')
+        if remove:
+            bpy.data.objects.remove(grease_pencil, do_unlink=True)
+        return self.subject.svg_path
+
+    def __create_lineart_grease_pencil(self, drawing_style: str) \
+            -> bpy.types.Object:
+        """ Create a grease pencil with lineart modifier according to 
+            drawing_style """
+        get_subject = getattr(globals()['Drawing_subject'], 
+                prj.STYLES[drawing_style]['subject'])
+        draw_subject = get_subject(self.subject)
+        if not draw_subject:
+            return None
+        lineart_gp = prj_utils.create_lineart(source=self.subject, 
+            style=drawing_style, la_source=draw_subject)
+        ## Hide grease pencil line art to keep next calculations fast
+        lineart_gp.hide_viewport = True
+        return lineart_gp
 
     def draw(self, subject: 'Drawing_subject', draw_style: str, 
             remove: bool = True) -> str:
         """ Create a grease pencil for subject and add a lineart modifier for
             every draw_style. 
             Then export the grease pencil and return its filepath """
-        ## TODO back style
+        self.subject = subject
+        for drawing_style in draw_style:
+            la_gp = self.__create_lineart_grease_pencil(drawing_style)
+            if la_gp: lineart_gp = la_gp
 
-        lineart_gps = []
-        for d_style in draw_style:
-            draw_subject = subject.get_subject(d_style)
-            if not draw_subject:
-                continue
-            lineart_gps.append(prj_utils.create_lineart(source=subject, 
-                style=d_style, la_source=draw_subject))
-            ## Hide grease pencil line art to keep next calculations fast
-            lineart_gps[-1].hide_viewport = True
-        for lineart_gp in lineart_gps:
-            lineart_gp.hide_viewport = False
+        lineart_gp.hide_viewport = False
+        svg_path = self.export_grease_pencil(lineart_gp, remove)
+        return svg_path
 
-        prj_utils.make_active(lineart_gps[0])
-        bpy.ops.wm.gpencil_export_svg(filepath=subject.get_svg_path(), 
-                selected_object_type='VISIBLE')
-        if remove:
-            bpy.data.objects.remove(lineart_gps[0], do_unlink=True)
-        return subject.svg_path
 
 class Drawing_subject:
     obj: bpy.types.Object
@@ -181,6 +194,7 @@ class Drawing_subject:
         return self.drawing_context
 
     def get_svg_path(self, prefix = None, suffix = None) -> str:
+        """ Return the svg filepath with prefix or suffix """
         path = self.drawing_context.RENDER_PATH
         sep = "" if path.endswith(os.sep) else os.sep
         pfx = f"{prefix}_" if prefix else ""
@@ -209,12 +223,9 @@ class Drawing_subject:
                     visibility[k] = framed[k]
         return visibility, objects_visibility
 
-    def get_subject(self, style: str) -> 'Drawing_subject':
-        if style != 'c':
-            return self
+    def get_cut_subject(self) -> 'Drawing_subject':
         if not self.cut_objects:
             return None
-
         cuts_collection = bpy.data.collections.new(self.name + '_cuts')
         for ob in self.cut_objects:
             prj_utils.apply_mod(ob)
@@ -227,6 +238,12 @@ class Drawing_subject:
                 cuts_collection.objects.link(cut)
                 to_draw = cuts_collection
 
-        scene = bpy.context.scene
-        scene.collection.children.link(cuts_collection)
+        bpy.context.scene.collection.children.link(cuts_collection)
         return Drawing_subject(to_draw, self.drawing_context)
+
+    def get_projected_subject(self) -> 'Drawing_subject':
+            return self
+
+    def get_back_subject(self) -> 'Drawing_subject':
+        ## TODO
+        pass
