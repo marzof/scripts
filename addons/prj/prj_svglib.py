@@ -11,17 +11,17 @@ import xml.etree.ElementTree as ET
 POLYLINE_TAG: str = 'polyline'
 PL_TAG = '{http://www.w3.org/2000/svg}polyline'
 G_TAG = '{http://www.w3.org/2000/svg}g'
-SVG_ATTRIBUTES = {
-        'prj': {'stroke': '#000000', 'stroke-opacity': '1',
-            'stroke-linecap': 'round', 'stroke-width': '.1', 
-            'style': 'fill: none'},
-        'cut': {'stroke': '#000000', 'stroke-opacity': '1',
-            'stroke-linecap': 'round', 'stroke-width': '.35', 
-            'style': 'fill: #f00'},
-        'hid': {'stroke': '#808080', 'stroke-opacity': '1',
-            'stroke-linecap': 'round', 'stroke-width': '.1', 
-            'stroke-dasharray': (0.8, 0.4), 'style': 'fill: none'},
-        }
+SVG_ATTRIBUTES = {'prj': {}, 'cut': {}, 'hid': {},}
+        ## Set by style
+        #'prj': {'stroke': '#000000', 'stroke-opacity': '1',
+        #    'stroke-linecap': 'round', 'stroke-width': '.1', 
+        #    'style': 'fill: none'},
+        #'cut': {'stroke': '#000000', 'stroke-opacity': '1',
+        #    'stroke-linecap': 'round', 'stroke-width': '.35', 
+        #    'style': 'fill: #f00'},
+        #'hid': {'stroke': '#808080', 'stroke-opacity': '1',
+        #    'stroke-linecap': 'round', 'stroke-width': '.1', 
+        #    'stroke-dasharray': (0.8, 0.4), 'style': 'fill: none'}, }
 
 # # # # CLASSES # # # #
 
@@ -31,9 +31,18 @@ class Svg_entity:
     def __init__(self, entity_type, obj):
         self.type: str = entity_type
         self.obj = obj
+        self.classes = ''
         
-    def set_id(self, entity_id: id):
+    def set_id(self, entity_id: str):
         self.obj.__setitem__('id', entity_id)
+        self.id = entity_id
+        return self.id
+
+    def add_class(self, entity_class: str):
+        update_class = f'{self.classes} {entity_class}'.strip()
+        self.obj.__setitem__('class', update_class)
+        self.classes = update_class
+        return self.classes
 
 class Svg_container(Svg_entity):
     entities: dict[str,list[svgwrite.base.BaseElement]]
@@ -59,7 +68,10 @@ class Svg_graphics(Svg_entity):
     def set_attribute(self, dic: dict[str, str]) -> None:
         self.obj.update(dic)
 
-class Use(Svg_entity):
+class Use(Svg_container):
+    drawing: 'Svg_drawing'
+    obj: svgwrite.container.Use
+
     def __init__(self, link: str, container: Svg_container):
         self.container = container
         self.drawing = container.drawing
@@ -68,6 +80,32 @@ class Use(Svg_entity):
                 entity_type = 'use',
                 obj = container.drawing.obj.use(href = link)
                 )
+
+    def add_entity(self, link: str) -> 'Use':
+        self.link = link
+        return self
+
+class Style(Svg_container):
+    drawing: 'Svg_drawing'
+    obj: svgwrite.container.Style
+
+    def __init__(self, content: str, container: Svg_container):
+        Svg_container.__init__(self)
+        self.content = content if content else ''
+        self.container = container
+        self.drawing = self.drawing_container(self.container)
+        Svg_entity.__init__(self, 
+                entity_type = 'style',
+                obj = container.drawing.obj.style(content)
+                )
+
+        def add_entity(self, content: str) -> 'Style':
+            self.content += content
+            return self
+
+        def replace_content(self, content: str) -> 'Style':
+            self.content = content
+            return self
 
 class Layer(Svg_container):
     drawing: 'Svg_drawing'
@@ -148,9 +186,12 @@ def transform_points(pl_points: str, scale_factor: float = 1,
 
 def get_path_coords(coords: list[tuple[float]]) -> str:
     """ Return the coords as string for paths """
+    closed = coords[0] == coords[-1]
     string_coords = 'M '
-    for co in coords:
+    for co in coords[:-1]:
         string_coords += f'{str(co[0])},{str(co[1])} '
+    closing = 'Z ' if closed else f'{str(coords[-1][0])},{str(coords[-1][1])} '
+    string_coords += closing
     return string_coords
 
 def get_polyline_coords(coords: list[tuple[float]]) -> str:

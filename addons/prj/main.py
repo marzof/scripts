@@ -26,7 +26,7 @@ import sys
 import prj
 from prj import prj_svglib
 from prj.prj_drawing_classes import Drawing_context, Draw_maker, Drawing_subject
-from prj.prj_svglib import Svg_drawing, Layer, Path, Use, SVG_ATTRIBUTES, PL_TAG
+from prj.prj_svglib import Svg_drawing, Layer, Path, Use, Style, SVG_ATTRIBUTES, PL_TAG
 
 print('\n\n\n###################################\n\n\n')
 
@@ -34,29 +34,23 @@ print('\n\n\n###################################\n\n\n')
 ARGS: list[str] = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
 ROUNDING: int = 3
 SVG_ID = 'svg'
+BASE_CSS = 'base.css'
 svg_suffix = '.edit.svg'
 svg_suffix = ''
 
-def draw_subject(subject: 'bpy.types.Object', context: Drawing_context) -> str: 
-    """ Draw subject in svg and return its filepath """
-    print('Subject:', subject.name)
-    draw_subj = Drawing_subject(subject, context)
-    if draw_subj.visible:
-        print(subject.name, 'is visible')
-        drawing = draw_maker.draw(draw_subj, context.style)
-        return drawing
-
-def redraw_svg(svg_file:str, svg_size: tuple[str], factor: float,
+def redraw_svg(subject: Drawing_subject, svg_size: tuple[str], factor: float,
         styles: list[str]) -> Svg_drawing:
     """ Create a new svg with layers (from groups) and path (from polylines)
         edited to fit scaled size and joined if cut """
-    groups = prj_svglib.get_svg_groups(svg_file, styles)
-    with Svg_drawing(svg_file + svg_suffix, svg_size) as svg:
+    groups = prj_svglib.get_svg_groups(subject.svg_path, styles)
+    css = f"@import url(../{BASE_CSS});"
+    with Svg_drawing(subject.svg_path + svg_suffix, svg_size) as svg:
         svg.set_id(SVG_ID)
+        style = svg.add_entity(Style, content = css) 
         for g in groups:
             layer_label = g.attrib['id']
             layer = svg.add_entity(Layer, label = layer_label) 
-            layer.set_id(layer_label)
+            layer.set_id(f'{subject.name}_{layer_label}')
 
             pl_coords = [prj_svglib.transform_points(pl.attrib['points'], 
                 scale_factor=factor, rounding=ROUNDING) for pl in g.iter(PL_TAG)]
@@ -68,27 +62,36 @@ def redraw_svg(svg_file:str, svg_size: tuple[str], factor: float,
                 path = layer.add_entity(Path, 
                         coords_string = prj_svglib.get_path_coords(coord), 
                         coords_values = coord)
+                path.add_class(layer_label)
                 path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
     return svg
 
 drawings: list[Svg_drawing] = []
-svg_files: str = []
+subjects: list[Drawing_subject] = []
 
 draw_context = Drawing_context(args = ARGS)
 draw_maker = Draw_maker(draw_context)
 
 for subject in draw_context.subjects:
-    drawing = draw_subject(subject, draw_context)
-    svg_files.append(drawing)
+    draw_subj = Drawing_subject(subject, draw_context)
+    if draw_subj.visible:
+        print(f'Drawing {draw_subj.name}')
+        drawing = draw_maker.draw(draw_subj, draw_context.style)
+        subjects.append(draw_subj)
 
-for svg_file in svg_files:
-    svg = redraw_svg(svg_file, draw_context.svg_size, 
+for subject in subjects:
+    svg = redraw_svg(subject, draw_context.svg_size, 
             draw_context.svg_factor, draw_context.svg_styles)
     drawings.append(svg)
 
 with Svg_drawing('composition.svg', draw_context.svg_size) as composition:
+    css = f"@import url({BASE_CSS});@import url(style.css);"
+    style = composition.add_entity(Style, content = css) 
     for style in draw_context.svg_styles:
         layer = composition.add_entity(Layer, label = style)
-        for svg_file in svg_files:
-            layer.add_entity(Use, link = f'{svg_file}{svg_suffix}#{style}')
+        layer.set_id(style)
+        for subject in subjects:
+            use = layer.add_entity(Use, 
+                    link = f'{subject.svg_path}{svg_suffix}#{subject.name}_{style}')
+            use.set_id(subject.name)
 
