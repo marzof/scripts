@@ -43,6 +43,10 @@ from mathutils import geometry
 from mathutils import Matrix
 from bpy_extras.object_utils import world_to_camera_view
 
+import time
+
+start_time = time.time()
+
 check_list = lambda x, alt: x if x else alt
 undotted = lambda x: x.replace('.', '_')
 norm_path = lambda x: os.path.realpath(x).replace(
@@ -703,3 +707,4 @@ def main():
 
 
 main()
+print("--- %s seconds ---" % (time.time() - start_time))
