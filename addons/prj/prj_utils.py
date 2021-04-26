@@ -208,8 +208,9 @@ def in_frame(cam: bpy.types.Object,
 
         ## If an edge intersects camera frame then obj is in
         for e in BOUNDING_BOX_EDGES:
-            box_edge = [Vector(point_from_camera(box[e[0]])[:2], cam),
-                Vector(point_from_camera(box[e[1]])[:2], cam)]
+            print(box[e[0]][:2])
+            box_edge = [Vector(point_from_camera(box[e[0]][:2], cam)),
+                Vector(point_from_camera(box[e[1]][:2], cam))]
             for i in range(4):
                 if __lines_intersect(box_edge[0], box_edge[1], 
                         FRAME_EDGES[i], FRAME_EDGES[(i+1)%4]):

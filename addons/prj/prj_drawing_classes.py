@@ -29,6 +29,9 @@ from mathutils import Vector, geometry
 import prj
 from prj import prj_utils
 
+import time
+start_time = time.time()
+
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
 RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
@@ -83,8 +86,9 @@ class Drawing_context:
         return style
 
     def __get_objects(self) -> tuple[list[bpy.types.Object], bpy.types.Object]:
-        all_objs = ''.join([a.strip() for a in self.args 
-            if not a.startswith('-')]).split(';')
+        arg_objs = [a.strip() for a in self.args if not a.startswith('-')]
+        all_objs = ''.join(arg_objs).split(';') if arg_objs \
+                else [obj.name for obj in bpy.context.selected_objects]
         objs = []
         for ob in all_objs:
             if bpy.data.objects[ob].type == 'CAMERA':
@@ -112,7 +116,9 @@ class Draw_maker:
             remove: bool) -> str:
         """ Export grease_pencil to svg and return its path """
         prj_utils.make_active(grease_pencil)
-        bpy.ops.wm.gpencil_export_svg(filepath=self.subject.get_svg_path(), 
+
+        svg_path = self.subject.get_svg_path()
+        bpy.ops.wm.gpencil_export_svg(filepath=svg_path, 
                 selected_object_type='VISIBLE')
         if remove:
             bpy.data.objects.remove(grease_pencil, do_unlink=True)
@@ -166,6 +172,7 @@ class Drawing_subject:
             self.obj = prj_utils.make_local_collection(self.obj)
         self.name = obj.name
         self.drawing_context = draw_context
+        self.collections = [coll.name for coll in obj.users_collection]
 
         if type(self.obj) == bpy.types.Collection:
             self.type = 'COLLECTION'

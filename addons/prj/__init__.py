@@ -7,6 +7,7 @@ bl_info = {
 import bpy
 import subprocess, shlex
 import os, pathlib
+import prj
 
 ADDONS_PATH = str(pathlib.Path(__file__).parent.absolute())
 MAIN_PATH = 'main.py'
@@ -34,7 +35,7 @@ is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
         in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
 
 class Prj(bpy.types.Operator):
-    """Set view to camera to export svg  from grease pencil"""
+    """Set view to camera to export svg from grease pencil"""
     bl_idname = "prj.modal_operator"
     bl_label = "Set 3d view as selected camera and launch prj"
     bl_options = {'REGISTER', 'UNDO'}
@@ -57,11 +58,7 @@ class Prj(bpy.types.Operator):
         v3d = context.space_data
         rv3d = v3d.region_3d
         bpy.context.scene.camera = self._initial_scene_camera
-        self.camera.rotation_mode = self._initial_cam_rotation_mode
-        rv3d.view_perspective = self._initial_perspective
-        rv3d.view_rotation = self._initial_rotation
-        rv3d.view_location = self._initial_location
-        rv3d.view_distance = self._initial_distance
+        bpy.ops.view3d.view_camera()
         return {'FINISHED'}
 
     @classmethod
@@ -73,7 +70,6 @@ class Prj(bpy.types.Operator):
         objs = ';'.join(self.get_objects(self.selection) + [self.camera.name])
         subprocess.run(prj_cmd(self.key, objs))
         self.reset_scene(context)
-
 
     def modal(self, context, event):
         context.area.header_text_set("Type Enter to create drawing, " + \
@@ -105,34 +101,19 @@ class Prj(bpy.types.Operator):
             return {'CANCELLED'}
         v3d = context.space_data
         rv3d = v3d.region_3d
-        
-        self._initial_perspective = rv3d.view_perspective
-        self._initial_matrix = rv3d.view_matrix.copy()
-        self._initial_rotation = rv3d.view_rotation.copy()
-        self._initial_location = rv3d.view_location.copy()
-        self._initial_distance = rv3d.view_distance
+
         self._initial_scene_camera = bpy.context.scene.camera
-        self._initial_cam_rotation_mode = self.camera.rotation_mode
-
         bpy.context.scene.camera = self.camera
-        self.camera.rotation_mode = 'QUATERNION'
-
-        rv3d.view_perspective = self.camera.data.type
-        rv3d.view_rotation = self.camera.rotation_quaternion
-        rv3d.view_location = self.camera.location
-        rv3d.view_distance = self.camera.data.ortho_scale
+        bpy.ops.view3d.view_camera()
 
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
-
 def register():
     bpy.utils.register_class(Prj)
 
-
 def unregister():
     bpy.utils.unregister_class(Prj)
-
 
 if __name__ == "__main__":
     register()

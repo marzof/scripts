@@ -27,6 +27,9 @@ import prj
 from prj import prj_svglib
 from prj.prj_drawing_classes import Drawing_context, Draw_maker, Drawing_subject
 from prj.prj_svglib import Svg_drawing, Layer, Path, Use, Style, SVG_ATTRIBUTES, PL_TAG
+import time
+
+start_time = time.time()
 
 print('\n\n\n###################################\n\n\n')
 
@@ -63,20 +66,40 @@ def redraw_svg(subject: Drawing_subject, svg_size: tuple[str], factor: float,
                         coords_string = prj_svglib.get_path_coords(coord), 
                         coords_values = coord)
                 path.add_class(layer_label)
+                for collection in subject.collections:
+                    path.add_class(collection)
                 path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
     return svg
 
+def prepare_scene():
+    pass
+
+
 drawings: list[Svg_drawing] = []
 subjects: list[Drawing_subject] = []
+drawing_times = {}
 
 draw_context = Drawing_context(args = ARGS)
 draw_maker = Draw_maker(draw_context)
 
+## TODO
+## Prepare scene:
+##     make local
+##     make single user
+##     convert to mesh
+##     apply mods
+##     generate all cuts (always)
+##     select visible verts -> remove not selected objects (by removing its verts?)
+
 for subject in draw_context.subjects:
+    print('Drawing', subject.name)
+    drawing_start_time = time.time()
     draw_subj = Drawing_subject(subject, draw_context)
     if draw_subj.visible:
-        print(f'Drawing {draw_subj.name}')
         drawing = draw_maker.draw(draw_subj, draw_context.style)
+        drawing_time = time.time() - drawing_start_time
+        drawing_times[drawing_time] = subject.name
+        print(f"   ...drawn in {drawing_times[drawing_time]} seconds")
         subjects.append(draw_subj)
 
 for subject in subjects:
@@ -84,8 +107,8 @@ for subject in subjects:
             draw_context.svg_factor, draw_context.svg_styles)
     drawings.append(svg)
 
-with Svg_drawing('composition.svg', draw_context.svg_size) as composition:
-    css = f"@import url({BASE_CSS});@import url(style.css);"
+with Svg_drawing(draw_context.camera.name, draw_context.svg_size) as composition:
+    css = f"@import url({BASE_CSS});"
     style = composition.add_entity(Style, content = css) 
     for style in draw_context.svg_styles:
         layer = composition.add_entity(Layer, label = style)
@@ -94,4 +117,42 @@ with Svg_drawing('composition.svg', draw_context.svg_size) as composition:
             use = layer.add_entity(Use, 
                     link = f'{subject.svg_path}{svg_suffix}#{subject.name}_{style}')
             use.set_id(subject.name)
+            for collection in subject.collections:
+                use.add_class(collection)
 
+print("--- %s seconds ---" % (time.time() - start_time))
+for t in sorted(drawing_times):
+    print(t, drawing_times[t])
+
+
+## SELECT ONLY ACTUAL VISIBLE OBJECTS
+#### Select all objects in camera frame
+#### Enter in edit mode for all objects
+#### !! select_box everything is in camera frame -> not possible outside gui
+#### get object with verts selected only
+
+#import bpy, bpy_extras
+#from mathutils import Vector
+#from bpy_extras import view3d_utils, object_utils
+#scene = bpy.context.scene
+#cam = scene.camera
+#
+#for area in bpy.context.screen.areas:
+#    if area.type == 'VIEW_3D':
+#        for region in area.regions:
+#            if region.type == 'WINDOW':
+#                override = {'area': area, 'region': region} 
+#                print(f'x:{region.x}, y:{region.y}, w:{region.width}, h:{region.height}')
+#                rv3d = override['area'].spaces[0].region_3d
+#                coord = bpy.data.objects[cam.name].location
+#                coord_to_px = bpy_extras.view3d_utils.location_3d_to_region_2d(
+#                        region, rv3d, coord)
+#                px_to_coord = bpy_extras.view3d_utils.region_2d_to_location_3d(
+#                        region, rv3d, Vector((0,0)), Vector((0,0,0)))
+#                print('cam in 3dView at pixel', coord_to_px)
+#                print('bottom left window corner in units', px_to_coord)
+#                bpy.ops.view3d.select_box(override, xmin=0, xmax=10, ymin=50, ymax=100,
+#                                    wait_for_input=False, mode='SET')
+#                break
+#        break
+#print(len([vert for vert in bpy.data.objects['Floor.001'].data.vertices if vert.select]))
