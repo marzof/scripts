@@ -84,12 +84,14 @@ draw_maker = Draw_maker(draw_context)
 
 ## TODO
 ## Prepare scene:
-##     make local
-##     make single user
-##     convert to mesh
-##     apply mods
-##     generate all cuts (always)
-##     select visible verts -> remove not selected objects (by removing its verts?)
+##     get visible objects by raycasting camera view 
+##         or check by raycasting selected objects area
+##     create plane with solidify mod at camera frame location and use it 
+##         to create cuts (by boolean mod and solidify turned off) 
+##         and cut objects (by boolean mod and solidify truned on)
+##     make local and single user
+##     use to_mesh() for curve (needed?)
+##     use evaluated_get to take mods into account
 
 for subject in draw_context.subjects:
     print('Drawing', subject.name)
