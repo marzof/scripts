@@ -33,7 +33,6 @@ start_time = time.time()
 
 print('\n\n\n###################################\n\n\n')
 
-
 ARGS: list[str] = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
 ROUNDING: int = 3
 SVG_ID = 'svg'
@@ -73,7 +72,16 @@ def redraw_svg(subject: Drawing_subject, svg_size: tuple[str], factor: float,
 
 def prepare_scene():
     pass
-
+## TODO
+## Prepare scene:
+##   * get visible objects by raycasting camera view 
+##         or check by raycasting selected objects area
+##     create plane with solidify mod at camera frame location and use it 
+##         to create cuts (by boolean mod and solidify turned off) 
+##         and cut objects (by boolean mod and solidify truned on)
+##     make object local and single user
+##     use to_mesh() for curve (needed?)
+##     use evaluated_get to take mods into account
 
 drawings: list[Svg_drawing] = []
 subjects: list[Drawing_subject] = []
@@ -82,27 +90,15 @@ drawing_times = {}
 draw_context = Drawing_context(args = ARGS)
 draw_maker = Draw_maker(draw_context)
 
-## TODO
-## Prepare scene:
-##     get visible objects by raycasting camera view 
-##         or check by raycasting selected objects area
-##     create plane with solidify mod at camera frame location and use it 
-##         to create cuts (by boolean mod and solidify turned off) 
-##         and cut objects (by boolean mod and solidify truned on)
-##     make local and single user
-##     use to_mesh() for curve (needed?)
-##     use evaluated_get to take mods into account
-
 for subject in draw_context.subjects:
     print('Drawing', subject.name)
     drawing_start_time = time.time()
     draw_subj = Drawing_subject(subject, draw_context)
-    if draw_subj.visible:
-        drawing = draw_maker.draw(draw_subj, draw_context.style)
-        drawing_time = time.time() - drawing_start_time
-        drawing_times[drawing_time] = subject.name
-        print(f"   ...drawn in {drawing_times[drawing_time]} seconds")
-        subjects.append(draw_subj)
+    drawing = draw_maker.draw(draw_subj, draw_context.style)
+    drawing_time = time.time() - drawing_start_time
+    drawing_times[drawing_time] = subject.name
+    print(f"   ...drawn in {drawing_time} seconds")
+    subjects.append(draw_subj)
 
 for subject in subjects:
     svg = redraw_svg(subject, draw_context.svg_size, 
@@ -127,34 +123,3 @@ for t in sorted(drawing_times):
     print(t, drawing_times[t])
 
 
-## SELECT ONLY ACTUAL VISIBLE OBJECTS
-#### Select all objects in camera frame
-#### Enter in edit mode for all objects
-#### !! select_box everything is in camera frame -> not possible outside gui
-#### get object with verts selected only
-
-#import bpy, bpy_extras
-#from mathutils import Vector
-#from bpy_extras import view3d_utils, object_utils
-#scene = bpy.context.scene
-#cam = scene.camera
-#
-#for area in bpy.context.screen.areas:
-#    if area.type == 'VIEW_3D':
-#        for region in area.regions:
-#            if region.type == 'WINDOW':
-#                override = {'area': area, 'region': region} 
-#                print(f'x:{region.x}, y:{region.y}, w:{region.width}, h:{region.height}')
-#                rv3d = override['area'].spaces[0].region_3d
-#                coord = bpy.data.objects[cam.name].location
-#                coord_to_px = bpy_extras.view3d_utils.location_3d_to_region_2d(
-#                        region, rv3d, coord)
-#                px_to_coord = bpy_extras.view3d_utils.region_2d_to_location_3d(
-#                        region, rv3d, Vector((0,0)), Vector((0,0,0)))
-#                print('cam in 3dView at pixel', coord_to_px)
-#                print('bottom left window corner in units', px_to_coord)
-#                bpy.ops.view3d.select_box(override, xmin=0, xmax=10, ymin=50, ymax=100,
-#                                    wait_for_input=False, mode='SET')
-#                break
-#        break
-#print(len([vert for vert in bpy.data.objects['Floor.001'].data.vertices if vert.select]))
