@@ -38,7 +38,7 @@ start_time = time.time()
 
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
 RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
-SCANNING_STEP: float = .1
+SCANNING_STEP: float = .01
 
 class Scanner:
     depsgraph: bpy.types.Depsgraph
@@ -79,7 +79,7 @@ class Scanner:
     def set_step(self, step:float) -> None:
         self.step = step
 
-    def __round_to_base(self, x: float, base: float, round_func):
+    def __round_to_base(self, x: float, base: float, round_func) -> float:
         return base * round_func(x / base)
 
     def __2d_range(self, area: tuple[tuple[float]], step: float) \
@@ -104,6 +104,7 @@ class Scanner:
     def check_object_visibility(self, obj: bpy.types.Object) -> bool:
         """ Get true if obj is visible """
         area_to_scan = self.frame_obj_bound_rect(obj)
+        print('ats', area_to_scan)
         if area_to_scan:
             z = self.frame_z_start
             area_to_scan = (area_to_scan[0] + (z,)), (area_to_scan[1] + (z,))
@@ -121,6 +122,7 @@ class Scanner:
             target: bpy.types.Object = None) -> bool:
         """ Scan area by its samples and populate self.visible_objects.
             Return True if get target """
+        print('total_area', len(area))
         for sample in area:
             if sample not in self.checked_samples:
                 self.checked_samples.append(sample)
@@ -132,10 +134,44 @@ class Scanner:
                     if obj == target:
                         return True
         return False
+    
+    def get_obj_bound_box(self, obj: bpy.types.Object) -> list[Vector]:
+        """ Get the bounding box of obj in world coords. 
+            For collection instances calculate the bounding box 
+            for all the objects """
+        obj_bbox = []
+        for obj_inst in self.depsgraph.object_instances:
+            is_obj_instance = obj_inst.is_instance and \
+                    obj_inst.parent.name == obj.name
+            is_obj = obj_inst.object.name == obj.name
+            if is_obj_instance or is_obj:
+                bbox = obj_inst.object.bound_box
+                obj_bbox += [obj_inst.object.matrix_world @ Vector(v) \
+                        for v in bbox]
+        if is_obj:
+            return obj_bbox
+        bbox_xs, bbox_ys, bbox_zs = [], [], []
+        for v in obj_bbox:
+            bbox_xs.append(v.x)
+            bbox_ys.append(v.y)
+            bbox_zs.append(v.z)
+        x_min, x_max = min(bbox_xs), max(bbox_xs)
+        y_min, y_max = min(bbox_ys), max(bbox_ys)
+        z_min, z_max = min(bbox_zs), max(bbox_zs)
+        bound_box = [
+                Vector((x_min, y_min, z_min)),
+                Vector((x_min, y_min, z_max)),
+                Vector((x_min, y_max, z_max)),
+                Vector((x_min, y_max, z_min)),
+                Vector((x_max, y_min, z_min)),
+                Vector((x_max, y_min, z_max)),
+                Vector((x_max, y_max, z_max)),
+                Vector((x_max, y_max, z_min))]
+        return bound_box
 
     def frame_obj_bound_rect(self, obj: bpy.types.Object) -> tuple[tuple[float]]:
         """ Get the bounding rect of obj in cam view coords """
-        world_obj_bbox = [obj.matrix_world @ Vector(v) for v in obj.bound_box]
+        world_obj_bbox = self.get_obj_bound_box(obj)
         bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
             self.camera, v) for v in world_obj_bbox]
         bbox_xs = [v.x for v in bbox_from_cam_view]
@@ -149,12 +185,13 @@ class Scanner:
         x_max_round = self.__round_to_base(x_max, self.step, math.ceil)
         y_min_round = self.__round_to_base(y_min, self.step, math.floor)
         y_max_round = self.__round_to_base(y_max, self.step, math.ceil)
-        return (x_min_round, y_min_round), (x_max_round, y_max_round)
+        return (x_min_round, y_min_round), (x_max_round, y_max_round) 
 
 class Drawing_context:
     args: list[str]
     style: str
     selected_subjects: list[bpy.types.Object]
+    visible_objects: list[bpy.types.Object]
     subjects: list[bpy.types.Object]
     camera: bpy.types.Object ## bpy.types.Camera 
     depsgraph: bpy.types.Depsgraph
@@ -178,11 +215,20 @@ class Drawing_context:
         self.camera_frame = self.__get_camera_frame()
         self.scanner = Scanner(self.depsgraph, self.camera, SCANNING_STEP)
         if not self.selected_subjects:
-            self.subjects = self.scanner.get_visible_objects()
+            print("Scan for visible objects...")
+            scanning_start_time = time.time()
+            self.visible_objects = self.scanner.get_visible_objects()
+            self.subjects = self.visible_objects
+            scanning_time = time.time() - scanning_start_time
+            print(f"   ...scanned in {scanning_time} seconds")
         else:
+            print("Scan for visibility of objects...")
+            scanning_start_time = time.time()
             self.subjects = [obj for obj in self.selected_subjects if \
-                    obj not in self.scanner.visible_objects and
                     self.scanner.check_object_visibility(obj)]
+            self.visible_objects = self.scanner.visible_objects
+            scanning_time = time.time() - scanning_start_time
+            print(f"   ...scanned in {scanning_time} seconds")
 
         self.svg_size = format_svg_size(self.frame_size * 10, 
                 self.frame_size * 10)
@@ -337,6 +383,7 @@ class Drawing_subject:
         self.svg_path = f"{path}{sep}{pfx}{self.obj.name}{sfx}.svg"
         return self.svg_path
 
+    ## No mode needed
     #def __get_visibility(self, linked: bool = True) -> dict[str, bool]:
     #    """ Get self.obj visibility (framed, frontal, behind camera) 
     #    and store individual visibilities in self.objects_visibility """

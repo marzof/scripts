@@ -76,12 +76,10 @@ def prepare_scene():
 ## Prepare scene:
 ##   * get visible objects by raycasting camera view 
 ##         or check by raycasting selected objects area
-##     create plane with solidify mod at camera frame location and use it 
-##         to create cuts (by boolean mod and solidify turned off) 
-##         and cut objects (by boolean mod and solidify truned on)
-##     make object local and single user
+##     handle camera clip start and end to generate cuts 
+##     make object local and single user (needed?)
 ##     use to_mesh() for curve (needed?)
-##     use evaluated_get to take mods into account
+##     use evaluated_get to take mods into account (needed?)
 
 drawings: list[Svg_drawing] = []
 subjects: list[Drawing_subject] = []
@@ -89,6 +87,9 @@ drawing_times = {}
 
 draw_context = Drawing_context(args = ARGS)
 draw_maker = Draw_maker(draw_context)
+
+#for obj in draw_context.visible_objects:
+#    print(obj)
 
 for subject in draw_context.subjects:
     print('Drawing', subject.name)
@@ -118,8 +119,8 @@ with Svg_drawing(draw_context.camera.name, draw_context.svg_size) as composition
             for collection in subject.collections:
                 use.add_class(collection)
 
-print("--- %s seconds ---" % (time.time() - start_time))
+print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
 for t in sorted(drawing_times):
-    print(t, drawing_times[t])
+    print(drawing_times[t], t)
 
 
