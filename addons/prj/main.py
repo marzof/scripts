@@ -106,7 +106,7 @@ for subject in subjects:
             draw_context.svg_factor, draw_context.svg_styles)
     drawings.append(svg)
 
-with Svg_drawing(draw_context.camera.name, draw_context.svg_size) as composition:
+with Svg_drawing(draw_context.camera.name + '.svg', draw_context.svg_size) as composition:
     css = f"@import url({BASE_CSS});"
     style = composition.add_entity(Style, content = css) 
     for style in draw_context.svg_styles:

@@ -28,6 +28,8 @@ import os
 from mathutils import Vector, geometry
 import prj
 from prj import prj_utils
+from pathlib import Path
+import ast
 
 import numpy as np
 import math
@@ -38,40 +40,21 @@ start_time = time.time()
 
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
 RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
-SCANNING_STEP: float = .01
+SCANNING_STEP: float = .2
+RAY_CAST_FILENAME = 'ray_cast'
 
 class Scanner:
     depsgraph: bpy.types.Depsgraph
-    cam_z: float
-    cam_up: Vector
-    cam_direction: Vector
-    frame: list[Vector]
-    frame_origin: Vector
-    frame_x_vector: Vector
-    frame_y_vector: Vector
-    frame_z_start: float
-    scanning_area: dict[str,list[tuple[float]]]
     visible_objects: list[bpy.types.Object]
-    checked_samples: list[tuple[float]]
+    checked_samples: dict[tuple[float], bpy.types.Object]
 
     def __init__(self, depsgraph: bpy.types.Depsgraph, camera: bpy.types.Object,
             step: float = 1.0):
         self.depsgraph = depsgraph
         self.camera = camera
         self.step = step
-        self.cam_z = camera.data.view_frame()[0].z
-        self.cam_up = camera.matrix_world.to_quaternion() @ \
-                Vector((0.0, 1.0, 0.0))
-        self.cam_direction = camera.matrix_world.to_quaternion() @ \
-                Vector((0.0, 0.0, -1.0))
-        self.frame = [camera.matrix_world @ v for v in camera.data.view_frame()]
-        self.frame_origin = self.frame[2]
-        self.frame_x_vector = self.frame[1] - self.frame[2]
-        self.frame_y_vector = self.frame[0] - self.frame[1]
-        self.frame_z_start = -self.camera.data.clip_start
-        self.scanning_area = {}
         self.visible_objects = []
-        self.checked_samples = []
+        self.checked_samples = {}
 
     def get_step(self) -> float:
         return self.step
@@ -80,60 +63,59 @@ class Scanner:
         self.step = step
 
     def __round_to_base(self, x: float, base: float, round_func) -> float:
-        return base * round_func(x / base)
+        return round(base * round_func(x / base), 6)
 
-    def __2d_range(self, area: tuple[tuple[float]], step: float) \
+    def range_2d(self, area: tuple[tuple[float]], step: float) \
             -> list[tuple[float]]:
         """ Get a list representing a 2-dimensional array covering the area 
             by step interval """
         y_min, y_max = area[0][1], area[1][1] + step
         x_min, x_max = area[0][0], area[1][0] + step
-        samples = [(x, y) for y in np.arange(y_min, y_max, step) 
+        samples = [(round(x, 6), round(y,  6)) \
+                for y in np.arange(y_min, y_max, step) 
                 for x in np.arange(x_min, x_max, step)]
         return samples
 
     def get_visible_objects(self) -> list[bpy.types.Object]:
         """ Populate self.visible_objetcs and return it """
-        z = self.frame_z_start
-        area_to_scan = ((0.0, 0.0, z), (1.0, 1.0, z))
-        area_samples = self.__2d_range(area_to_scan, self.step)
-        self.scanning_area[None] = area_samples
+        area_to_scan = ((0.0, 0.0), (1.0, 1.0))
+        area_samples = self.range_2d(area_to_scan, self.step)
         self.scan_area(area_samples)
         return self.visible_objects
 
-    def check_object_visibility(self, obj: bpy.types.Object) -> bool:
+    def check_object_visibility(self, subj: 'Drawing_subject') -> bool:
         """ Get true if obj is visible """
+        obj = subj.obj
         area_to_scan = self.frame_obj_bound_rect(obj)
-        print('ats', area_to_scan)
+        print('area to scan', area_to_scan)
         if area_to_scan:
-            z = self.frame_z_start
-            area_to_scan = (area_to_scan[0] + (z,)), (area_to_scan[1] + (z,))
-            area_samples = self.__2d_range(area_to_scan, self.step)
-            self.scanning_area[obj.name] = area_samples
-            return self.scan_area(area_samples, obj)
+            area_samples = self.range_2d(area_to_scan, self.step)
+            print('area samples\n', area_samples)
+            self.scan_area(area_samples)
+            return subj in self.visible_objects
 
     def __get_ray_origin(self, v: tuple[float]) -> Vector:
         """ Get frame point moving origin in x and y direction by v factors"""
-        x_coord = self.frame_origin + (self.frame_x_vector * v[0])
-        coord = x_coord + (self.frame_y_vector * v[1])
+        x_coord = self.camera.frame_origin + (self.camera.frame_x_vector * v[0])
+        coord = x_coord + (self.camera.frame_y_vector * v[1])
         return Vector(coord)
 
-    def scan_area(self, area: list[tuple[float]], 
-            target: bpy.types.Object = None) -> bool:
+    def scan_area(self, area: list[tuple[float]]) -> None:
         """ Scan area by its samples and populate self.visible_objects.
             Return True if get target """
-        print('total_area', len(area))
+        print('total area to scan', len(area))
         for sample in area:
             if sample not in self.checked_samples:
-                self.checked_samples.append(sample)
+                self.checked_samples[sample] = None
                 ray_origin = self.__get_ray_origin(sample)
                 res, loc, nor, ind, obj, mat = bpy.context.scene.ray_cast(
-                    self.depsgraph, ray_origin, self.cam_direction)
-                if obj and obj not in self.visible_objects:
+                    self.depsgraph, ray_origin, self.camera.direction)
+                if not obj:
+                    continue
+                if obj not in self.visible_objects:
                     self.visible_objects.append(obj)
-                    if obj == target:
-                        return True
-        return False
+                self.checked_samples[sample] = obj
+        self.camera.update_ray_cast(self.checked_samples)
     
     def get_obj_bound_box(self, obj: bpy.types.Object) -> list[Vector]:
         """ Get the bounding box of obj in world coords. 
@@ -170,10 +152,11 @@ class Scanner:
         return bound_box
 
     def frame_obj_bound_rect(self, obj: bpy.types.Object) -> tuple[tuple[float]]:
-        """ Get the bounding rect of obj in cam view coords """
+        """ Get the bounding rect of obj in cam view coords 
+            (rect is just greater than object and accords with the step grid)"""
         world_obj_bbox = self.get_obj_bound_box(obj)
         bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
-            self.camera, v) for v in world_obj_bbox]
+            self.camera.obj, v) for v in world_obj_bbox]
         bbox_xs = [v.x for v in bbox_from_cam_view]
         bbox_ys = [v.y for v in bbox_from_cam_view]
         x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
@@ -187,20 +170,85 @@ class Scanner:
         y_max_round = self.__round_to_base(y_max, self.step, math.ceil)
         return (x_min_round, y_min_round), (x_max_round, y_max_round) 
 
+class Drawing_camera:
+    obj = bpy.types.Object
+    direction: Vector
+    frame: list[Vector]
+    frame_origin: Vector
+    frame_x_vector: Vector
+    frame_y_vector: Vector
+    frame_z_start: float
+
+    def __init__(self, camera: bpy.types.Object, draw_context: 'Drawing_context'):
+        self.obj = camera
+        self.name = camera.name
+        self.draw_context = draw_context
+        self.path = self.get_path()
+        self.direction = camera.matrix_world.to_quaternion() @ \
+                Vector((0.0, 0.0, -1.0))
+        self.frame = [camera.matrix_world @ v for v in camera.data.view_frame()]
+        self.frame_origin = self.frame[2]
+        self.frame_x_vector = self.frame[1] - self.frame[2]
+        self.frame_y_vector = self.frame[0] - self.frame[1]
+        self.frame_z_start = -camera.data.clip_start
+        self.ray_cast_filepath = os.path.join(self.path, RAY_CAST_FILENAME)
+        self.existing_ray_cast = self.get_existing_ray_cast()
+
+    def get_path(self):
+        cam_path = os.path.join(self.draw_context.RENDER_BASEPATH, self.name)
+        try:
+            os.mkdir(cam_path)
+        except OSError:
+            print (f'{cam_path} already exists. Going on')
+        return cam_path
+        
+    def get_obj_prev_ray_cast(self, obj_name: str):
+        samples = []
+        for sample, obj in self.existing_ray_cast.items():
+            if obj == obj_name:
+               samples.append(sample)
+        return samples
+
+    def get_existing_ray_cast(self):
+        data = {}
+        try:
+            with open(self.ray_cast_filepath) as f:
+                for line in f:
+                    sample = ast.literal_eval(line)
+                    data[sample[0]] = sample[1]
+            return data
+        except OSError:
+            print (f"{self.ray_cast_filepath} doesn't exists. Create it now")
+            f = open(self.ray_cast_filepath, 'w')
+            f.close()
+            return data
+
+    def update_ray_cast(self, checked_samples):
+        for sample in checked_samples:
+            obj_name = f'{checked_samples[sample].name}' \
+                    if checked_samples[sample] else checked_samples[sample]
+            self.existing_ray_cast[sample] = obj_name
+        with open(self.ray_cast_filepath, 'w') as f:
+            for sample in self.existing_ray_cast:
+                value = self.existing_ray_cast[sample] 
+                ## Add quotes to actual object name for correct value passing
+                string_value = f'"{value}"' if value else value
+                f.write(f'{sample}, {string_value}\n')
+        ## TODO render just selected subject if samples are not changed
+
 class Drawing_context:
     args: list[str]
     style: str
     selected_subjects: list[bpy.types.Object]
     visible_objects: list[bpy.types.Object]
     subjects: list[bpy.types.Object]
-    camera: bpy.types.Object ## bpy.types.Camera 
+    camera: Drawing_camera 
     depsgraph: bpy.types.Depsgraph
     frame_size: float ## tuple[float, float] ... try?
-    camera_frame: dict[str,Vector]
 
 
     DEFAULT_STYLE: str = 'pc'
-    RENDER_PATH: str = bpy.path.abspath(bpy.context.scene.render.filepath)
+    RENDER_BASEPATH: str = bpy.path.abspath(bpy.context.scene.render.filepath)
     RENDER_RESOLUTION_X: int = bpy.context.scene.render.resolution_x
     RENDER_RESOLUTION_Y: int = bpy.context.scene.render.resolution_y
 
@@ -211,22 +259,29 @@ class Drawing_context:
         self.depsgraph = bpy.context.evaluated_depsgraph_get()
         self.depsgraph.update()
 
-        self.frame_size = self.camera.data.ortho_scale
-        self.camera_frame = self.__get_camera_frame()
+        self.frame_size = self.camera.obj.data.ortho_scale
         self.scanner = Scanner(self.depsgraph, self.camera, SCANNING_STEP)
         if not self.selected_subjects:
             print("Scan for visible objects...")
             scanning_start_time = time.time()
-            self.visible_objects = self.scanner.get_visible_objects()
-            self.subjects = self.visible_objects
+            self.subjects = self.scanner.get_visible_objects()
             scanning_time = time.time() - scanning_start_time
+            print('subjects', self.subjects)
+            print('scan samples\n', self.scanner.checked_samples)
             print(f"   ...scanned in {scanning_time} seconds")
         else:
             print("Scan for visibility of objects...")
             scanning_start_time = time.time()
-            self.subjects = [obj for obj in self.selected_subjects if \
-                    self.scanner.check_object_visibility(obj)]
-            self.visible_objects = self.scanner.visible_objects
+            for obj in self.selected_subjects:
+                subj = Drawing_subject(obj, self)
+                ## Scan samples of previous position
+                prev_samples = self.camera.get_obj_prev_ray_cast(subj.name)
+                self.scanner.scan_area(prev_samples)
+                ## Scan subj 
+                self.scanner.check_object_visibility(subj)
+            self.subjects = self.scanner.visible_objects
+            print('subjects', self.subjects)
+            print('scan samples\n', self.scanner.checked_samples)
             scanning_time = time.time() - scanning_start_time
             print(f"   ...scanned in {scanning_time} seconds")
 
@@ -236,21 +291,6 @@ class Drawing_context:
                 RESOLUTION_FACTOR
         self.svg_styles = [prj.STYLES[d_style]['name'] for d_style in 
                 self.style]
-
-    def __get_camera_frame(self) -> dict[str, Vector]:
-        cam_frame_local = [v * Vector((1,1,self.camera.data.clip_start)) 
-                for v in self.camera.data.view_frame()]
-        cam_frame = [self.camera.matrix_world @ v for v in cam_frame_local]
-        cam_frame_origin = cam_frame[2]
-        cam_frame_x_vector = cam_frame[1] - cam_frame[2]
-        cam_frame_y_vector = cam_frame[0] - cam_frame[1]
-        cam_frame_loc = (cam_frame[0] + cam_frame[2]) / 2
-        cam_frame_norm = geometry.normal(cam_frame[:3])
-        return {'location': cam_frame_loc, 
-                'origin': cam_frame_origin,
-                'x_vector': cam_frame_x_vector,
-                'y_vector': cam_frame_y_vector,
-                'direction': cam_frame_norm}
 
     def __get_style(self) -> str:
         style = ''.join([a.replace('-', '') for a in self.args 
@@ -269,7 +309,7 @@ class Drawing_context:
         objs = []
         for ob in all_objs:
             if bpy.data.objects[ob].type == 'CAMERA':
-                cam = bpy.data.objects[ob]
+                cam = Drawing_camera(bpy.data.objects[ob], self)
             elif prj.is_renderables(bpy.data.objects[ob]):
                 objs.append(bpy.data.objects[ob])
         return objs, cam
@@ -376,7 +416,7 @@ class Drawing_subject:
 
     def get_svg_path(self, prefix = None, suffix = None) -> str:
         """ Return the svg filepath with prefix or suffix """
-        path = self.drawing_context.RENDER_PATH
+        path = self.drawing_context.RENDER_BASEPATH
         sep = "" if path.endswith(os.sep) else os.sep
         pfx = f"{prefix}_" if prefix else ""
         sfx = f"_{suffix}" if suffix else ""
@@ -405,20 +445,20 @@ class Drawing_subject:
     #                visibility[k] = framed[k]
     #    return visibility, objects_visibility
 
-    def get_cut_subject(self) -> 'Drawing_subject':
-        if not self.cut_objects:
-            return None
-        cuts_collection = bpy.data.collections.new(self.name + '_cuts')
-        for ob in self.cut_objects:
-            prj_utils.apply_mod(ob)
-            cut = prj_utils.cut_object(obj = ob, 
-                    cut_plane = self.drawing_context.camera_frame)
-            cut.location = cut.location + \
-                    self.drawing_context.camera_frame['direction']
-            to_draw = cut
-            if self.type == 'COLLECTION':
-                cuts_collection.objects.link(cut)
-                to_draw = cuts_collection
+    #def get_cut_subject(self) -> 'Drawing_subject':
+    #    if not self.cut_objects:
+    #        return None
+    #    cuts_collection = bpy.data.collections.new(self.name + '_cuts')
+    #    for ob in self.cut_objects:
+    #        prj_utils.apply_mod(ob)
+    #        cut = prj_utils.cut_object(obj = ob, 
+    #                cut_plane = self.drawing_context.camera_frame)
+    #        cut.location = cut.location + \
+    #                self.drawing_context.camera_frame['direction']
+    #        to_draw = cut
+    #        if self.type == 'COLLECTION':
+    #            cuts_collection.objects.link(cut)
+    #            to_draw = cuts_collection
 
     #    bpy.context.scene.collection.children.link(cuts_collection)
     #    return Drawing_subject(to_draw, self.drawing_context)
