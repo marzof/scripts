@@ -43,18 +43,63 @@ RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 SCANNING_STEP: float = .2
 RAY_CAST_FILENAME = 'ray_cast'
 
+def range_2d(area: tuple[tuple[float]], step: float) -> list[tuple[float]]:
+    """ Get a list representing a 2-dimensional array covering the area 
+        by step interval """
+    x_min, x_max = area[0][0], area[1][0] + step
+    y_min, y_max = area[0][1], area[1][1] + step
+    samples = [(round(x, 6), round(y,  6)) \
+            for y in np.arange(y_min, y_max, step) 
+            for x in np.arange(x_min, x_max, step)]
+    return samples
+
+def round_to_base(x: float, base: float, round_func) -> float:
+    return round(base * round_func(x / base), 6)
+
+def get_obj_bound_box(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> \
+        list[Vector]:
+    """ Get the bounding box of obj in world coords. For collection instances 
+        calculate the bounding box for all the objects """
+    obj_bbox = []
+    for obj_inst in depsgraph.object_instances:
+        is_obj_instance = obj_inst.is_instance and \
+                obj_inst.parent.name == obj.name
+        is_obj = obj_inst.object.name == obj.name
+        if is_obj_instance or is_obj:
+            bbox = obj_inst.object.bound_box
+            obj_bbox += [obj_inst.object.matrix_world @ Vector(v) \
+                    for v in bbox]
+    if is_obj:
+        return obj_bbox
+    ## It's a group of objects: get the overall bounding box
+    bbox_xs, bbox_ys, bbox_zs = [], [], []
+    for v in obj_bbox:
+        bbox_xs.append(v.x)
+        bbox_ys.append(v.y)
+        bbox_zs.append(v.z)
+    x_min, x_max = min(bbox_xs), max(bbox_xs)
+    y_min, y_max = min(bbox_ys), max(bbox_ys)
+    z_min, z_max = min(bbox_zs), max(bbox_zs)
+    bound_box = [
+            Vector((x_min, y_min, z_min)),
+            Vector((x_min, y_min, z_max)),
+            Vector((x_min, y_max, z_max)),
+            Vector((x_min, y_max, z_min)),
+            Vector((x_max, y_min, z_min)),
+            Vector((x_max, y_min, z_max)),
+            Vector((x_max, y_max, z_max)),
+            Vector((x_max, y_max, z_min))]
+    return bound_box
+
 class Scanner:
     depsgraph: bpy.types.Depsgraph
-    visible_objects: list[bpy.types.Object]
-    checked_samples: dict[tuple[float], bpy.types.Object]
 
-    def __init__(self, depsgraph: bpy.types.Depsgraph, camera: bpy.types.Object,
-            step: float = 1.0):
+    def __init__(self, depsgraph: bpy.types.Depsgraph, 
+            draw_camera: 'Drawing_camera', step: float = 1.0):
         self.depsgraph = depsgraph
-        self.camera = camera
+        self.draw_camera = draw_camera
+        self.camera = draw_camera.obj
         self.step = step
-        self.visible_objects = []
-        self.checked_samples = {}
 
     def get_step(self) -> float:
         return self.step
@@ -62,114 +107,28 @@ class Scanner:
     def set_step(self, step:float) -> None:
         self.step = step
 
-    def __round_to_base(self, x: float, base: float, round_func) -> float:
-        return round(base * round_func(x / base), 6)
-
-    def range_2d(self, area: tuple[tuple[float]], step: float) \
-            -> list[tuple[float]]:
-        """ Get a list representing a 2-dimensional array covering the area 
-            by step interval """
-        y_min, y_max = area[0][1], area[1][1] + step
-        x_min, x_max = area[0][0], area[1][0] + step
-        samples = [(round(x, 6), round(y,  6)) \
-                for y in np.arange(y_min, y_max, step) 
-                for x in np.arange(x_min, x_max, step)]
-        return samples
-
-    def get_visible_objects(self) -> list[bpy.types.Object]:
-        """ Populate self.visible_objetcs and return it """
-        area_to_scan = ((0.0, 0.0), (1.0, 1.0))
-        area_samples = self.range_2d(area_to_scan, self.step)
-        self.scan_area(area_samples)
-        return self.visible_objects
-
-    def check_object_visibility(self, subj: 'Drawing_subject') -> bool:
-        """ Get true if obj is visible """
-        obj = subj.obj
-        area_to_scan = self.frame_obj_bound_rect(obj)
-        print('area to scan', area_to_scan)
-        if area_to_scan:
-            area_samples = self.range_2d(area_to_scan, self.step)
-            print('area samples\n', area_samples)
-            self.scan_area(area_samples)
-            return subj in self.visible_objects
-
-    def __get_ray_origin(self, v: tuple[float]) -> Vector:
+    def __get_ray_origin(self, v: tuple[float], camera: 'Drawing_camera') -> \
+            Vector:
         """ Get frame point moving origin in x and y direction by v factors"""
-        x_coord = self.camera.frame_origin + (self.camera.frame_x_vector * v[0])
-        coord = x_coord + (self.camera.frame_y_vector * v[1])
+        x_coord = camera.frame_origin + (camera.frame_x_vector * v[0])
+        coord = x_coord + (camera.frame_y_vector * v[1])
         return Vector(coord)
 
-    def scan_area(self, area: list[tuple[float]]) -> None:
-        """ Scan area by its samples and populate self.visible_objects.
-            Return True if get target """
-        print('total area to scan', len(area))
-        for sample in area:
-            if sample not in self.checked_samples:
-                self.checked_samples[sample] = None
-                ray_origin = self.__get_ray_origin(sample)
-                res, loc, nor, ind, obj, mat = bpy.context.scene.ray_cast(
-                    self.depsgraph, ray_origin, self.camera.direction)
-                if not obj:
-                    continue
-                if obj not in self.visible_objects:
-                    self.visible_objects.append(obj)
-                self.checked_samples[sample] = obj
-        self.camera.update_ray_cast(self.checked_samples)
+    def scan_area(self, area_samples: list[tuple[float]], 
+            camera: 'Drawing_camera') -> dict[tuple[float],bpy.types.Object]:
+        """ Scan area by its samples and return samples mapping """
+        checked_samples = {}
+        print('total area to scan', len(area_samples))
+        for sample in area_samples:
+            checked_samples[sample] = None
+            ray_origin = self.__get_ray_origin(sample, self.camera)
+            res, loc, nor, ind, obj, mat = bpy.context.scene.ray_cast(
+                self.depsgraph, ray_origin, camera.direction)
+            if not obj:
+                continue
+            checked_samples[sample] = obj
+        return checked_samples
     
-    def get_obj_bound_box(self, obj: bpy.types.Object) -> list[Vector]:
-        """ Get the bounding box of obj in world coords. 
-            For collection instances calculate the bounding box 
-            for all the objects """
-        obj_bbox = []
-        for obj_inst in self.depsgraph.object_instances:
-            is_obj_instance = obj_inst.is_instance and \
-                    obj_inst.parent.name == obj.name
-            is_obj = obj_inst.object.name == obj.name
-            if is_obj_instance or is_obj:
-                bbox = obj_inst.object.bound_box
-                obj_bbox += [obj_inst.object.matrix_world @ Vector(v) \
-                        for v in bbox]
-        if is_obj:
-            return obj_bbox
-        bbox_xs, bbox_ys, bbox_zs = [], [], []
-        for v in obj_bbox:
-            bbox_xs.append(v.x)
-            bbox_ys.append(v.y)
-            bbox_zs.append(v.z)
-        x_min, x_max = min(bbox_xs), max(bbox_xs)
-        y_min, y_max = min(bbox_ys), max(bbox_ys)
-        z_min, z_max = min(bbox_zs), max(bbox_zs)
-        bound_box = [
-                Vector((x_min, y_min, z_min)),
-                Vector((x_min, y_min, z_max)),
-                Vector((x_min, y_max, z_max)),
-                Vector((x_min, y_max, z_min)),
-                Vector((x_max, y_min, z_min)),
-                Vector((x_max, y_min, z_max)),
-                Vector((x_max, y_max, z_max)),
-                Vector((x_max, y_max, z_min))]
-        return bound_box
-
-    def frame_obj_bound_rect(self, obj: bpy.types.Object) -> tuple[tuple[float]]:
-        """ Get the bounding rect of obj in cam view coords 
-            (rect is just greater than object and accords with the step grid)"""
-        world_obj_bbox = self.get_obj_bound_box(obj)
-        bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
-            self.camera.obj, v) for v in world_obj_bbox]
-        bbox_xs = [v.x for v in bbox_from_cam_view]
-        bbox_ys = [v.y for v in bbox_from_cam_view]
-        x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
-        y_min, y_max = max(0.0, min(bbox_ys)), min(1.0, max(bbox_ys))
-        if x_min > 1 or x_max < 0 or y_min > 1 or y_max < 0:
-            ## obj is out of frame
-            return None
-        x_min_round = self.__round_to_base(x_min, self.step, math.floor)
-        x_max_round = self.__round_to_base(x_max, self.step, math.ceil)
-        y_min_round = self.__round_to_base(y_min, self.step, math.floor)
-        y_max_round = self.__round_to_base(y_max, self.step, math.ceil)
-        return (x_min_round, y_min_round), (x_max_round, y_max_round) 
-
 class Drawing_camera:
     obj = bpy.types.Object
     direction: Vector
@@ -178,11 +137,14 @@ class Drawing_camera:
     frame_x_vector: Vector
     frame_y_vector: Vector
     frame_z_start: float
+    checked_samples: dict[tuple[float], bpy.types.Object]
+    visible_objects: list[bpy.types.Object]
 
     def __init__(self, camera: bpy.types.Object, draw_context: 'Drawing_context'):
         self.obj = camera
         self.name = camera.name
         self.draw_context = draw_context
+        self.scanner = Scanner(draw_context.depsgraph, self, SCANNING_STEP)
         self.path = self.get_path()
         self.direction = camera.matrix_world.to_quaternion() @ \
                 Vector((0.0, 0.0, -1.0))
@@ -192,7 +154,61 @@ class Drawing_camera:
         self.frame_y_vector = self.frame[0] - self.frame[1]
         self.frame_z_start = -camera.data.clip_start
         self.ray_cast_filepath = os.path.join(self.path, RAY_CAST_FILENAME)
-        self.existing_ray_cast = self.get_existing_ray_cast()
+        self.ray_cast = self.get_existing_ray_cast()
+        self.checked_samples = {}
+        self.visible_objects = []
+
+    def check_object_visibility(self, subj: 'Drawing_subject') -> bool:
+        """ Get true if obj is visible """
+        obj = subj.obj
+        area_to_scan = self.frame_obj_bound_rect(obj)
+        print('area to scan', area_to_scan)
+        if area_to_scan:
+            area_samples = range_2d(area_to_scan, self.scanner.step)
+            print('area samples\n', area_samples)
+            self.scan_area(area_samples)
+            return subj in self.visible_objects
+
+    def frame_obj_bound_rect(self, obj: bpy.types.Object) -> tuple[tuple[float]]:
+        """ Get the bounding rect of obj in cam view coords 
+            (rect is just greater than object and accords with the step grid)"""
+        world_obj_bbox = get_obj_bound_box(obj, self.draw_context.depsgraph)
+        bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
+            self.obj, v) for v in world_obj_bbox]
+        bbox_xs = [v.x for v in bbox_from_cam_view]
+        bbox_ys = [v.y for v in bbox_from_cam_view]
+        x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
+        y_min, y_max = max(0.0, min(bbox_ys)), min(1.0, max(bbox_ys))
+        if x_min > 1 or x_max < 0 or y_min > 1 or y_max < 0:
+            ## obj is out of frame
+            return None
+        x_min_round = round_to_base(x_min, self.scanner.step, math.floor)
+        x_max_round = round_to_base(x_max, self.scanner.step, math.ceil)
+        y_min_round = round_to_base(y_min, self.scanner.step, math.floor)
+        y_max_round = round_to_base(y_max, self.scanner.step, math.ceil)
+        return (x_min_round, y_min_round), (x_max_round, y_max_round) 
+
+    def get_visible_objects(self) -> list[bpy.types.Object]:
+        area_to_scan = ((0.0, 0.0), (1.0, 1.0))
+        area_samples = range_2d(area_to_scan, self.scanner.step)
+        self.scan_area(area_samples)
+        return self.visible_objects
+
+    def scan_area(self, area_samples: list[tuple[float]]) -> None:
+        """ Scan samples if not already scanned and update self.checked_samples 
+            and self.visible_objects """
+        new_samples = [sample for sample in area_samples \
+                if sample not in self.checked_samples]
+        checked_samples = self.scanner.scan_area(new_samples, self)
+        self.update_checked_samples(checked_samples)
+
+    def update_checked_samples(self, checked_samples):
+        for sample in checked_samples:
+            obj = checked_samples[sample]
+            self.checked_samples[sample] = obj
+            if obj not in self.visible_objects:
+                self.visible_objects.append(obj)
+        self.update_ray_cast(checked_samples)
 
     def get_path(self):
         cam_path = os.path.join(self.draw_context.RENDER_BASEPATH, self.name)
@@ -203,8 +219,9 @@ class Drawing_camera:
         return cam_path
         
     def get_obj_prev_ray_cast(self, obj_name: str):
+        """ Return previous object samples """
         samples = []
-        for sample, obj in self.existing_ray_cast.items():
+        for sample, obj in self.ray_cast.items():
             if obj == obj_name:
                samples.append(sample)
         return samples
@@ -223,18 +240,34 @@ class Drawing_camera:
             f.close()
             return data
 
-    def update_ray_cast(self, checked_samples):
-        for sample in checked_samples:
-            obj_name = f'{checked_samples[sample].name}' \
-                    if checked_samples[sample] else checked_samples[sample]
-            self.existing_ray_cast[sample] = obj_name
+    def write_ray_cast(self):
         with open(self.ray_cast_filepath, 'w') as f:
-            for sample in self.existing_ray_cast:
-                value = self.existing_ray_cast[sample] 
+            for sample in self.ray_cast:
+                value = self.ray_cast[sample] 
                 ## Add quotes to actual object name for correct value passing
                 string_value = f'"{value}"' if value else value
                 f.write(f'{sample}, {string_value}\n')
-        ## TODO render just selected subject if samples are not changed
+
+    def update_ray_cast(self, checked_samples):
+        subjects = self.draw_context.selected_subjects
+        changed_subjects = []
+        for sample in checked_samples:
+            obj = self.checked_samples[sample]
+            obj_name = f'{obj.name}' if obj else obj
+            if self.ray_cast[sample] != obj_name:
+                ## Add changed objects to subjects:
+                ## the previous one...
+                changed_subjects.append(bpy.data.objects[self.ray_cast[sample]])
+                ## ... and the new one
+                changed_subjects.append(bpy.data.objects[obj_name])
+                ## Eventually update ray_cast with the new object
+                self.ray_cast[sample] = obj_name
+        ## Remove doubles from subjects
+        changed_subjects = list(set(changed_subjects))
+        if changed_subjects:
+            self.write_ray_cast()
+        subjects = list(set(subjects + changed_subjects))
+        self.draw_context.set_subject(subjects)
 
 class Drawing_context:
     args: list[str]
@@ -260,14 +293,13 @@ class Drawing_context:
         self.depsgraph.update()
 
         self.frame_size = self.camera.obj.data.ortho_scale
-        self.scanner = Scanner(self.depsgraph, self.camera, SCANNING_STEP)
         if not self.selected_subjects:
             print("Scan for visible objects...")
             scanning_start_time = time.time()
-            self.subjects = self.scanner.get_visible_objects()
+            self.subjects = self.camera.get_visible_objects()
             scanning_time = time.time() - scanning_start_time
             print('subjects', self.subjects)
-            print('scan samples\n', self.scanner.checked_samples)
+            print('scan samples\n', self.camera.checked_samples)
             print(f"   ...scanned in {scanning_time} seconds")
         else:
             print("Scan for visibility of objects...")
@@ -276,12 +308,12 @@ class Drawing_context:
                 subj = Drawing_subject(obj, self)
                 ## Scan samples of previous position
                 prev_samples = self.camera.get_obj_prev_ray_cast(subj.name)
-                self.scanner.scan_area(prev_samples)
+                self.camera.scan_area(prev_samples)
                 ## Scan subj 
-                self.scanner.check_object_visibility(subj)
-            self.subjects = self.scanner.visible_objects
+                self.camera.check_object_visibility(subj)
+            self.subjects = self.camera.visible_objects
             print('subjects', self.subjects)
-            print('scan samples\n', self.scanner.checked_samples)
+            print('scan samples\n', self.camera.checked_samples)
             scanning_time = time.time() - scanning_start_time
             print(f"   ...scanned in {scanning_time} seconds")
 
@@ -291,6 +323,9 @@ class Drawing_context:
                 RESOLUTION_FACTOR
         self.svg_styles = [prj.STYLES[d_style]['name'] for d_style in 
                 self.style]
+
+    def set_subjects(subjects):
+        self.subjects = subjects
 
     def __get_style(self) -> str:
         style = ''.join([a.replace('-', '') for a in self.args 
