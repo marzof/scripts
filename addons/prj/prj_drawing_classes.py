@@ -121,7 +121,7 @@ class Scanner:
         print('total area to scan', len(area_samples))
         for sample in area_samples:
             checked_samples[sample] = None
-            ray_origin = self.__get_ray_origin(sample, self.camera)
+            ray_origin = self.__get_ray_origin(sample, self.draw_camera)
             res, loc, nor, ind, obj, mat = bpy.context.scene.ray_cast(
                 self.depsgraph, ray_origin, camera.direction)
             if not obj:
@@ -138,7 +138,8 @@ class Drawing_camera:
     frame_y_vector: Vector
     frame_z_start: float
     checked_samples: dict[tuple[float], bpy.types.Object]
-    visible_objects: list[bpy.types.Object]
+    ray_cast: dict[tuple[float], str]
+    objects_to_draw = list[bpy.types.Object]
 
     def __init__(self, camera: bpy.types.Object, draw_context: 'Drawing_context'):
         self.obj = camera
@@ -156,18 +157,15 @@ class Drawing_camera:
         self.ray_cast_filepath = os.path.join(self.path, RAY_CAST_FILENAME)
         self.ray_cast = self.get_existing_ray_cast()
         self.checked_samples = {}
-        self.visible_objects = []
+        self.objects_to_draw = self.draw_context.selected_subjects
 
-    def check_object_visibility(self, subj: 'Drawing_subject') -> bool:
-        """ Get true if obj is visible """
-        obj = subj.obj
-        area_to_scan = self.frame_obj_bound_rect(obj)
-        print('area to scan', area_to_scan)
-        if area_to_scan:
-            area_samples = range_2d(area_to_scan, self.scanner.step)
-            print('area samples\n', area_samples)
-            self.scan_area(area_samples)
-            return subj in self.visible_objects
+    def get_path(self) -> str:
+        cam_path = os.path.join(self.draw_context.RENDER_BASEPATH, self.name)
+        try:
+            os.mkdir(cam_path)
+        except OSError:
+            print (f'{cam_path} already exists. Going on')
+        return cam_path
 
     def frame_obj_bound_rect(self, obj: bpy.types.Object) -> tuple[tuple[float]]:
         """ Get the bounding rect of obj in cam view coords 
@@ -187,46 +185,39 @@ class Drawing_camera:
         y_min_round = round_to_base(y_min, self.scanner.step, math.floor)
         y_max_round = round_to_base(y_max, self.scanner.step, math.ceil)
         return (x_min_round, y_min_round), (x_max_round, y_max_round) 
-
-    def get_visible_objects(self) -> list[bpy.types.Object]:
+        
+    def scan_all(self) -> None:
         area_to_scan = ((0.0, 0.0), (1.0, 1.0))
         area_samples = range_2d(area_to_scan, self.scanner.step)
         self.scan_area(area_samples)
-        return self.visible_objects
 
-    def scan_area(self, area_samples: list[tuple[float]]) -> None:
-        """ Scan samples if not already scanned and update self.checked_samples 
-            and self.visible_objects """
-        new_samples = [sample for sample in area_samples \
-                if sample not in self.checked_samples]
-        checked_samples = self.scanner.scan_area(new_samples, self)
-        self.update_checked_samples(checked_samples)
+    def scan_object_area(self, subj: 'Drawing_subject') -> None:
+        obj = subj.obj
+        area_to_scan = self.frame_obj_bound_rect(obj)
+        print('area to scan', area_to_scan)
+        if area_to_scan:
+            area_samples = range_2d(area_to_scan, self.scanner.step)
+            print('area samples\n', area_samples)
+            self.scan_area(area_samples)
 
-    def update_checked_samples(self, checked_samples):
-        for sample in checked_samples:
-            obj = checked_samples[sample]
-            self.checked_samples[sample] = obj
-            if obj not in self.visible_objects:
-                self.visible_objects.append(obj)
-        self.update_ray_cast(checked_samples)
-
-    def get_path(self):
-        cam_path = os.path.join(self.draw_context.RENDER_BASEPATH, self.name)
-        try:
-            os.mkdir(cam_path)
-        except OSError:
-            print (f'{cam_path} already exists. Going on')
-        return cam_path
-        
-    def get_obj_prev_ray_cast(self, obj_name: str):
-        """ Return previous object samples """
+    def scan_previous_obj_area(self, obj_name: str) -> None:
         samples = []
         for sample, obj in self.ray_cast.items():
             if obj == obj_name:
                samples.append(sample)
-        return samples
+        self.scan_area(samples)
 
-    def get_existing_ray_cast(self):
+    def scan_area(self, area_samples: list[tuple[float]]) -> None:
+        """ Scan area_samples and update ray_cast """
+        new_samples = [sample for sample in area_samples \
+                if sample not in self.checked_samples]
+        checked_samples = self.scanner.scan_area(new_samples, self)
+        ## Update self.checked_samples
+        for sample in checked_samples:
+            self.checked_samples[sample] = checked_samples[sample]
+        self.update_ray_cast(checked_samples)
+
+    def get_existing_ray_cast(self) -> dict:
         data = {}
         try:
             with open(self.ray_cast_filepath) as f:
@@ -239,8 +230,8 @@ class Drawing_camera:
             f = open(self.ray_cast_filepath, 'w')
             f.close()
             return data
-
-    def write_ray_cast(self):
+    
+    def write_ray_cast(self) -> None:
         with open(self.ray_cast_filepath, 'w') as f:
             for sample in self.ray_cast:
                 value = self.ray_cast[sample] 
@@ -248,32 +239,30 @@ class Drawing_camera:
                 string_value = f'"{value}"' if value else value
                 f.write(f'{sample}, {string_value}\n')
 
-    def update_ray_cast(self, checked_samples):
-        subjects = self.draw_context.selected_subjects
+    def update_ray_cast(self, 
+            checked_samples: dict[tuple[float], bpy.types.Object]) -> None:
         changed_subjects = []
         for sample in checked_samples:
             obj = self.checked_samples[sample]
+            prev_sample_value = self.ray_cast[sample]
+            prev_obj = bpy.data.objects[prev_sample_value] \
+                    if prev_sample_value else None
+            if obj == prev_obj:
+                continue
             obj_name = f'{obj.name}' if obj else obj
-            if self.ray_cast[sample] != obj_name:
-                ## Add changed objects to subjects:
-                ## the previous one...
-                changed_subjects.append(bpy.data.objects[self.ray_cast[sample]])
-                ## ... and the new one
-                changed_subjects.append(bpy.data.objects[obj_name])
-                ## Eventually update ray_cast with the new object
-                self.ray_cast[sample] = obj_name
-        ## Remove doubles from subjects
-        changed_subjects = list(set(changed_subjects))
+            if prev_obj: changed_subjects.append(prev_obj)
+            if obj: changed_subjects.append(obj)
+            self.ray_cast[sample] = obj_name
+
         if changed_subjects:
             self.write_ray_cast()
-        subjects = list(set(subjects + changed_subjects))
-        self.draw_context.set_subject(subjects)
+            self.objects_to_draw = list(set(
+                self.objects_to_draw + changed_subjects))
 
 class Drawing_context:
     args: list[str]
     style: str
     selected_subjects: list[bpy.types.Object]
-    visible_objects: list[bpy.types.Object]
     subjects: list[bpy.types.Object]
     camera: Drawing_camera 
     depsgraph: bpy.types.Depsgraph
@@ -288,17 +277,18 @@ class Drawing_context:
     def __init__(self, args: list[str]):
         self.args = args
         self.style = self.__get_style()
-        self.selected_subjects, self.camera = self.__get_objects()
         self.depsgraph = bpy.context.evaluated_depsgraph_get()
         self.depsgraph.update()
-
+        selection = self.__get_objects()
+        self.selected_subjects = selection['objects']
+        self.camera = Drawing_camera(selection['camera'], self)
         self.frame_size = self.camera.obj.data.ortho_scale
+
         if not self.selected_subjects:
             print("Scan for visible objects...")
             scanning_start_time = time.time()
-            self.subjects = self.camera.get_visible_objects()
+            self.camera.scan_all()
             scanning_time = time.time() - scanning_start_time
-            print('subjects', self.subjects)
             print('scan samples\n', self.camera.checked_samples)
             print(f"   ...scanned in {scanning_time} seconds")
         else:
@@ -307,15 +297,14 @@ class Drawing_context:
             for obj in self.selected_subjects:
                 subj = Drawing_subject(obj, self)
                 ## Scan samples of previous position
-                prev_samples = self.camera.get_obj_prev_ray_cast(subj.name)
-                self.camera.scan_area(prev_samples)
+                self.camera.scan_previous_obj_area(subj.name)
                 ## Scan subj 
-                self.camera.check_object_visibility(subj)
-            self.subjects = self.camera.visible_objects
-            print('subjects', self.subjects)
+                self.camera.scan_object_area(subj)
             print('scan samples\n', self.camera.checked_samples)
             scanning_time = time.time() - scanning_start_time
             print(f"   ...scanned in {scanning_time} seconds")
+        self.subjects = self.camera.objects_to_draw
+        print('subjects', self.subjects)
 
         self.svg_size = format_svg_size(self.frame_size * 10, 
                 self.frame_size * 10)
@@ -323,9 +312,6 @@ class Drawing_context:
                 RESOLUTION_FACTOR
         self.svg_styles = [prj.STYLES[d_style]['name'] for d_style in 
                 self.style]
-
-    def set_subjects(subjects):
-        self.subjects = subjects
 
     def __get_style(self) -> str:
         style = ''.join([a.replace('-', '') for a in self.args 
@@ -344,10 +330,10 @@ class Drawing_context:
         objs = []
         for ob in all_objs:
             if bpy.data.objects[ob].type == 'CAMERA':
-                cam = Drawing_camera(bpy.data.objects[ob], self)
+                cam = bpy.data.objects[ob]
             elif prj.is_renderables(bpy.data.objects[ob]):
                 objs.append(bpy.data.objects[ob])
-        return objs, cam
+        return {'objects': objs, 'camera': cam}
         
 class Draw_maker:
     draw_context: Drawing_context
