@@ -88,9 +88,6 @@ drawing_times = {}
 draw_context = Drawing_context(args = ARGS)
 draw_maker = Draw_maker(draw_context)
 
-#for obj in draw_context.visible_objects:
-#    print(obj)
-
 for subject in draw_context.subjects:
     print('Drawing', subject.name)
     drawing_start_time = time.time()

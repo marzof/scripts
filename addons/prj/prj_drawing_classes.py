@@ -41,7 +41,8 @@ start_time = time.time()
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
 RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 SCANNING_STEP: float = .2
-RAY_CAST_FILENAME = 'ray_cast'
+RAY_CAST_FILENAME: str = 'ray_cast'
+ROUNDING: int = 6
 
 def range_2d(area: tuple[tuple[float]], step: float) -> list[tuple[float]]:
     """ Get a list representing a 2-dimensional array covering the area 
@@ -53,8 +54,11 @@ def range_2d(area: tuple[tuple[float]], step: float) -> list[tuple[float]]:
             for x in np.arange(x_min, x_max, step)]
     return samples
 
-def round_to_base(x: float, base: float, round_func) -> float:
-    return round(base * round_func(x / base), 6)
+def round_to_base(x: float, base: float, round_func, 
+        rounding: int = ROUNDING) -> float:
+    """ Use rounding function to round x to base (for instance: 
+        x = 4.77, base = 0.5, round_func = math.floor -> return 4.5 ) """
+    return round(base * round_func(x / base), rounding)
 
 def get_obj_bound_box(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> \
         list[Vector]:
@@ -98,7 +102,6 @@ class Scanner:
             draw_camera: 'Drawing_camera', step: float = 1.0):
         self.depsgraph = depsgraph
         self.draw_camera = draw_camera
-        self.camera = draw_camera.obj
         self.step = step
 
     def get_step(self) -> float:
@@ -116,7 +119,7 @@ class Scanner:
 
     def scan_area(self, area_samples: list[tuple[float]], 
             camera: 'Drawing_camera') -> dict[tuple[float],bpy.types.Object]:
-        """ Scan area by its samples and return samples mapping """
+        """ Scan area by its samples and return checked_samples maps """
         checked_samples = {}
         print('total area to scan', len(area_samples))
         for sample in area_samples:
@@ -130,15 +133,19 @@ class Scanner:
         return checked_samples
     
 class Drawing_camera:
-    obj = bpy.types.Object
+    obj: bpy.types.Object
+    name: str
+    scanner: Scanner
+    path: str
     direction: Vector
     frame: list[Vector]
     frame_origin: Vector
     frame_x_vector: Vector
     frame_y_vector: Vector
     frame_z_start: float
-    checked_samples: dict[tuple[float], bpy.types.Object]
+    ray_cast_filepath: str
     ray_cast: dict[tuple[float], str]
+    checked_samples: dict[tuple[float], bpy.types.Object]
     objects_to_draw = list[bpy.types.Object]
 
     def __init__(self, camera: bpy.types.Object, draw_context: 'Drawing_context'):
@@ -155,11 +162,12 @@ class Drawing_camera:
         self.frame_y_vector = self.frame[0] - self.frame[1]
         self.frame_z_start = -camera.data.clip_start
         self.ray_cast_filepath = os.path.join(self.path, RAY_CAST_FILENAME)
-        self.ray_cast = self.get_existing_ray_cast()
+        self.ray_cast = self.get_ray_cast_data()
         self.checked_samples = {}
         self.objects_to_draw = self.draw_context.selected_subjects
 
     def get_path(self) -> str:
+        """ Return folder path named after camera (create it if needed) """
         cam_path = os.path.join(self.draw_context.RENDER_BASEPATH, self.name)
         try:
             os.mkdir(cam_path)
@@ -187,11 +195,13 @@ class Drawing_camera:
         return (x_min_round, y_min_round), (x_max_round, y_max_round) 
         
     def scan_all(self) -> None:
+        """ Scan all the camera frame """
         area_to_scan = ((0.0, 0.0), (1.0, 1.0))
         area_samples = range_2d(area_to_scan, self.scanner.step)
         self.scan_area(area_samples)
 
     def scan_object_area(self, subj: 'Drawing_subject') -> None:
+        """ Scan the area of subj """
         obj = subj.obj
         area_to_scan = self.frame_obj_bound_rect(obj)
         print('area to scan', area_to_scan)
@@ -201,6 +211,7 @@ class Drawing_camera:
             self.scan_area(area_samples)
 
     def scan_previous_obj_area(self, obj_name: str) -> None:
+        """ Scan the area where obj was """
         samples = []
         for sample, obj in self.ray_cast.items():
             if obj == obj_name:
@@ -212,12 +223,15 @@ class Drawing_camera:
         new_samples = [sample for sample in area_samples \
                 if sample not in self.checked_samples]
         checked_samples = self.scanner.scan_area(new_samples, self)
-        ## Update self.checked_samples
+        ## Update checked_samples, ray_cast and objects_to_draw
         for sample in checked_samples:
             self.checked_samples[sample] = checked_samples[sample]
-        self.update_ray_cast(checked_samples)
+        changed_subjects = self.update_ray_cast(checked_samples)
+        self.objects_to_draw = list(set(self.objects_to_draw + changed_subjects))
 
-    def get_existing_ray_cast(self) -> dict:
+    def get_ray_cast_data(self) -> dict:
+        """ Get data (in a dictionary) from ray_cast file if it exists 
+            (or creates it if missing )"""
         data = {}
         try:
             with open(self.ray_cast_filepath) as f:
@@ -232,6 +246,7 @@ class Drawing_camera:
             return data
     
     def write_ray_cast(self) -> None:
+        """ Write ray_cast to file """
         with open(self.ray_cast_filepath, 'w') as f:
             for sample in self.ray_cast:
                 value = self.ray_cast[sample] 
@@ -241,23 +256,25 @@ class Drawing_camera:
 
     def update_ray_cast(self, 
             checked_samples: dict[tuple[float], bpy.types.Object]) -> None:
+        """ Compare checked_samples (scan result) with ray_cast data, 
+            update them and return changed_subjects"""
         changed_subjects = []
         for sample in checked_samples:
-            obj = self.checked_samples[sample]
-            prev_sample_value = self.ray_cast[sample]
+            obj = checked_samples[sample]
+            prev_sample_value = self.ray_cast[sample] \
+                    if sample in self.ray_cast else None
             prev_obj = bpy.data.objects[prev_sample_value] \
                     if prev_sample_value else None
             if obj == prev_obj:
                 continue
             obj_name = f'{obj.name}' if obj else obj
+            self.ray_cast[sample] = obj_name
             if prev_obj: changed_subjects.append(prev_obj)
             if obj: changed_subjects.append(obj)
-            self.ray_cast[sample] = obj_name
-
         if changed_subjects:
             self.write_ray_cast()
-            self.objects_to_draw = list(set(
-                self.objects_to_draw + changed_subjects))
+        return list(set(changed_subjects))
+
 
 class Drawing_context:
     args: list[str]
@@ -348,11 +365,11 @@ class Draw_maker:
         return self.drawing_context
     
     def export_grease_pencil(self, grease_pencil: bpy.types.Object, 
-            remove: bool) -> str:
+            remove: bool, svg_suffix: str = '') -> str:
         """ Export grease_pencil to svg and return its path """
         prj_utils.make_active(grease_pencil)
 
-        svg_path = self.subject.get_svg_path()
+        svg_path = self.subject.get_svg_path(suffix=svg_suffix)
         bpy.ops.wm.gpencil_export_svg(filepath=svg_path, 
                 selected_object_type='VISIBLE')
         if remove:
@@ -363,9 +380,7 @@ class Draw_maker:
             -> bpy.types.Object:
         """ Create a grease pencil with lineart modifier according to 
             drawing_style """
-        get_subject = getattr(globals()['Drawing_subject'], 
-                prj.STYLES[drawing_style]['subject'])
-        draw_subject = get_subject(self.subject)
+        draw_subject = self.subject
         if not draw_subject:
             return None
         lineart_gp = prj_utils.create_lineart(source=self.subject, 
@@ -381,25 +396,26 @@ class Draw_maker:
             Then export the grease pencil and return its filepath """
         self.subject = subject
         for drawing_style in draw_style:
+            file_suffix = ''
+            if drawing_style == 'c':
+                cam = self.drawing_context.camera.obj
+                cam_clip_end = cam.data.clip_end
+                cam.data.clip_end = cam.data.clip_start + .01
+                file_suffix = 'cut'
             la_gp = self.__create_lineart_grease_pencil(drawing_style)
             if la_gp: lineart_gp = la_gp
+            if drawing_style == 'c': cam.data.clip_end = cam_clip_end
 
         lineart_gp.hide_viewport = False
-        svg_path = self.export_grease_pencil(lineart_gp, remove)
+        svg_path = self.export_grease_pencil(lineart_gp, remove, file_suffix)
         return svg_path
 
 
 class Drawing_subject:
     obj: bpy.types.Object
     drawing_context: Drawing_context
-    #visible: bool
-    #frontal: bool
-    #behind: bool
     lineart: bpy.types.Object ## bpy.types.GreasePencil
     svg_path: str
-    #visibility: dict[str, bool]
-    #objects_visibility: dict[str, list[bpy.types.Object]]
-    #cut_objects: list[bpy.types.Object]
 
     def __init__(self, obj, draw_context):
         self.obj = obj
@@ -419,15 +435,7 @@ class Drawing_subject:
             self.objects = [obj]
 
         self.lineart_source = self.obj
-        #self.cut_objects = []
-            
-        #self.visibility, self.objects_visibility = self.__get_visibility(
-        #        linked = self.type == 'COLLECTION')
-        #self.visible = self.visibility['framed']
         self.grease_pencil = None
-        #self.cut_objects = [ob for ob in self.objects 
-        #        if ob in self.objects_visibility['frontal'] 
-        #        and ob in self.objects_visibility['behind']]
 
     def set_drawing_context(self, draw_context: Drawing_context) -> None:
         self.drawing_context = draw_context
@@ -443,50 +451,3 @@ class Drawing_subject:
         sfx = f"_{suffix}" if suffix else ""
         self.svg_path = f"{path}{sep}{pfx}{self.obj.name}{sfx}.svg"
         return self.svg_path
-
-    ## No mode needed
-    #def __get_visibility(self, linked: bool = True) -> dict[str, bool]:
-    #    """ Get self.obj visibility (framed, frontal, behind camera) 
-    #    and store individual visibilities in self.objects_visibility """
-    #    visibility = {}
-    #    objects_visibility = {}
-    #    for obj in self.objects:
-    #        framed = prj_utils.in_frame(self.drawing_context.camera, obj)
-    #        for k in framed:
-    #            if k not in objects_visibility:
-    #                objects_visibility[k] = []
-    #            if framed[k]:
-    #                objects_visibility[k].append(obj)
-    #            if len(visibility) == 3 and False not in visibility.values():
-    #                continue
-    #            if k not in visibility:
-    #                visibility[k] = framed[k]
-    #                continue
-    #            if not visibility[k] and framed[k]:
-    #                visibility[k] = framed[k]
-    #    return visibility, objects_visibility
-
-    #def get_cut_subject(self) -> 'Drawing_subject':
-    #    if not self.cut_objects:
-    #        return None
-    #    cuts_collection = bpy.data.collections.new(self.name + '_cuts')
-    #    for ob in self.cut_objects:
-    #        prj_utils.apply_mod(ob)
-    #        cut = prj_utils.cut_object(obj = ob, 
-    #                cut_plane = self.drawing_context.camera_frame)
-    #        cut.location = cut.location + \
-    #                self.drawing_context.camera_frame['direction']
-    #        to_draw = cut
-    #        if self.type == 'COLLECTION':
-    #            cuts_collection.objects.link(cut)
-    #            to_draw = cuts_collection
-
-    #    bpy.context.scene.collection.children.link(cuts_collection)
-    #    return Drawing_subject(to_draw, self.drawing_context)
-
-    def get_projected_subject(self) -> 'Drawing_subject':
-            return self
-
-    def get_back_subject(self) -> 'Drawing_subject':
-        ## TODO
-        pass

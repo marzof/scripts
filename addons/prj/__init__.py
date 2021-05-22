@@ -18,15 +18,15 @@ GREASE_PENCIL_MOD = 'prj_la'
 SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
 STYLES = {
         'a': {'name': 'all', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'subject': 'get_projected_subject'},
+            'chaining_threshold': 0},
         'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 1,
-            'chaining_threshold': 0, 'subject': 'get_projected_subject'},
+            'chaining_threshold': 0},
         'c': {'name': 'cut', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'subject': 'get_cut_subject'},
+            'chaining_threshold': 0},
         'h': {'name': 'hid', 'occlusion_start': 1, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'subject': 'get_projected_subject'},
+            'chaining_threshold': 0},
         'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'subject': 'get_back_subject'},
+            'chaining_threshold': 0},
         }
 prj_cmd = lambda flags, objects: [bpy.app.binary_path, "--background", 
         bpy.data.filepath, "--python", ADDONS_PATH + "/" + MAIN_PATH, 
