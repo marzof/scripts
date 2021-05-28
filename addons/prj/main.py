@@ -91,12 +91,12 @@ draw_maker = Draw_maker(draw_context)
 for subject in draw_context.subjects:
     print('Drawing', subject.name)
     drawing_start_time = time.time()
-    draw_subj = Drawing_subject(subject, draw_context)
+    draw_subjs = Drawing_subject(subject, draw_context)
     drawing = draw_maker.draw(draw_subj, draw_context.style)
     drawing_time = time.time() - drawing_start_time
     drawing_times[drawing_time] = subject.name
     print(f"   ...drawn in {drawing_time} seconds")
-    subjects.append(draw_subj)
+    subjects += draw_subjs
 
 for subject in subjects:
     svg = redraw_svg(subject, draw_context.svg_size, 

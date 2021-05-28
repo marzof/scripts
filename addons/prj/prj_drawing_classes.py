@@ -25,7 +25,7 @@
 
 import bpy
 import os
-from mathutils import Vector, geometry
+from mathutils import Vector, geometry, Matrix
 import prj
 from prj import prj_utils
 from pathlib import Path
@@ -146,7 +146,11 @@ class Drawing_camera:
     ray_cast_filepath: str
     ray_cast: dict[tuple[float], str]
     checked_samples: dict[tuple[float], bpy.types.Object]
-    objects_to_draw = list[bpy.types.Object]
+    objects_to_draw: list[bpy.types.Object]
+    clip_start: float
+    clip_end: float
+    matrix: Matrix
+
 
     def __init__(self, camera: bpy.types.Object, draw_context: 'Drawing_context'):
         self.obj = camera
@@ -161,10 +165,27 @@ class Drawing_camera:
         self.frame_x_vector = self.frame[1] - self.frame[2]
         self.frame_y_vector = self.frame[0] - self.frame[1]
         self.frame_z_start = -camera.data.clip_start
+
         self.ray_cast_filepath = os.path.join(self.path, RAY_CAST_FILENAME)
         self.ray_cast = self.get_ray_cast_data()
         self.checked_samples = {}
         self.objects_to_draw = self.draw_context.selected_subjects
+
+        self.clip_start = camera.data.clip_start
+        self.clip_end = camera.data.clip_end
+        self.matrix = camera.matrix_world
+    
+    def __get_cam_data(self) -> None:
+        """ Get data for back view """
+        self.inverse_matrix = Matrix().Scale(-1, 4, (.0,.0,1.0))
+
+        normal_vector = Vector((0.0, 0.0, -2 * self.clip_start))
+        z_scale = round(self.matrix.to_scale().z, 4)
+        opposite_matrix = Matrix().Scale(z_scale, 4, (.0,.0,1.0))
+        base_matrix = self.matrix @ opposite_matrix
+        translation = base_matrix.to_quaternion() @ (normal_vector * z_scale)
+
+        self.translate_matrix = Matrix.Translation(translation)
 
     def get_path(self) -> str:
         """ Return folder path named after camera (create it if needed) """
@@ -275,6 +296,19 @@ class Drawing_camera:
             self.write_ray_cast()
         return list(set(changed_subjects))
 
+    def set_cam_for_style(self, style: str) -> None:
+        """ Prepare camera for creating lineart according to chosen style """
+        if drawing_style == 'c':
+            self.obj.data.clip_end = self.clip_start + .01
+        if drawing_style == 'b':
+            self.__get_cam_data()
+            self.obj.matrix_world = (self.translate_matrix @ self.matrix) @ \
+                    self.inverse_matrix
+    
+    def restore_cam(self) -> None:
+        """ Restore orginal camera values """
+        self.obj.data.clip_end = self.clip_end
+        self.obj.matrix_world = self.matrix
 
 class Drawing_context:
     args: list[str]
@@ -298,15 +332,15 @@ class Drawing_context:
         self.depsgraph.update()
         selection = self.__get_objects()
         self.selected_subjects = selection['objects']
-        self.camera = Drawing_camera(selection['camera'], self)
-        self.frame_size = self.camera.obj.data.ortho_scale
+        self.drawing_camera = Drawing_camera(selection['camera'], self)
+        self.frame_size = self.drawing_camera.obj.data.ortho_scale
 
         if not self.selected_subjects:
             print("Scan for visible objects...")
             scanning_start_time = time.time()
-            self.camera.scan_all()
+            self.drawing_camera.scan_all()
             scanning_time = time.time() - scanning_start_time
-            print('scan samples\n', self.camera.checked_samples)
+            print('scan samples\n', self.drawing_camera.checked_samples)
             print(f"   ...scanned in {scanning_time} seconds")
         else:
             print("Scan for visibility of objects...")
@@ -314,13 +348,13 @@ class Drawing_context:
             for obj in self.selected_subjects:
                 subj = Drawing_subject(obj, self)
                 ## Scan samples of previous position
-                self.camera.scan_previous_obj_area(subj.name)
+                self.drawing_camera.scan_previous_obj_area(subj.name)
                 ## Scan subj 
-                self.camera.scan_object_area(subj)
-            print('scan samples\n', self.camera.checked_samples)
+                self.drawing_camera.scan_object_area(subj)
+            print('scan samples\n', self.drawing_camera.checked_samples)
             scanning_time = time.time() - scanning_start_time
             print(f"   ...scanned in {scanning_time} seconds")
-        self.subjects = self.camera.objects_to_draw
+        self.subjects = self.drawing_camera.objects_to_draw
         print('subjects', self.subjects)
 
         self.svg_size = format_svg_size(self.frame_size * 10, 
@@ -357,6 +391,7 @@ class Draw_maker:
 
     def __init__(self, draw_context):
         self.drawing_context = draw_context
+        self.drawing_camera = draw_context.drawing_camera
 
     def set_drawing_context(self, draw_context: Drawing_context) -> None:
         self.drawing_context = draw_context
@@ -386,29 +421,27 @@ class Draw_maker:
         lineart_gp = prj_utils.create_lineart(source=self.subject, 
             style=drawing_style, la_source=draw_subject)
         ## Hide grease pencil line art to keep next calculations fast
-        lineart_gp.hide_viewport = True
+        #lineart_gp.hide_viewport = True
         return lineart_gp
 
     def draw(self, subject: 'Drawing_subject', draw_style: str, 
-            remove: bool = True) -> str:
+            remove: bool = True) -> list[str]:
         """ Create a grease pencil for subject and add a lineart modifier for
             every draw_style. 
             Then export the grease pencil and return its filepath """
         self.subject = subject
+        svg_paths = []
         for drawing_style in draw_style:
-            file_suffix = ''
-            if drawing_style == 'c':
-                cam = self.drawing_context.camera.obj
-                cam_clip_end = cam.data.clip_end
-                cam.data.clip_end = cam.data.clip_start + .01
-                file_suffix = 'cut'
-            la_gp = self.__create_lineart_grease_pencil(drawing_style)
-            if la_gp: lineart_gp = la_gp
-            if drawing_style == 'c': cam.data.clip_end = cam_clip_end
-
-        lineart_gp.hide_viewport = False
-        svg_path = self.export_grease_pencil(lineart_gp, remove, file_suffix)
-        return svg_path
+            file_suffix = prj.STYLES[drawing_style]['name']
+            self.drawing_camera.set_cam_for_style(drawing_style)
+            lineart_gp = self.__create_lineart_grease_pencil(drawing_style)
+            if not lineart_gp: 
+                continue
+            #lineart_gp.hide_viewport = False
+            svg_paths.append(self.export_grease_pencil(
+                lineart_gp, remove, file_suffix))
+            self.drawing_camera.restore_cam()
+        return svg_paths
 
 
 class Drawing_subject:
