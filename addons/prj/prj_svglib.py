@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 POLYLINE_TAG: str = 'polyline'
 PL_TAG = '{http://www.w3.org/2000/svg}polyline'
 G_TAG = '{http://www.w3.org/2000/svg}g'
-SVG_ATTRIBUTES = {'prj': {}, 'cut': {}, 'hid': {},}
+SVG_ATTRIBUTES = {'prj': {}, 'cut': {}, 'hid': {}, 'bak': {}}
         ## Set by style
         #'prj': {'stroke': '#000000', 'stroke-opacity': '1',
         #    'stroke-linecap': 'round', 'stroke-width': '.1', 

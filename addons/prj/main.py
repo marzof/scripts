@@ -70,17 +70,6 @@ def redraw_svg(subject: Drawing_subject, svg_size: tuple[str], factor: float,
                 path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
     return svg
 
-def prepare_scene():
-    pass
-## TODO
-## Prepare scene:
-##   * get visible objects by raycasting camera view 
-##         or check by raycasting selected objects area
-##     handle camera clip start and end to generate cuts 
-##     make object local and single user (needed?)
-##     use to_mesh() for curve (needed?)
-##     use evaluated_get to take mods into account (needed?)
-
 drawings: list[Svg_drawing] = []
 subjects: list[Drawing_subject] = []
 drawing_times = {}
@@ -91,19 +80,20 @@ draw_maker = Draw_maker(draw_context)
 for subject in draw_context.subjects:
     print('Drawing', subject.name)
     drawing_start_time = time.time()
-    draw_subjs = Drawing_subject(subject, draw_context)
+    draw_subj = Drawing_subject(subject, draw_context)
     drawing = draw_maker.draw(draw_subj, draw_context.style)
     drawing_time = time.time() - drawing_start_time
     drawing_times[drawing_time] = subject.name
     print(f"   ...drawn in {drawing_time} seconds")
-    subjects += draw_subjs
+    subjects.append(draw_subj)
 
 for subject in subjects:
     svg = redraw_svg(subject, draw_context.svg_size, 
             draw_context.svg_factor, draw_context.svg_styles)
     drawings.append(svg)
 
-with Svg_drawing(draw_context.camera.name + '.svg', draw_context.svg_size) as composition:
+with Svg_drawing(draw_context.drawing_camera.name + '.svg', 
+        draw_context.svg_size) as composition:
     css = f"@import url({BASE_CSS});"
     style = composition.add_entity(Style, content = css) 
     for style in draw_context.svg_styles:
@@ -111,7 +101,7 @@ with Svg_drawing(draw_context.camera.name + '.svg', draw_context.svg_size) as co
         layer.set_id(style)
         for subject in subjects:
             use = layer.add_entity(Use, 
-                    link = f'{subject.svg_path}{svg_suffix}#{subject.name}_{style}')
+                link = f'{subject.svg_path}{svg_suffix}#{subject.name}_{style}')
             use.set_id(subject.name)
             for collection in subject.collections:
                 use.add_class(collection)

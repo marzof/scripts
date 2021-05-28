@@ -146,6 +146,7 @@ class Drawing_camera:
     ray_cast_filepath: str
     ray_cast: dict[tuple[float], str]
     checked_samples: dict[tuple[float], bpy.types.Object]
+    visible_objects: list[bpy.types.Object]
     objects_to_draw: list[bpy.types.Object]
     clip_start: float
     clip_end: float
@@ -169,6 +170,7 @@ class Drawing_camera:
         self.ray_cast_filepath = os.path.join(self.path, RAY_CAST_FILENAME)
         self.ray_cast = self.get_ray_cast_data()
         self.checked_samples = {}
+        self.visible_objects = []
         self.objects_to_draw = self.draw_context.selected_subjects
 
         self.clip_start = camera.data.clip_start
@@ -196,7 +198,8 @@ class Drawing_camera:
             print (f'{cam_path} already exists. Going on')
         return cam_path
 
-    def frame_obj_bound_rect(self, obj: bpy.types.Object) -> tuple[tuple[float]]:
+    def frame_obj_bound_rect(self, 
+            obj: bpy.types.Object) -> dict[str, tuple[float]]:
         """ Get the bounding rect of obj in cam view coords 
             (rect is just greater than object and accords with the step grid)"""
         world_obj_bbox = get_obj_bound_box(obj, self.draw_context.depsgraph)
@@ -204,8 +207,11 @@ class Drawing_camera:
             self.obj, v) for v in world_obj_bbox]
         bbox_xs = [v.x for v in bbox_from_cam_view]
         bbox_ys = [v.y for v in bbox_from_cam_view]
+        bbox_zs = [v.z for v in bbox_from_cam_view]
         x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
         y_min, y_max = max(0.0, min(bbox_ys)), min(1.0, max(bbox_ys))
+        z_min, z_max = min(bbox_zs), max(bbox_zs)
+        print('z', z_min, z_max)
         if x_min > 1 or x_max < 0 or y_min > 1 or y_max < 0:
             ## obj is out of frame
             return None
@@ -213,7 +219,8 @@ class Drawing_camera:
         x_max_round = round_to_base(x_max, self.scanner.step, math.ceil)
         y_min_round = round_to_base(y_min, self.scanner.step, math.floor)
         y_max_round = round_to_base(y_max, self.scanner.step, math.ceil)
-        return (x_min_round, y_min_round), (x_max_round, y_max_round) 
+        return {'bound_rect': ((x_min_round, y_min_round), 
+            (x_max_round, y_max_round)), 'z_min_max': (z_min, z_max)}
         
     def scan_all(self) -> None:
         """ Scan all the camera frame """
@@ -224,7 +231,7 @@ class Drawing_camera:
     def scan_object_area(self, subj: 'Drawing_subject') -> None:
         """ Scan the area of subj """
         obj = subj.obj
-        area_to_scan = self.frame_obj_bound_rect(obj)
+        area_to_scan = self.frame_obj_bound_rect(obj)['bound_rect']
         print('area to scan', area_to_scan)
         if area_to_scan:
             area_samples = range_2d(area_to_scan, self.scanner.step)
@@ -275,18 +282,20 @@ class Drawing_camera:
                 string_value = f'"{value}"' if value else value
                 f.write(f'{sample}, {string_value}\n')
 
-    def update_ray_cast(self, 
-            checked_samples: dict[tuple[float], bpy.types.Object]) -> None:
+    def update_ray_cast(self, checked_samples: dict[tuple[float], 
+        bpy.types.Object]) -> list[bpy.types.Object]:
         """ Compare checked_samples (scan result) with ray_cast data, 
             update them and return changed_subjects"""
         changed_subjects = []
         for sample in checked_samples:
             obj = checked_samples[sample]
+            if obj and obj not in self.visible_objects:
+                self.visible_objects.append(obj)
             prev_sample_value = self.ray_cast[sample] \
                     if sample in self.ray_cast else None
             prev_obj = bpy.data.objects[prev_sample_value] \
                     if prev_sample_value else None
-            if obj == prev_obj:
+            if obj and obj == prev_obj:
                 continue
             obj_name = f'{obj.name}' if obj else obj
             self.ray_cast[sample] = obj_name
@@ -298,9 +307,9 @@ class Drawing_camera:
 
     def set_cam_for_style(self, style: str) -> None:
         """ Prepare camera for creating lineart according to chosen style """
-        if drawing_style == 'c':
+        if style == 'c':
             self.obj.data.clip_end = self.clip_start + .01
-        if drawing_style == 'b':
+        if style == 'b':
             self.__get_cam_data()
             self.obj.matrix_world = (self.translate_matrix @ self.matrix) @ \
                     self.inverse_matrix
@@ -327,6 +336,7 @@ class Drawing_context:
 
     def __init__(self, args: list[str]):
         self.args = args
+        self.draw_all = False
         self.style = self.__get_style()
         self.depsgraph = bpy.context.evaluated_depsgraph_get()
         self.depsgraph.update()
@@ -355,6 +365,18 @@ class Drawing_context:
             scanning_time = time.time() - scanning_start_time
             print(f"   ...scanned in {scanning_time} seconds")
         self.subjects = self.drawing_camera.objects_to_draw
+        if not self.subjects and self.draw_all:
+            self.subjects = self.drawing_camera.visible_objects
+        ## TODO subj has to be a Drawing_subject object and draw only if 
+        ##      condition is coherent (do not draw cut if not is_cut)
+        for subj in self.subjects:
+            z_min, z_max = self.drawing_camera.frame_obj_bound_rect(subj)[
+                    'z_min_max']
+            cut_plane = self.drawing_camera.clip_start
+            subj.is_cut = z_min < cut_plane < z_max
+            subj.is_behind = cut_plane < z_min < z_max
+            subj.is_in_front = z_min < z_max < cut_plane
+
         print('subjects', self.subjects)
 
         self.svg_size = format_svg_size(self.frame_size * 10, 
@@ -367,11 +389,11 @@ class Drawing_context:
     def __get_style(self) -> str:
         style = ''.join([a.replace('-', '') for a in self.args 
             if a.startswith('-')])
+        if 'a' in style:
+            self.draw_all = True
+            style = [l for l in style if l != 'a']
         if len(style) == 0:
             return self.DEFAULT_STYLE
-        ## Cut has to be the last style
-        if 'c' in style:
-            style = [l for l in style if l != 'c'] + ['c']
         return style
 
     def __get_objects(self) -> tuple[list[bpy.types.Object], bpy.types.Object]:
@@ -409,6 +431,7 @@ class Draw_maker:
                 selected_object_type='VISIBLE')
         if remove:
             bpy.data.objects.remove(grease_pencil, do_unlink=True)
+            self.subject.grease_pencil = None
         return self.subject.svg_path
 
     def __create_lineart_grease_pencil(self, drawing_style: str) \
@@ -432,6 +455,7 @@ class Draw_maker:
         self.subject = subject
         svg_paths = []
         for drawing_style in draw_style:
+            print('drawing...', subject.name, drawing_style)
             file_suffix = prj.STYLES[drawing_style]['name']
             self.drawing_camera.set_cam_for_style(drawing_style)
             lineart_gp = self.__create_lineart_grease_pencil(drawing_style)
@@ -443,10 +467,12 @@ class Draw_maker:
             self.drawing_camera.restore_cam()
         return svg_paths
 
-
 class Drawing_subject:
     obj: bpy.types.Object
     drawing_context: Drawing_context
+    is_in_front: bool
+    is_cut: bool
+    is_behind: bool
     lineart: bpy.types.Object ## bpy.types.GreasePencil
     svg_path: str
 
@@ -456,6 +482,7 @@ class Drawing_subject:
             self.obj = prj_utils.make_local_collection(self.obj)
         self.name = obj.name
         self.drawing_context = draw_context
+        self.is_in_front, self.is_cut, self.is_behind = False, False, False 
         self.collections = [coll.name for coll in obj.users_collection]
 
         if type(self.obj) == bpy.types.Collection:

@@ -89,9 +89,12 @@ def create_lineart(source: 'Drawing_subject', style: str,
     with style to it """
     if not la_source:
         la_source = source
+    print('la_source', la_source.name)
     if not source.grease_pencil:
+        print('not existing la_source', la_source.name)
         source.grease_pencil = __create_grease_pencil(
                 prj.GREASE_PENCIL_PREFIX + source.obj.name)
+    print('add lineart')
     __add_line_art_mod(source.grease_pencil,
             la_source.lineart_source, la_source.lineart_source_type, style)
     return source.grease_pencil
