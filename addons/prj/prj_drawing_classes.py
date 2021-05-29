@@ -210,8 +210,6 @@ class Drawing_camera:
         bbox_zs = [v.z for v in bbox_from_cam_view]
         x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
         y_min, y_max = max(0.0, min(bbox_ys)), min(1.0, max(bbox_ys))
-        z_min, z_max = min(bbox_zs), max(bbox_zs)
-        print('z', z_min, z_max)
         if x_min > 1 or x_max < 0 or y_min > 1 or y_max < 0:
             ## obj is out of frame
             return None
@@ -219,8 +217,7 @@ class Drawing_camera:
         x_max_round = round_to_base(x_max, self.scanner.step, math.ceil)
         y_min_round = round_to_base(y_min, self.scanner.step, math.floor)
         y_max_round = round_to_base(y_max, self.scanner.step, math.ceil)
-        return {'bound_rect': ((x_min_round, y_min_round), 
-            (x_max_round, y_max_round)), 'z_min_max': (z_min, z_max)}
+        return (x_min_round, y_min_round), (x_max_round, y_max_round)
         
     def scan_all(self) -> None:
         """ Scan all the camera frame """
@@ -231,7 +228,7 @@ class Drawing_camera:
     def scan_object_area(self, subj: 'Drawing_subject') -> None:
         """ Scan the area of subj """
         obj = subj.obj
-        area_to_scan = self.frame_obj_bound_rect(obj)['bound_rect']
+        area_to_scan = self.frame_obj_bound_rect(obj)
         print('area to scan', area_to_scan)
         if area_to_scan:
             area_samples = range_2d(area_to_scan, self.scanner.step)
@@ -257,7 +254,7 @@ class Drawing_camera:
         changed_subjects = self.update_ray_cast(checked_samples)
         self.objects_to_draw = list(set(self.objects_to_draw + changed_subjects))
 
-    def get_ray_cast_data(self) -> dict:
+    def get_ray_cast_data(self) -> dict[tuple[float], str]:
         """ Get data (in a dictionary) from ray_cast file if it exists 
             (or creates it if missing )"""
         data = {}
@@ -364,18 +361,22 @@ class Drawing_context:
             print('scan samples\n', self.drawing_camera.checked_samples)
             scanning_time = time.time() - scanning_start_time
             print(f"   ...scanned in {scanning_time} seconds")
-        self.subjects = self.drawing_camera.objects_to_draw
+        self.subjects = [Drawing_subject(obj, self) for obj in 
+                self.drawing_camera.objects_to_draw]
         if not self.subjects and self.draw_all:
-            self.subjects = self.drawing_camera.visible_objects
-        ## TODO subj has to be a Drawing_subject object and draw only if 
-        ##      condition is coherent (do not draw cut if not is_cut)
+            self.subjects = [Drawing_subject(obj, self) for obj in 
+                    self.drawing_camera.visible_objects]
+        ## TODO Check Drawing_subject and bpy.object flow 
         for subj in self.subjects:
-            z_min, z_max = self.drawing_camera.frame_obj_bound_rect(subj)[
-                    'z_min_max']
+            world_obj_bbox = get_obj_bound_box(subj.obj, self.depsgraph)
+            bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
+                self.drawing_camera.obj, v) for v in world_obj_bbox]
+            zs = [v.z for v in bbox_from_cam_view]
+            z_min, z_max = min(zs), max(zs)
             cut_plane = self.drawing_camera.clip_start
-            subj.is_cut = z_min < cut_plane < z_max
-            subj.is_behind = cut_plane < z_min < z_max
-            subj.is_in_front = z_min < z_max < cut_plane
+            subj.is_cut = z_min <= cut_plane <= z_max
+            subj.is_in_front = cut_plane < z_max
+            subj.is_behind = z_min < cut_plane
 
         print('subjects', self.subjects)
 
@@ -385,6 +386,13 @@ class Drawing_context:
                 RESOLUTION_FACTOR
         self.svg_styles = [prj.STYLES[d_style]['name'] for d_style in 
                 self.style]
+
+    def get_drawing_subject(self, obj):
+        for subj in self.selected_subjects:
+            if subj.obj == obj:
+                return subj
+        return Drawing_subject(obj, self)
+
 
     def __get_style(self) -> str:
         style = ''.join([a.replace('-', '') for a in self.args 
@@ -447,18 +455,20 @@ class Draw_maker:
         #lineart_gp.hide_viewport = True
         return lineart_gp
 
-    def draw(self, subject: 'Drawing_subject', draw_style: str, 
+    def draw(self, subject: 'Drawing_subject', styles: str, 
             remove: bool = True) -> list[str]:
         """ Create a grease pencil for subject and add a lineart modifier for
             every draw_style. 
             Then export the grease pencil and return its filepath """
         self.subject = subject
         svg_paths = []
-        for drawing_style in draw_style:
-            print('drawing...', subject.name, drawing_style)
-            file_suffix = prj.STYLES[drawing_style]['name']
-            self.drawing_camera.set_cam_for_style(drawing_style)
-            lineart_gp = self.__create_lineart_grease_pencil(drawing_style)
+        styles_to_process = [s for s in styles if 
+                    getattr(subject, prj.STYLES[s]['condition'])]
+        for draw_style in styles_to_process:
+            print('draw', subject.name, 'in style', draw_style)
+            file_suffix = prj.STYLES[draw_style]['name']
+            self.drawing_camera.set_cam_for_style(draw_style)
+            lineart_gp = self.__create_lineart_grease_pencil(draw_style)
             if not lineart_gp: 
                 continue
             #lineart_gp.hide_viewport = False
