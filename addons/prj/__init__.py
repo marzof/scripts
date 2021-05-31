@@ -16,6 +16,9 @@ GREASE_PENCIL_LAYER = 'prj_lay'
 GREASE_PENCIL_MAT = 'prj_mat'
 GREASE_PENCIL_MOD = 'prj_la'
 SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
+SCANNING_STEP: float = .2
+RAY_CAST_FILENAME: str = 'ray_cast'
+BASE_ROUNDING: int = 6
 STYLES = {
         'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 1,
             'chaining_threshold': 0, 'condition': 'is_in_front'},

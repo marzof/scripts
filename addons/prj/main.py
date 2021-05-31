@@ -24,9 +24,12 @@
 
 import sys
 import prj
+from prj.drawing_context import Drawing_context
+from prj.draw_maker import Draw_maker
+from prj.drawing_subject import Drawing_subject
 from prj import prj_svglib
-from prj.prj_drawing_classes import Drawing_context, Draw_maker, Drawing_subject
-from prj.prj_svglib import Svg_drawing, Layer, Path, Use, Style, SVG_ATTRIBUTES, PL_TAG
+from prj.prj_svglib import Svg_drawing, Layer, Path, Use, Style
+from prj.prj_svglib import SVG_ATTRIBUTES, PL_TAG
 import time
 
 start_time = time.time()

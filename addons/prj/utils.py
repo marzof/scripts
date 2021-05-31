@@ -8,6 +8,41 @@ import prj
 
 point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, cam, v)
 
+def get_obj_bound_box(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> \
+        list[Vector]:
+    """ Get the bounding box of obj in world coords. For collection instances 
+        calculate the bounding box for all the objects """
+    obj_bbox = []
+    for obj_inst in depsgraph.object_instances:
+        is_obj_instance = obj_inst.is_instance and \
+                obj_inst.parent.name == obj.name
+        is_obj = obj_inst.object.name == obj.name
+        if is_obj_instance or is_obj:
+            bbox = obj_inst.object.bound_box
+            obj_bbox += [obj_inst.object.matrix_world @ Vector(v) \
+                    for v in bbox]
+    if is_obj:
+        return obj_bbox
+    ## It's a group of objects: get the overall bounding box
+    bbox_xs, bbox_ys, bbox_zs = [], [], []
+    for v in obj_bbox:
+        bbox_xs.append(v.x)
+        bbox_ys.append(v.y)
+        bbox_zs.append(v.z)
+    x_min, x_max = min(bbox_xs), max(bbox_xs)
+    y_min, y_max = min(bbox_ys), max(bbox_ys)
+    z_min, z_max = min(bbox_zs), max(bbox_zs)
+    bound_box = [
+            Vector((x_min, y_min, z_min)),
+            Vector((x_min, y_min, z_max)),
+            Vector((x_min, y_max, z_max)),
+            Vector((x_min, y_max, z_min)),
+            Vector((x_max, y_min, z_min)),
+            Vector((x_max, y_min, z_max)),
+            Vector((x_max, y_max, z_max)),
+            Vector((x_max, y_max, z_min))]
+    return bound_box
+
 def move_to_last(item, l: list) -> list:
     ''' Move item to the last element of l and return the edited list '''
     if item not in l:
@@ -90,8 +125,8 @@ def create_lineart(source: 'Drawing_subject', style: str,
     if not la_source:
         la_source = source
     if not source.grease_pencil:
-        source.grease_pencil = __create_grease_pencil(
-                prj.GREASE_PENCIL_PREFIX + source.obj.name)
+        source.set_grease_pencil(__create_grease_pencil(
+                prj.GREASE_PENCIL_PREFIX + source.obj.name))
     __add_line_art_mod(source.grease_pencil,
             la_source.lineart_source, la_source.lineart_source_type, style)
     return source.grease_pencil
