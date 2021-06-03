@@ -90,8 +90,22 @@ class Drawing_context:
             #scanning_time = time.time() - scanning_start_time
             #print(f"   ...scanned in {scanning_time} seconds")
         objects_to_draw = self.drawing_camera.get_objects_to_draw()
-        if not objects_to_draw and self.draw_all:
+        if self.draw_all:
             objects_to_draw = self.drawing_camera.get_visible_objects()
+            print('\n\nobjects_to_draw', objects_to_draw)
+
+        ## TODO recheck this and pass value to Drawing_subject in order
+        ## to handle accordingly
+        instances_to_draw = {}
+        for inst in self.depsgraph.object_instances:
+            obj = inst.object.original
+            if obj in objects_to_draw:
+                instances_to_draw[obj] = {'is_instance': inst.is_instance}
+        print('\n\n')
+        for obj in instances_to_draw:
+            print('Instance is:', obj, instances_to_draw[obj])
+        print('\n\n')
+        
         subjects = [Drawing_subject(obj, self) for obj in objects_to_draw]
         print('subjects', subjects)
         return subjects

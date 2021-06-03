@@ -27,7 +27,9 @@ import bpy
 import os
 import ast
 import numpy as np
+import math
 from mathutils import Vector, Matrix #, geometry
+from bpy_extras.object_utils import world_to_camera_view
 import prj
 from prj.drawing_subject import Drawing_subject
 from prj.scanner import Scanner

@@ -38,9 +38,8 @@ class Drawing_subject:
 
     def __init__(self, obj, draw_context):
         self.obj = obj
-        if (type(obj) == bpy.types.Object and obj.type == 'EMPTY'):
-            self.obj = prj_utils.make_local_collection(self.obj)
         self.name = obj.name
+        print('Creating', self.name)
         self.drawing_context = draw_context
         self.drawing_camera = draw_context.drawing_camera
         condition = self.__get_condition()
@@ -48,15 +47,12 @@ class Drawing_subject:
         self.is_cut = condition['cut']
         self.is_behind = condition['behind']
         self.collections = [coll.name for coll in obj.users_collection]
+        print('...which is in', self.collections)
+        ev_get = obj.evaluated_get(draw_context.depsgraph)
+        print('ev_get', ev_get)
 
-        if type(self.obj) == bpy.types.Collection:
-            self.type = 'COLLECTION'
-            self.lineart_source_type = self.type
-            self.objects = self.obj.all_objects
-        else:
-            self.type = obj.type
-            self.lineart_source_type = 'OBJECT'
-            self.objects = [obj]
+        self.type = obj.type
+        self.lineart_source_type = 'OBJECT'
 
         self.lineart_source = self.obj
         self.grease_pencil = None
