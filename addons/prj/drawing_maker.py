@@ -29,8 +29,9 @@ import prj
 from prj.utils import create_lineart, make_active
 from prj.drawing_subject import Drawing_subject
 
-class Draw_maker:
-    draw_context: 'Drawing_context'
+class Drawing_maker:
+    drawing_context: 'Drawing_context'
+    drawing_camera: 'Drawing_camera'
 
     def __init__(self, draw_context):
         self.drawing_context = draw_context

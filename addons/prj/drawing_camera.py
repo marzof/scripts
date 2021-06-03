@@ -31,6 +31,7 @@ from mathutils import Vector, Matrix #, geometry
 import prj
 from prj.drawing_subject import Drawing_subject
 from prj.scanner import Scanner
+from prj.event import subscribe, post_event
 from prj.utils import get_obj_bound_box
 
 def range_2d(area: tuple[tuple[float]], step: float) -> list[tuple[float]]:
@@ -50,23 +51,6 @@ def round_to_base(x: float, base: float, round_func,
     return round(base * round_func(x / base), rounding)
 
 
-#########################
-subscribers = dict()
-
-def subscribe(event_type: str, fn):
-    if not event_type in subscribers:
-        subscribers[event_type] = []
-    subscribers[event_type].append(fn)
-
-def post_event(event_type: str, data):
-    print('event data',data)
-    if not event_type in subscribers:
-        return
-    for fn in subscribers[event_type]:
-        fn(data)
-#########################
-
-
 class Drawing_camera:
     obj: bpy.types.Object
     name: str
@@ -84,6 +68,8 @@ class Drawing_camera:
     clip_start: float
     clip_end: float
     matrix: Matrix
+    objects_to_draw: list[bpy.types.Object]
+    visible_objects: list[bpy.types.Object]
 
     def __init__(self, camera: bpy.types.Object, 
             draw_context: 'Drawing_context'):
@@ -108,21 +94,34 @@ class Drawing_camera:
         self.clip_end = camera.data.clip_end
         self.matrix = camera.matrix_world
         self.inverse_matrix = Matrix().Scale(-1, 4, (.0,.0,1.0))
-        subscribe('scanned_area', self.update_data)
+        self.objects_to_draw = self.drawing_context.selected_objects
+        self.visible_objects = []
+        subscribe('scanned_area', self.update_checked_samples)
+        subscribe('scanned_area', self.analyze_samples)
+        subscribe('analyzed_data', self.update_objects_to_draw)
+        subscribe('analyzed_data', self.update_visible_objects)
+        subscribe('analyzed_data', self.update_ray_cast)
+        subscribe('updated_ray_cast', self.write_ray_cast)
     
-    ## TODO check if is it possible to avoid store visible objs and objs to draw
-    def update_data(self, samples: dict[tuple[float], bpy.types.Object]) -> None:
-        """ Update checked_samples, objects_to_draw, visible_objects """
-        for sample in samples:
-            self.checked_samples[sample] = samples[sample]
-        scan_result = self.__analyze_samples(samples)
+    def update_checked_samples(self, 
+            samples: dict[tuple[float], bpy.types.Object]) -> None:
+        self.checked_samples.update(samples)
+
+    def update_objects_to_draw(self, scan_result: dict) -> None:
         changed_objects = scan_result['changed_objects']
-        focused_objects = self.drawing_context.selected_objects + changed_objects
-        self.objects_to_draw = list(set(focused_objects))
-        self.visible_objects = scan_result['visible_objects']
-        self.ray_cast.update(scan_result['changed_ray_cast'])
-        if changed_objects:
-            self.write_ray_cast()
+        new_objects_to_draw = [obj for obj in changed_objects 
+                if obj not in self.objects_to_draw]
+        self.objects_to_draw += new_objects_to_draw
+
+    def update_visible_objects(self, scan_result: dict) -> None:
+        visible_objects = scan_result['visible_objects']
+        new_visible_objects = [obj for obj in visible_objects
+                if obj not in self.visible_objects]
+        self.visible_objects += new_visible_objects
+
+    def update_ray_cast(self, scan_result: dict) -> None:
+        self.ray_cast.update(scan_result['ray_cast'])
+        post_event('updated_ray_cast', bool(scan_result['changed_objects']))
 
     def get_path(self) -> str:
         """ Return folder path named after camera (create it if needed) """
@@ -153,14 +152,13 @@ class Drawing_camera:
         y_max_round = round_to_base(y_max, self.scanner.step, math.ceil)
         return (x_min_round, y_min_round), (x_max_round, y_max_round)
         
-    def scan_all(self) -> dict[tuple[float], bpy.types.Object]:
+    def scan_all(self) -> None:
         """ Scan all the camera frame """
         area_to_scan = ((0.0, 0.0), (1.0, 1.0))
         area_samples = range_2d(area_to_scan, self.scanner.step)
         self.scan_area(area_samples)
 
-    def scan_object_area(self, obj: bpy.types.Object) -> \
-            dict[tuple[float], bpy.types.Object]:
+    def scan_object_area(self, obj: bpy.types.Object) -> None:
         """ Scan the area of subj """
         area_to_scan = self.frame_obj_bound_rect(obj)
         print('area to scan', area_to_scan)
@@ -169,8 +167,7 @@ class Drawing_camera:
             print('area samples\n', area_samples)
             self.scan_area(area_samples)
 
-    def scan_previous_obj_area(self, obj_name: str) -> \
-            dict[tuple[float], bpy.types.Object]:
+    def scan_previous_obj_area(self, obj_name: str) -> None:
         """ Scan the area where obj was """
         samples = []
         for sample, obj_str in self.ray_cast.items():
@@ -178,8 +175,7 @@ class Drawing_camera:
                samples.append(sample)
         self.scan_area(samples)
 
-    def scan_area(self, area_samples: list[tuple[float]]) -> \
-            dict[tuple[float], bpy.types.Object]:
+    def scan_area(self, area_samples: list[tuple[float]]) -> None:
         """ Scan area_samples and return checked_samples 
             (maintaining updated self.checked_samples) """
         new_samples = [sample for sample in area_samples \
@@ -189,6 +185,7 @@ class Drawing_camera:
 
     def get_visible_objects(self) -> list[bpy.types.Object]:
         return self.visible_objects
+
     def get_objects_to_draw(self) -> list[bpy.types.Object]:
         return self.objects_to_draw
 
@@ -208,8 +205,10 @@ class Drawing_camera:
             f.close()
             return data
     
-    def write_ray_cast(self) -> None:
-        """ Write ray_cast to file """
+    def write_ray_cast(self, is_changed: bool) -> None:
+        """ Write ray_cast to file if self. ray_cast is_changed"""
+        if not is_changed:
+            return
         with open(self.ray_cast_filepath, 'w') as f:
             for sample in self.ray_cast:
                 value = self.ray_cast[sample] 
@@ -217,29 +216,32 @@ class Drawing_camera:
                 string_value = f'"{value}"' if value else value
                 f.write(f'{sample}, {string_value}\n')
 
-    def __analyze_samples(self, samples:dict[tuple[float],bpy.types.Object]) -> \
+    def analyze_samples(self, samples:dict[tuple[float],bpy.types.Object]) -> \
             dict:
-        """ Compare samples with ray_cast data and return changed_objects
-            and visible_objects"""
+        """ Compare samples with ray_cast data and return changed_objects,
+            visible_objects (both of type list[bpy.types.Object]) 
+            and ray_cast (of type dict[tuple[float], str])"""
         changed_objects, visible_objects = [], []
-        changed_ray_cast = {}
+        ray_cast = {}
         for sample in samples:
             obj = samples[sample]
             visible_objects.append(obj)
+            ray_cast[sample] = obj.name if obj else obj
+            
             prev_sample_value = self.ray_cast[sample] \
                     if sample in self.ray_cast else None
             prev_obj = bpy.data.objects[prev_sample_value] \
                     if prev_sample_value else None
             if obj == prev_obj:
                 continue
-            changed_ray_cast[sample] = obj.name if obj else obj
             changed_objects.append(prev_obj)
             changed_objects.append(obj)
         changed_objects = [obj for obj in list(set(changed_objects)) if obj]
         visible_objects = [obj for obj in list(set(visible_objects)) if obj]
-        return {'changed_objects': changed_objects,
+        result = {'changed_objects': changed_objects,
                 'visible_objects': visible_objects,
-                'changed_ray_cast': changed_ray_cast}
+                'ray_cast': ray_cast}
+        post_event('analyzed_data', result)
 
     def __get_translate_matrix(self) -> Matrix:
         """ Get matrix for move camera towards his clip_start """

@@ -26,7 +26,6 @@
 import bpy
 import prj
 from prj.drawing_subject import Drawing_subject
-from prj.draw_maker import Draw_maker
 from prj.drawing_camera import Drawing_camera
 
 import time
@@ -61,8 +60,18 @@ class Drawing_context:
         self.selected_objects = selection['objects']
         self.drawing_camera = Drawing_camera(selection['camera'], self)
         self.frame_size = self.drawing_camera.obj.data.ortho_scale
+        self.subjects = self.__get_subjects(self.selected_objects)
+        self.svg_size = format_svg_size(self.frame_size * 10, 
+                self.frame_size * 10)
+        self.svg_factor = self.frame_size/self.RENDER_RESOLUTION_X * \
+                self.RESOLUTION_FACTOR
+        self.svg_styles = [prj.STYLES[d_style]['name'] for d_style in 
+                self.style]
 
-        if not self.selected_objects:
+    def __get_subjects(self, selection: list[bpy.types.Object]) -> \
+            list[Drawing_subject]:
+        """ Execute scanning to acquire the subjects to draw """
+        if not selection:
             #print("Scan for visible objects...")
             #scanning_start_time = time.time()
             self.drawing_camera.scan_all()
@@ -72,7 +81,7 @@ class Drawing_context:
         else:
             #print("Scan for visibility of objects...")
             #scanning_start_time = time.time()
-            for obj in self.selected_objects:
+            for obj in selection:
                 ## Scan samples of previous position
                 self.drawing_camera.scan_previous_obj_area(obj.name)
                 ## Scan subj 
@@ -80,19 +89,12 @@ class Drawing_context:
             #print('scan samples\n', self.drawing_camera.checked_samples)
             #scanning_time = time.time() - scanning_start_time
             #print(f"   ...scanned in {scanning_time} seconds")
-        self.subjects = [Drawing_subject(obj, self) for obj in 
-                self.drawing_camera.get_objects_to_draw()]
-        if not self.subjects and self.draw_all:
-            self.subjects = [Drawing_subject(obj, self) for obj in 
-                self.drawing_camera.get_visible_objects()]
-        print('subjects', self.subjects)
-
-        self.svg_size = format_svg_size(self.frame_size * 10, 
-                self.frame_size * 10)
-        self.svg_factor = self.frame_size/self.RENDER_RESOLUTION_X * \
-                self.RESOLUTION_FACTOR
-        self.svg_styles = [prj.STYLES[d_style]['name'] for d_style in 
-                self.style]
+        objects_to_draw = self.drawing_camera.get_objects_to_draw()
+        if not objects_to_draw and self.draw_all:
+            objects_to_draw = self.drawing_camera.get_visible_objects()
+        subjects = [Drawing_subject(obj, self) for obj in objects_to_draw]
+        print('subjects', subjects)
+        return subjects
 
     def __get_flagged_options(self) -> dict:
         """ Extract flagged values from args and return them in a dict"""

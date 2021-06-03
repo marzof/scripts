@@ -25,7 +25,7 @@
 import sys
 import prj
 from prj.drawing_context import Drawing_context
-from prj.draw_maker import Draw_maker
+from prj.drawing_maker import Drawing_maker
 from prj.drawing_subject import Drawing_subject
 from prj import prj_svglib
 from prj.prj_svglib import Svg_drawing, Layer, Path, Use, Style
@@ -78,7 +78,7 @@ subjects: list[Drawing_subject] = []
 drawing_times = {}
 
 draw_context = Drawing_context(args = ARGS)
-draw_maker = Draw_maker(draw_context)
+draw_maker = Drawing_maker(draw_context)
 
 for subject in draw_context.subjects:
     print('Drawing', subject.name)
