@@ -94,19 +94,17 @@ class Drawing_context:
             objects_to_draw = self.drawing_camera.get_visible_objects()
             print('\n\nobjects_to_draw', objects_to_draw)
 
-        ## TODO recheck this and pass value to Drawing_subject in order
-        ## to handle accordingly
-        instances_to_draw = {}
-        for inst in self.depsgraph.object_instances:
-            obj = inst.object.original
-            if obj in objects_to_draw:
-                instances_to_draw[obj] = {'is_instance': inst.is_instance}
-        print('\n\n')
-        for obj in instances_to_draw:
-            print('Instance is:', obj, instances_to_draw[obj])
-        print('\n\n')
-        
-        subjects = [Drawing_subject(obj, self) for obj in objects_to_draw]
+        subjects = []
+
+        for instance in self.depsgraph.object_instances:
+            for obj_to_draw in objects_to_draw:
+                if instance.object.original == obj_to_draw.obj and \
+                        instance.matrix_world == obj_to_draw.matrix:
+                            parent = instance.parent.original \
+                                    if instance.parent else None
+                            subjects.append(Drawing_subject(obj_to_draw, self,
+                                parent))
+
         print('subjects', subjects)
         return subjects
 

@@ -36,22 +36,24 @@ class Drawing_subject:
     lineart: bpy.types.Object ## bpy.types.GreasePencil
     svg_path: str
 
-    def __init__(self, obj, draw_context):
-        self.obj = obj
-        self.name = obj.name
-        print('Creating', self.name)
+    def __init__(self, instance_obj: 'Instance_object', 
+            draw_context: 'Drawing_context', parent: bpy.types.Object = None):
+        self.obj = instance_obj.obj
+        self.name = instance_obj.name
+        self.parent = parent
         self.drawing_context = draw_context
         self.drawing_camera = draw_context.drawing_camera
-        condition = self.__get_condition()
-        self.is_in_front = condition['in_front']
-        self.is_cut = condition['cut']
-        self.is_behind = condition['behind']
-        self.collections = [coll.name for coll in obj.users_collection]
-        print('...which is in', self.collections)
-        ev_get = obj.evaluated_get(draw_context.depsgraph)
-        print('ev_get', ev_get)
+        visibility_condition = self.__get_condition()
+        self.is_in_front = visibility_condition['in_front']
+        self.is_cut = visibility_condition['cut']
+        self.is_behind = visibility_condition['behind']
+        self.collections = [coll.name for coll in self.obj.users_collection]
+        self.obj_evaluated = self.obj.evaluated_get(draw_context.depsgraph)
+        print('Creating', self)
+        print(self.obj_evaluated)
+        print('child of', parent)
 
-        self.type = obj.type
+        self.type = self.obj.type
         self.lineart_source_type = 'OBJECT'
 
         self.lineart_source = self.obj

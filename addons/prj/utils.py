@@ -42,6 +42,7 @@ def __add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
     gp_mod.level_start = prj.STYLES[style]['occlusion_start']
     gp_mod.level_end = prj.STYLES[style]['occlusion_end']
     gp_mod.source_type = source_type
+    print('lineart source is', source)
     if source_type == 'OBJECT':
         gp_mod.source_object = source
     elif source_type == 'COLLECTION':

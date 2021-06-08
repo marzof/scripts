@@ -35,6 +35,7 @@ from prj.drawing_subject import Drawing_subject
 from prj.scanner import Scanner
 from prj.event import subscribe, post_event
 from prj.utils import get_obj_bound_box
+from prj.instance_object import Instance_object
 
 def range_2d(area: tuple[tuple[float]], step: float) -> list[tuple[float]]:
     """ Get a list representing a 2-dimensional array covering the area 
@@ -65,13 +66,13 @@ class Drawing_camera:
     frame_y_vector: Vector
     frame_z_start: float
     ray_cast_filepath: str
-    ray_cast: dict[tuple[float], str]
-    checked_samples: dict[tuple[float], bpy.types.Object]
+    ray_cast: dict[tuple[float], Instance_object]
+    checked_samples: dict[tuple[float], Instance_object] 
     clip_start: float
     clip_end: float
     matrix: Matrix
-    objects_to_draw: list[bpy.types.Object]
-    visible_objects: list[bpy.types.Object]
+    objects_to_draw: list[Instance_object]
+    visible_objects: list[Instance_object]
 
     def __init__(self, camera: bpy.types.Object, 
             draw_context: 'Drawing_context'):
@@ -105,21 +106,21 @@ class Drawing_camera:
         subscribe('analyzed_data', self.update_ray_cast)
         subscribe('updated_ray_cast', self.write_ray_cast)
     
-    def update_checked_samples(self, 
-            samples: dict[tuple[float], bpy.types.Object]) -> None:
+    def update_checked_samples(self,
+            samples: dict[tuple[float], Instance_object]) -> None:
         self.checked_samples.update(samples)
 
     def update_objects_to_draw(self, scan_result: dict) -> None:
         changed_objects = scan_result['changed_objects']
-        new_objects_to_draw = [obj for obj in changed_objects 
-                if obj not in self.objects_to_draw]
-        self.objects_to_draw += new_objects_to_draw
+        new_inst_objects_to_draw = [inst_obj for inst_obj in changed_objects 
+                if inst_obj not in self.objects_to_draw]
+        self.objects_to_draw += new_inst_objects_to_draw
 
     def update_visible_objects(self, scan_result: dict) -> None:
         visible_objects = scan_result['visible_objects']
-        new_visible_objects = [obj for obj in visible_objects
-                if obj not in self.visible_objects]
-        self.visible_objects += new_visible_objects
+        new_visible_inst_objects = [inst_obj for inst_obj in visible_objects
+                if inst_obj not in self.visible_objects]
+        self.visible_objects += new_visible_inst_objects
 
     def update_ray_cast(self, scan_result: dict) -> None:
         self.ray_cast.update(scan_result['ray_cast'])
@@ -199,7 +200,13 @@ class Drawing_camera:
             with open(self.ray_cast_filepath) as f:
                 for line in f:
                     sample = ast.literal_eval(line)
-                    data[sample[0]] = sample[1]
+                    #print('data is', sample)
+                    sample_value = None
+                    if sample[1]:
+                        obj = bpy.data.objects[sample[1]['object']]
+                        matrix = sample[1]['matrix']
+                        sample_value = Instance_object(obj, matrix)
+                    data[sample[0]] = sample_value
             return data
         except OSError:
             print (f"{self.ray_cast_filepath} doesn't exists. Create it now")
@@ -215,31 +222,34 @@ class Drawing_camera:
             for sample in self.ray_cast:
                 value = self.ray_cast[sample] 
                 ## Add quotes to actual object name for correct value passing
-                string_value = f'"{value}"' if value else value
-                f.write(f'{sample}, {string_value}\n')
+                f.write(f'{sample}, {value}\n')
 
-    def analyze_samples(self, samples:dict[tuple[float],bpy.types.Object]) -> \
-            dict:
-        """ Compare samples with ray_cast data and return changed_objects,
-            visible_objects (both of type list[bpy.types.Object]) 
-            and ray_cast (of type dict[tuple[float], str])"""
+    def analyze_samples(self, 
+            samples:dict[tuple[float], Instance_object]) -> None:
+        """ Compare samples with ray_cast data and get the dict:
+            {'changed_objects': list[Instance_object],
+            'visible_objects': list[Instance_object],
+            'ray_cast': dict[tuple[float], Instance_object]} """
         changed_objects, visible_objects = [], []
         ray_cast = {}
         for sample in samples:
-            obj = samples[sample]
-            visible_objects.append(obj)
-            ray_cast[sample] = obj.name if obj else obj
+            instance_obj = samples[sample]
+            visible_objects.append(instance_obj)
+            ray_cast[sample] = instance_obj
             
             prev_sample_value = self.ray_cast[sample] \
                     if sample in self.ray_cast else None
-            prev_obj = bpy.data.objects[prev_sample_value] \
-                    if prev_sample_value else None
-            if obj == prev_obj:
+            prev_obj = prev_sample_value.obj if prev_sample_value else None
+            if not instance_obj and not prev_obj:
                 continue
-            changed_objects.append(prev_obj)
-            changed_objects.append(obj)
-        changed_objects = [obj for obj in list(set(changed_objects)) if obj]
-        visible_objects = [obj for obj in list(set(visible_objects)) if obj]
+            if instance_obj.obj == prev_obj:
+                continue
+            changed_objects.append(prev_sample_value)
+            changed_objects.append(instance_obj)
+        changed_objects = [inst_obj for inst_obj in list(set(changed_objects)) 
+                if inst_obj]
+        visible_objects = [inst_obj for inst_obj in list(set(visible_objects)) 
+                if inst_obj]
         result = {'changed_objects': changed_objects,
                 'visible_objects': visible_objects,
                 'ray_cast': ray_cast}
