@@ -40,7 +40,12 @@ class Drawing_subject:
             draw_context: 'Drawing_context', parent: bpy.types.Object = None):
         self.obj = instance_obj.obj
         self.name = instance_obj.name
+        self.matrix = instance_obj.matrix
         self.parent = parent
+        self.library = self.obj.library
+        if self.library:
+            self.lib_filepath = self.library.filepath
+            self.make_obj_local()
         self.drawing_context = draw_context
         self.drawing_camera = draw_context.drawing_camera
         visibility_condition = self.__get_condition()
@@ -58,6 +63,18 @@ class Drawing_subject:
 
         self.lineart_source = self.obj
         self.grease_pencil = None
+
+    ## TODO recheck this and the process
+    def make_obj_local(self) -> None:
+        bpy.data.objects.remove(self.obj)
+        with bpy.data.libraries.load(self.lib_filepath, link=True, 
+                relative=False) as (data_from, data_to):
+            data_to.objects.append(self.name)
+
+        for obj in data_to.objects:
+            self.obj = obj
+            bpy.context.collection.objects.link(obj)
+            obj.matrix_world = self.matrix
 
     def __get_condition(self):
         world_obj_bbox = get_obj_bound_box(self.obj, 
