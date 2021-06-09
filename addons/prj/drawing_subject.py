@@ -27,9 +27,29 @@ import os
 from prj.utils import get_obj_bound_box
 from bpy_extras.object_utils import world_to_camera_view
 
+def reload_object(obj: bpy.types.Object, obj_matrix: 'mathutils.Matrix',
+        link: bool = True, relative: bool = False) -> bpy.types.Object:
+    """ Delete obj from scene and reload it from its libary 
+        with obj_matrix applied """
+    obj_name = obj.name
+    obj_lib_filepath = obj.library.filepath
+    bpy.data.objects.remove(obj)
+    with bpy.data.libraries.load(obj_lib_filepath, link=link, 
+            relative=relative) as (data_from, data_to):
+        data_to.objects.append(obj_name)
+
+    new_obj = data_to.objects[0]
+    bpy.context.collection.objects.link(new_obj)
+    new_obj.matrix_world = obj_matrix
+    return new_obj
+
 class Drawing_subject:
     obj: bpy.types.Object
     drawing_context: 'Drawing_context'
+    name: str
+    matrix: 'mathutils.Matrix'
+    parent: bpy.types.Object
+    library: bpy.types.Library
     is_in_front: bool
     is_cut: bool
     is_behind: bool
@@ -43,9 +63,8 @@ class Drawing_subject:
         self.matrix = instance_obj.matrix
         self.parent = parent
         self.library = self.obj.library
-        if self.library:
-            self.lib_filepath = self.library.filepath
-            self.make_obj_local()
+        if self.library and self.parent:
+            self.obj = reload_object(self.obj, self.matrix)
         self.drawing_context = draw_context
         self.drawing_camera = draw_context.drawing_camera
         visibility_condition = self.__get_condition()
@@ -54,27 +73,9 @@ class Drawing_subject:
         self.is_behind = visibility_condition['behind']
         self.collections = [coll.name for coll in self.obj.users_collection]
         self.obj_evaluated = self.obj.evaluated_get(draw_context.depsgraph)
-        print('Creating', self)
-        print(self.obj_evaluated)
-        print('child of', parent)
-
         self.type = self.obj.type
         self.lineart_source_type = 'OBJECT'
-
-        self.lineart_source = self.obj
         self.grease_pencil = None
-
-    ## TODO recheck this and the process
-    def make_obj_local(self) -> None:
-        bpy.data.objects.remove(self.obj)
-        with bpy.data.libraries.load(self.lib_filepath, link=True, 
-                relative=False) as (data_from, data_to):
-            data_to.objects.append(self.name)
-
-        for obj in data_to.objects:
-            self.obj = obj
-            bpy.context.collection.objects.link(obj)
-            obj.matrix_world = self.matrix
 
     def __get_condition(self):
         world_obj_bbox = get_obj_bound_box(self.obj, 

@@ -25,7 +25,6 @@
 
 import bpy
 from mathutils import Vector
-from prj.instance_object import Instance_object
 
 class Scanner:
     depsgraph: bpy.types.Depsgraph
@@ -50,7 +49,7 @@ class Scanner:
         return Vector(coord)
 
     def scan_area(self, area_samples: list[tuple[float]], 
-            camera: 'Drawing_camera') -> dict[tuple[float], Instance_object]:
+            camera: 'Drawing_camera') -> dict[tuple[float], dict]:
         """ Scan area by its samples and return checked_samples maps """
         checked_samples = {}
         print('total area to scan', len(area_samples))
@@ -61,6 +60,7 @@ class Scanner:
                 self.depsgraph, ray_origin, camera.direction)
             if not obj:
                 continue
-            checked_samples[sample] = Instance_object(obj, mat)
+            checked_samples[sample] = {'result': res, 'location': loc,
+                    'normal': nor, 'index': ind, 'object': obj, 'matrix': mat}
         return checked_samples
 

@@ -4,9 +4,6 @@
 import bpy, bmesh
 from mathutils import Matrix, Vector, geometry
 from bpy_extras.object_utils import world_to_camera_view
-import prj
-
-point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, cam, v)
 
 def make_active(obj: bpy.types.Object) -> None:
     """ Deselect all and make obj active """
@@ -14,67 +11,6 @@ def make_active(obj: bpy.types.Object) -> None:
         o.select_set(False)
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
-
-def __add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object, 
-        source_type: str, style: str) -> None:
-    """ Add a line art modifier to gp from source of the source_type 
-    with style """
-
-    gp_layer = gp.data.layers.new(prj.STYLES[style]['name'])
-    gp_layer.frames.new(1)
-    gp_mat_name = prj.GREASE_PENCIL_MAT + '_' + prj.STYLES[style]['name']
-    if gp_mat_name not in bpy.data.materials:
-        gp_mat = bpy.data.materials.new(gp_mat_name)
-    else:
-        gp_mat = bpy.data.materials[gp_mat_name]
-    if not gp_mat.is_grease_pencil:
-        bpy.data.materials.create_gpencil_data(gp_mat)
-    gp.data.materials.append(gp_mat)
-
-    ## Create and setup lineart modifier
-    gp_mod_name = prj.GREASE_PENCIL_MOD + '_' + prj.STYLES[style]['name']
-    gp.grease_pencil_modifiers.new(gp_mod_name, 'GP_LINEART')
-    gp_mod = gp.grease_pencil_modifiers[gp_mod_name]
-    gp_mod.target_layer = gp_layer.info
-    gp_mod.target_material = gp_mat
-    gp_mod.chaining_image_threshold = prj.STYLES[style]['chaining_threshold']
-    gp_mod.use_multiple_levels = True
-    gp_mod.level_start = prj.STYLES[style]['occlusion_start']
-    gp_mod.level_end = prj.STYLES[style]['occlusion_end']
-    gp_mod.source_type = source_type
-    print('lineart source is', source)
-    if source_type == 'OBJECT':
-        gp_mod.source_object = source
-    elif source_type == 'COLLECTION':
-        gp_mod.source_collection = source
-
-def __create_grease_pencil(name: str) -> bpy.types.Object:
-    """ Create a grease pencil """
-    gp = bpy.data.grease_pencils.new(name)
-
-    gp_layer = gp.layers.new(prj.GREASE_PENCIL_LAYER)
-    gp_layer.frames.new(1)
-    
-    gp_mat = bpy.data.materials.new(prj.GREASE_PENCIL_MAT)
-    bpy.data.materials.create_gpencil_data(gp_mat)
-    gp.materials.append(gp_mat)
-
-    obj = bpy.data.objects.new(name, gp)
-    bpy.context.collection.objects.link(obj)
-    return obj
-
-def create_lineart(source: 'Drawing_subject', style: str, 
-        la_source: 'Drawing_subject'=None) -> bpy.types.Object:
-    """ Create source.grease_pencil if needed and add a lineart modifier 
-    with style to it """
-    if not la_source:
-        la_source = source
-    if not source.grease_pencil:
-        source.set_grease_pencil(__create_grease_pencil(
-                prj.GREASE_PENCIL_PREFIX + source.obj.name))
-    __add_line_art_mod(source.grease_pencil,
-            la_source.lineart_source, la_source.lineart_source_type, style)
-    return source.grease_pencil
 
 def get_obj_bound_box(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> \
         list[Vector]:
@@ -112,6 +48,10 @@ def get_obj_bound_box(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> 
     return bound_box
 
 ## # # # # ARCHIVE # # # #
+##
+## point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, 
+##         cam, v)
+##
 ## def localize_obj(container: bpy.types.Object, 
 ##         inner_obj: bpy.types.Object) -> bpy.types.Object:
 ##     """ Make inner_obj located as if it was local based on container matrix """

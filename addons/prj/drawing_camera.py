@@ -31,7 +31,6 @@ import math
 from mathutils import Vector, Matrix #, geometry
 from bpy_extras.object_utils import world_to_camera_view
 import prj
-from prj.drawing_subject import Drawing_subject
 from prj.scanner import Scanner
 from prj.event import subscribe, post_event
 from prj.utils import get_obj_bound_box
@@ -184,6 +183,11 @@ class Drawing_camera:
         new_samples = [sample for sample in area_samples \
                 if sample not in self.checked_samples]
         checked_samples = self.scanner.scan_area(new_samples, self)
+        for sample in checked_samples:
+            if checked_samples[sample]:
+                obj = checked_samples[sample]['object']
+                matrix = checked_samples[sample]['matrix']
+                checked_samples[sample] = Instance_object(obj, matrix)
         post_event('scanned_area', checked_samples)
 
     def get_visible_objects(self) -> list[bpy.types.Object]:

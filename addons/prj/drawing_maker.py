@@ -26,8 +26,66 @@
 import bpy
 import os
 import prj
-from prj.utils import create_lineart, make_active
+from prj.utils import make_active
 from prj.drawing_subject import Drawing_subject
+
+def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object, 
+        source_type: str, style: str) -> None:
+    """ Add a line art modifier to gp from source of the source_type 
+    with style """
+
+    gp_layer = gp.data.layers.new(prj.STYLES[style]['name'])
+    gp_layer.frames.new(1)
+    gp_mat_name = prj.GREASE_PENCIL_MAT + '_' + prj.STYLES[style]['name']
+    if gp_mat_name not in bpy.data.materials:
+        gp_mat = bpy.data.materials.new(gp_mat_name)
+    else:
+        gp_mat = bpy.data.materials[gp_mat_name]
+    if not gp_mat.is_grease_pencil:
+        bpy.data.materials.create_gpencil_data(gp_mat)
+    gp.data.materials.append(gp_mat)
+
+    ## Create and setup lineart modifier
+    gp_mod_name = prj.GREASE_PENCIL_MOD + '_' + prj.STYLES[style]['name']
+    gp.grease_pencil_modifiers.new(gp_mod_name, 'GP_LINEART')
+    gp_mod = gp.grease_pencil_modifiers[gp_mod_name]
+    gp_mod.target_layer = gp_layer.info
+    gp_mod.target_material = gp_mat
+    gp_mod.chaining_image_threshold = prj.STYLES[style]['chaining_threshold']
+    gp_mod.use_multiple_levels = True
+    gp_mod.level_start = prj.STYLES[style]['occlusion_start']
+    gp_mod.level_end = prj.STYLES[style]['occlusion_end']
+    gp_mod.source_type = source_type
+    print('lineart source is', source)
+    if source_type == 'OBJECT':
+        gp_mod.source_object = source
+    elif source_type == 'COLLECTION':
+        gp_mod.source_collection = source
+
+def create_grease_pencil(name: str) -> bpy.types.Object:
+    """ Create a grease pencil """
+    gp = bpy.data.grease_pencils.new(name)
+
+    gp_layer = gp.layers.new(prj.GREASE_PENCIL_LAYER)
+    gp_layer.frames.new(1)
+    
+    gp_mat = bpy.data.materials.new(prj.GREASE_PENCIL_MAT)
+    bpy.data.materials.create_gpencil_data(gp_mat)
+    gp.materials.append(gp_mat)
+
+    obj = bpy.data.objects.new(name, gp)
+    bpy.context.collection.objects.link(obj)
+    return obj
+
+def create_lineart(source: Drawing_subject, style: str) -> bpy.types.Object:
+    """ Create source.grease_pencil if needed and add a lineart modifier 
+    with style to it """
+    if not source.grease_pencil:
+        source.set_grease_pencil(create_grease_pencil(
+                prj.GREASE_PENCIL_PREFIX + source.obj.name))
+    add_line_art_mod(source.grease_pencil, source.obj, 
+            source.lineart_source_type, style)
+    return source.grease_pencil
 
 class Drawing_maker:
     drawing_context: 'Drawing_context'
@@ -60,13 +118,8 @@ class Drawing_maker:
             -> bpy.types.Object:
         """ Create a grease pencil with lineart modifier according to 
             drawing_style """
-        draw_subject = self.subject
-        if not draw_subject:
-            return None
-        lineart_gp = create_lineart(source=self.subject, 
-            style=drawing_style, la_source=draw_subject)
-        ## Hide grease pencil line art to keep next calculations fast
-        #lineart_gp.hide_viewport = True
+        if not self.subject: return None
+        lineart_gp = create_lineart(source=self.subject, style=drawing_style)
         return lineart_gp
 
     def draw(self, subject: Drawing_subject, styles: str, 
@@ -85,7 +138,6 @@ class Drawing_maker:
             lineart_gp = self.__create_lineart_grease_pencil(draw_style)
             if not lineart_gp: 
                 continue
-            #lineart_gp.hide_viewport = False
             svg_paths.append(self.export_grease_pencil(
                 lineart_gp, remove, file_suffix))
             self.drawing_camera.restore_cam()

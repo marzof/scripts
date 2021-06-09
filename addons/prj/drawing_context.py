@@ -27,6 +27,7 @@ import bpy
 import prj
 from prj.drawing_subject import Drawing_subject
 from prj.drawing_camera import Drawing_camera
+from prj import SCANNING_STEP, STYLES
 
 import time
 start_time = time.time()
@@ -44,6 +45,7 @@ class Drawing_context:
 
 
     DEFAULT_STYLES: list[str] = ['p', 'c']
+    FLAGS: dict[str, str] = {'draw_all': '-a', 'scanning_resolution': '-r'}
     RENDER_BASEPATH: str = bpy.path.abspath(bpy.context.scene.render.filepath)
     RENDER_RESOLUTION_X: int = bpy.context.scene.render.resolution_x
     RENDER_RESOLUTION_Y: int = bpy.context.scene.render.resolution_y
@@ -51,6 +53,7 @@ class Drawing_context:
 
     def __init__(self, args: list[str]):
         self.args = args
+        self.resolution_flag = False
         flagged_options = self.__get_flagged_options()
         self.draw_all = flagged_options['draw_all']
         self.style = flagged_options['styles']
@@ -59,6 +62,8 @@ class Drawing_context:
         selection = self.__get_objects()
         self.selected_objects = selection['objects']
         self.drawing_camera = Drawing_camera(selection['camera'], self)
+        self.drawing_camera.scanner.set_step(
+                flagged_options['scanning_resolution'])
         self.frame_size = self.drawing_camera.obj.data.ortho_scale
         self.subjects = self.__get_subjects(self.selected_objects)
         self.svg_size = format_svg_size(self.frame_size * 10, 
@@ -68,10 +73,10 @@ class Drawing_context:
         self.svg_styles = [prj.STYLES[d_style]['name'] for d_style in 
                 self.style]
 
-    def __get_subjects(self, selection: list[bpy.types.Object]) -> \
+    def __get_subjects(self, selected_objects: list[bpy.types.Object]) -> \
             list[Drawing_subject]:
         """ Execute scanning to acquire the subjects to draw """
-        if not selection:
+        if not selected_objects:
             #print("Scan for visible objects...")
             #scanning_start_time = time.time()
             self.drawing_camera.scan_all()
@@ -81,7 +86,7 @@ class Drawing_context:
         else:
             #print("Scan for visibility of objects...")
             #scanning_start_time = time.time()
-            for obj in selection:
+            for obj in selected_objects:
                 ## Scan samples of previous position
                 self.drawing_camera.scan_previous_obj_area(obj.name)
                 ## Scan subj 
@@ -92,32 +97,50 @@ class Drawing_context:
         objects_to_draw = self.drawing_camera.get_objects_to_draw()
         if self.draw_all:
             objects_to_draw = self.drawing_camera.get_visible_objects()
-            print('\n\nobjects_to_draw', objects_to_draw)
+
+
+        deps_instances_data = {}
+        for inst in self.depsgraph.object_instances:
+            deps_inst_matrix = inst.matrix_world.copy().freeze()
+            deps_inst_obj = inst.object.original
+            deps_instances_data[(deps_inst_obj, deps_inst_matrix)] = {
+                    'instance': inst, 'parent': inst.parent}
+            
+        instances_to_draw_data = {}
+        for inst in objects_to_draw:
+            inst_matrix = inst.matrix.copy().freeze() 
+            instances_to_draw_data[(inst.obj, inst_matrix)] = inst 
 
         subjects = []
+        for instance_data in instances_to_draw_data:
+            if instance_data in deps_instances_data:
+                deps_inst = deps_instances_data[instance_data]['instance']
+                parent = deps_instances_data[instance_data]['parent']
+                instance = instances_to_draw_data[instance_data]
+                subjects.append(Drawing_subject(instance, self, parent))
 
-        for instance in self.depsgraph.object_instances:
-            for obj_to_draw in objects_to_draw:
-                if instance.object.original == obj_to_draw.obj and \
-                        instance.matrix_world == obj_to_draw.matrix:
-                            parent = instance.parent.original \
-                                    if instance.parent else None
-                            subjects.append(Drawing_subject(obj_to_draw, self,
-                                parent))
-
-        print('subjects', subjects)
+        #print('subjects', subjects)
         return subjects
 
     def __get_flagged_options(self) -> dict:
         """ Extract flagged values from args and return them in a dict"""
+        scan_res = SCANNING_STEP
+        if self.FLAGS['scanning_resolution'] in self.args:
+            res_idx = self.args.index(self.FLAGS['scanning_resolution']) + 1
+            scan_res = float(self.args[res_idx])
+            self.resolution_flag = True
+            self.resolution_args_index = res_idx
         options = ''.join([a.replace('-', '') for a in self.args 
             if a.startswith('-')])
-        styles = [l for l in options if l != 'a']
+        styles = [l for l in options if l in STYLES]
         if not styles: styles = self.DEFAULT_STYLES
-        return {'draw_all': 'a' in options, 'styles': styles}
+        return {'draw_all': self.FLAGS['draw_all'] in self.args, 
+                'styles': styles, 'scanning_resolution': scan_res}
 
     def __get_objects(self) -> tuple[list[bpy.types.Object], bpy.types.Object]:
         """ Extract the camera and renderable objects from args or selection """
+        if self.resolution_flag:
+            self.args.pop(self.resolution_args_index)
         arg_objs = [a.strip() for a in self.args if not a.startswith('-')]
         all_objs = ''.join(arg_objs).split(';') if arg_objs \
                 else [obj.name for obj in bpy.context.selected_objects]

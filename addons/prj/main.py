@@ -83,7 +83,6 @@ draw_maker = Drawing_maker(draw_context)
 for subject in draw_context.subjects:
     print('Drawing', subject.name)
     drawing_start_time = time.time()
-    #draw_subj = Drawing_subject(subject, draw_context)
     drawing = draw_maker.draw(subject, draw_context.style)
     drawing_time = time.time() - drawing_start_time
     drawing_times[drawing_time] = subject.name
