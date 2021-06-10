@@ -52,7 +52,6 @@ def round_to_base(x: float, base: float, round_func,
         x = 4.77, base = 0.5, round_func = math.floor -> return 4.5 ) """
     return round(base * round_func(x / base), rounding)
 
-
 class Drawing_camera:
     obj: bpy.types.Object
     name: str
@@ -96,18 +95,23 @@ class Drawing_camera:
         self.clip_end = camera.data.clip_end
         self.matrix = camera.matrix_world
         self.inverse_matrix = Matrix().Scale(-1, 4, (.0,.0,1.0))
-        self.objects_to_draw = self.drawing_context.selected_objects
+        self.objects_to_draw = []
         self.visible_objects = []
         subscribe('scanned_area', self.update_checked_samples)
         subscribe('scanned_area', self.analyze_samples)
-        subscribe('analyzed_data', self.update_objects_to_draw)
         subscribe('analyzed_data', self.update_visible_objects)
+        subscribe('analyzed_data', self.update_objects_to_draw)
         subscribe('analyzed_data', self.update_ray_cast)
         subscribe('updated_ray_cast', self.write_ray_cast)
     
     def update_checked_samples(self,
             samples: dict[tuple[float], Instance_object]) -> None:
         self.checked_samples.update(samples)
+
+    def get_selected_instances(self) -> list[Instance_object]:
+        selected_instances = [inst_obj for inst_obj in self.visible_objects
+                if inst_obj.obj in self.drawing_context.selected_objects]
+        return selected_instances
 
     def update_objects_to_draw(self, scan_result: dict) -> None:
         changed_objects = scan_result['changed_objects']
@@ -187,16 +191,21 @@ class Drawing_camera:
             if checked_samples[sample]:
                 obj = checked_samples[sample]['object']
                 matrix = checked_samples[sample]['matrix']
-                checked_samples[sample] = Instance_object(obj, matrix)
+                checked_samples[sample] = Instance_object(obj=obj, matrix=matrix)
+
         post_event('scanned_area', checked_samples)
 
     def get_visible_objects(self) -> list[bpy.types.Object]:
         return self.visible_objects
 
     def get_objects_to_draw(self) -> list[bpy.types.Object]:
+        for inst in self.get_selected_instances():
+            if inst in self.objects_to_draw:
+                continue
+            self.objects_to_draw.append(inst)
         return self.objects_to_draw
 
-    def get_ray_cast_data(self) -> dict[tuple[float], str]:
+    def get_ray_cast_data(self) -> dict[tuple[float], Instance_object]:
         """ Get data (in a dictionary) from ray_cast file if it exists 
             (or creates it if missing )"""
         data = {}
@@ -208,8 +217,8 @@ class Drawing_camera:
                     sample_value = None
                     if sample[1]:
                         obj = bpy.data.objects[sample[1]['object']]
-                        matrix = sample[1]['matrix']
-                        sample_value = Instance_object(obj, matrix)
+                        matrix = Matrix(sample[1]['matrix'])
+                        sample_value = Instance_object(obj=obj, matrix=matrix)
                     data[sample[0]] = sample_value
             return data
         except OSError:
@@ -246,10 +255,11 @@ class Drawing_camera:
             prev_obj = prev_sample_value.obj if prev_sample_value else None
             if not instance_obj and not prev_obj:
                 continue
-            if instance_obj.obj == prev_obj:
+            if instance_obj and instance_obj.obj == prev_obj:
                 continue
             changed_objects.append(prev_sample_value)
             changed_objects.append(instance_obj)
+
         changed_objects = [inst_obj for inst_obj in list(set(changed_objects)) 
                 if inst_obj]
         visible_objects = [inst_obj for inst_obj in list(set(visible_objects)) 

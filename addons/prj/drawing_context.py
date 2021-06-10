@@ -108,7 +108,7 @@ class Drawing_context:
             
         instances_to_draw_data = {}
         for inst in objects_to_draw:
-            inst_matrix = inst.matrix.copy().freeze() 
+            inst_matrix = inst.matrix.freeze() 
             instances_to_draw_data[(inst.obj, inst_matrix)] = inst 
 
         subjects = []
@@ -122,6 +122,7 @@ class Drawing_context:
         #print('subjects', subjects)
         return subjects
 
+    ## TODO remove flags from args to be used in get_object
     def __get_flagged_options(self) -> dict:
         """ Extract flagged values from args and return them in a dict"""
         scan_res = SCANNING_STEP
