@@ -53,17 +53,17 @@ class Drawing_context:
 
     def __init__(self, args: list[str]):
         self.args = args
-        self.resolution_flag = False
-        flagged_options = self.__get_flagged_options()
-        self.draw_all = flagged_options['draw_all']
-        self.style = flagged_options['styles']
+        self.draw_all = False
+        self.style = []
+        ## TODO set scanning step in metric units
+        self.scanning_resolution = SCANNING_STEP
         self.depsgraph = bpy.context.evaluated_depsgraph_get()
         self.depsgraph.update()
-        selection = self.__get_objects()
+        object_args = self.__set_flagged_options()
+        selection = self.__get_objects(object_args)
         self.selected_objects = selection['objects']
         self.drawing_camera = Drawing_camera(selection['camera'], self)
-        self.drawing_camera.scanner.set_step(
-                flagged_options['scanning_resolution'])
+        self.drawing_camera.scanner.set_step(self.scanning_resolution)
         self.frame_size = self.drawing_camera.obj.data.ortho_scale
         self.subjects = self.__get_subjects(self.selected_objects)
         self.svg_size = format_svg_size(self.frame_size * 10, 
@@ -122,28 +122,32 @@ class Drawing_context:
         #print('subjects', subjects)
         return subjects
 
-    ## TODO remove flags from args to be used in get_object
-    def __get_flagged_options(self) -> dict:
-        """ Extract flagged values from args and return them in a dict"""
-        scan_res = SCANNING_STEP
-        if self.FLAGS['scanning_resolution'] in self.args:
-            res_idx = self.args.index(self.FLAGS['scanning_resolution']) + 1
-            scan_res = float(self.args[res_idx])
-            self.resolution_flag = True
-            self.resolution_args_index = res_idx
-        options = ''.join([a.replace('-', '') for a in self.args 
-            if a.startswith('-')])
-        styles = [l for l in options if l in STYLES]
-        if not styles: styles = self.DEFAULT_STYLES
-        return {'draw_all': self.FLAGS['draw_all'] in self.args, 
-                'styles': styles, 'scanning_resolution': scan_res}
+    def __set_flagged_options(self) -> list[str]:
+        """ Set flagged values from args and return remaining args for 
+            getting objects """
+        self.draw_all = self.FLAGS['draw_all'] in self.args
 
-    def __get_objects(self) -> tuple[list[bpy.types.Object], bpy.types.Object]:
+        options_idx = []
+        flagged_args = [arg for arg in self.args if arg.startswith('-')]
+        for arg in flagged_args:
+            arg_idx = self.args.index(arg)
+            options_idx.append(arg_idx)
+            if arg == self.FLAGS['scanning_resolution']:
+                self.scanning_resolution = float(self.args[arg_idx + 1])
+                options_idx.append(arg_idx + 1)
+                continue
+            self.style += [l for l in arg if l in STYLES]
+
+        if not self.style: 
+            self.style = self.DEFAULT_STYLES
+        object_args = [arg for idx, arg in enumerate(self.args) \
+                if idx not in options_idx]
+        return object_args
+
+    def __get_objects(self, object_args: list[str]) -> \
+            tuple[list[bpy.types.Object], bpy.types.Object]:
         """ Extract the camera and renderable objects from args or selection """
-        if self.resolution_flag:
-            self.args.pop(self.resolution_args_index)
-        arg_objs = [a.strip() for a in self.args if not a.startswith('-')]
-        all_objs = ''.join(arg_objs).split(';') if arg_objs \
+        all_objs = ''.join(object_args).split(';') if object_args \
                 else [obj.name for obj in bpy.context.selected_objects]
         objs = []
         for ob in all_objs:
