@@ -39,6 +39,7 @@ UNIT_FACTORS = {'m': 1, 'cm': 100, 'mm': 1000}
 class Drawing_context:
     args: list[str]
     style: str
+    scan_resolution: dict
     selected_objects: list[bpy.types.Object]
     subjects: list[Drawing_subject]
     camera: Drawing_camera 
@@ -47,7 +48,7 @@ class Drawing_context:
 
 
     DEFAULT_STYLES: list[str] = ['p', 'c']
-    FLAGS: dict[str, str] = {'draw_all': '-a', 'scanning_resolution': '-r'}
+    FLAGS: dict[str, str] = {'draw_all': '-a', 'scan_resolution': '-r'}
     RENDER_BASEPATH: str = bpy.path.abspath(bpy.context.scene.render.filepath)
     RENDER_RESOLUTION_X: int = bpy.context.scene.render.resolution_x
     RENDER_RESOLUTION_Y: int = bpy.context.scene.render.resolution_y
@@ -112,7 +113,7 @@ class Drawing_context:
         return subjects
 
     def set_scan_resolution(self, raw_resolution: str) -> None:
-        """ Set scanning_resolution based on raw_resolution arg """
+        """ Set scan_resolution based on raw_resolution arg """
         search = re.search(r'[a-zA-Z]+', raw_resolution)
         if search:
             index = search.span()[0]
@@ -121,7 +122,7 @@ class Drawing_context:
         else:
             value = float(raw_resolution)
             units = None
-        self.scanning_resolution = {'value': value, 'units': units}
+        self.scan_resolution = {'value': value, 'units': units}
 
     def get_scan_step(self) -> float:
         """ Calculate scanning step and return it """
@@ -143,7 +144,7 @@ class Drawing_context:
         for arg in flagged_args:
             arg_idx = self.args.index(arg)
             options_idx.append(arg_idx)
-            if arg == self.FLAGS['scanning_resolution']:
+            if arg == self.FLAGS['scan_resolution']:
                 raw_resolution = self.args[arg_idx + 1]
                 self.set_scan_resolution(raw_resolution)
                 options_idx.append(arg_idx + 1)

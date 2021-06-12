@@ -54,7 +54,7 @@ class Drawing_subject:
     is_cut: bool
     is_behind: bool
     lineart: bpy.types.Object ## bpy.types.GreasePencil
-    svg_path: str
+    svg_paths: dict
 
     def __init__(self, instance_obj: 'Instance_object', 
             draw_context: 'Drawing_context', parent: bpy.types.Object = None):
@@ -63,10 +63,12 @@ class Drawing_subject:
         self.matrix = instance_obj.matrix
         self.parent = parent
         self.library = self.obj.library
-        if self.library and self.parent:
-            self.obj = reload_object(self.obj, self.matrix)
         self.drawing_context = draw_context
         self.drawing_camera = draw_context.drawing_camera
+        self.svg_paths = {'styled': []}
+        self.svg_paths['main'] = self.get_svg_path(main=True)
+        if self.library and self.parent:
+            self.obj = reload_object(self.obj, self.matrix)
         visibility_condition = self.__get_condition()
         self.is_in_front = visibility_condition['in_front']
         self.is_cut = visibility_condition['cut']
@@ -96,14 +98,20 @@ class Drawing_subject:
     def get_drawing_context(self) -> 'Drawing_context':
         return self.drawing_context
 
-    def get_svg_path(self, prefix = None, suffix = None) -> str:
+    def get_svg_path(self, main: bool = False, prefix: str = None, 
+            suffix: str = None) -> None:
         """ Return the svg filepath with prefix or suffix """
         path = self.drawing_camera.path
         sep = "" if path.endswith(os.sep) else os.sep
         pfx = f"{prefix}_" if prefix else ""
         sfx = f"_{suffix}" if suffix else ""
-        self.svg_path = f"{path}{sep}{pfx}{self.obj.name}{sfx}.svg"
-        return self.svg_path
+        svg_path = f"{path}{sep}{pfx}{self.obj.name}{sfx}.svg"
+        if main:
+            self.svg_paths['main'] = svg_path
+            return svg_path
+        else:
+            self.svg_paths['styled'].append(svg_path)
+            return svg_path
 
     def set_grease_pencil(self, gp: bpy.types.Object) -> None:
         self.grease_pencil = gp

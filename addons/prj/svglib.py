@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*- 
 
 import re
+import os
 import numpy, math
 import svgwrite
 from svgwrite.extensions import Inkscape
 import xml.etree.ElementTree as ET
+from prj import BASE_CSS, SVG_ID, ROUNDING
 
 
 POLYLINE_TAG: str = 'polyline'
@@ -166,6 +168,45 @@ class Svg_drawing(Svg_container):
 # # # # # # # # # # # #
 
 # # # # UTILITIES # # # # 
+
+def redraw_svg(context: 'Drawing_context', subject: 'Drawing_subject') \
+        -> Svg_drawing:
+    """ Create a new svg with layers (from groups) and path (from polylines)
+        edited to fit scaled size and joined if cut """
+    svg_size = context.svg_size
+    factor = context.svg_factor
+    styles = context.svg_styles
+    groups = []
+    for svg in subject.svg_paths['styled']:
+        groups += get_svg_groups(svg, styles)
+    css = f"@import url(../{BASE_CSS});"
+    with Svg_drawing(subject.svg_paths['main'], svg_size) as svg:
+        svg.set_id(SVG_ID)
+        style = svg.add_entity(Style, content = css) 
+        for g in groups:
+            layer_label = g.attrib['id']
+            layer = svg.add_entity(Layer, label = layer_label) 
+            layer.set_id(f'{subject.name}_{layer_label}')
+
+            pl_coords = [transform_points(pl.attrib['points'], 
+                scale_factor=factor, rounding=ROUNDING) for pl in g.iter(PL_TAG)]
+
+            if layer.label == 'cut':
+                pl_coords = join_coords(pl_coords)
+
+            for coord in pl_coords:
+                path = layer.add_entity(Path, 
+                        coords_string = get_path_coords(coord), 
+                        coords_values = coord)
+                path.add_class(layer_label)
+                for collection in subject.collections:
+                    path.add_class(collection)
+                path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
+    for svg in subject.svg_paths['styled']:
+        os.remove(svg)
+    return svg
+
+
 def get_svg_groups(svg_file: str, styles: list[str]) -> list[ET.Element]:
     """ Get all groups in svg_file with id in styles """
     svg_root = ET.parse(svg_file).getroot()

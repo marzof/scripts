@@ -128,7 +128,6 @@ class Drawing_maker:
             every draw_style. 
             Then export the grease pencil and return its filepath """
         self.subject = subject
-        svg_paths = []
         styles_to_process = [s for s in styles if 
                     getattr(subject, prj.STYLES[s]['condition'])]
         for draw_style in styles_to_process:
@@ -138,8 +137,6 @@ class Drawing_maker:
             lineart_gp = self.__create_lineart_grease_pencil(draw_style)
             if not lineart_gp: 
                 continue
-            svg_paths.append(self.export_grease_pencil(
-                lineart_gp, remove, file_suffix))
+            self.export_grease_pencil(lineart_gp, remove, file_suffix)
             self.drawing_camera.restore_cam()
-        return svg_paths
 

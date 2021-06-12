@@ -19,6 +19,9 @@ SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
 SCANNING_STEP: float = .1
 RAY_CAST_FILENAME: str = 'ray_cast'
 BASE_ROUNDING: int = 6
+BASE_CSS = 'base.css'
+SVG_ID = 'svg'
+ROUNDING: int = 3
 STYLES = {
         'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 1,
             'chaining_threshold': 0, 'condition': 'is_in_front'},
