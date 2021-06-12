@@ -24,6 +24,7 @@
 
 
 import bpy
+import re
 import prj
 from prj.drawing_subject import Drawing_subject
 from prj.drawing_camera import Drawing_camera
@@ -33,6 +34,7 @@ import time
 start_time = time.time()
 
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
+UNIT_FACTORS = {'m': 1, 'cm': 100, 'mm': 1000}
 
 class Drawing_context:
     args: list[str]
@@ -55,15 +57,14 @@ class Drawing_context:
         self.args = args
         self.draw_all = False
         self.style = []
-        ## TODO set scanning step in metric units
-        self.scanning_resolution = SCANNING_STEP
+        self.scan_resolution = {'value': SCANNING_STEP, 'units': None}
         self.depsgraph = bpy.context.evaluated_depsgraph_get()
         self.depsgraph.update()
         object_args = self.__set_flagged_options()
         selection = self.__get_objects(object_args)
         self.selected_objects = selection['objects']
         self.drawing_camera = Drawing_camera(selection['camera'], self)
-        self.drawing_camera.scanner.set_step(self.scanning_resolution)
+        self.drawing_camera.scanner.set_step(self.get_scan_step())
         self.frame_size = self.drawing_camera.obj.data.ortho_scale
         self.subjects = self.__get_subjects(self.selected_objects)
         self.svg_size = format_svg_size(self.frame_size * 10, 
@@ -77,23 +78,11 @@ class Drawing_context:
             list[Drawing_subject]:
         """ Execute scanning to acquire the subjects to draw """
         if not selected_objects:
-            #print("Scan for visible objects...")
-            #scanning_start_time = time.time()
             self.drawing_camera.scan_all()
-            #scanning_time = time.time() - scanning_start_time
-            #print('scan samples\n', self.drawing_camera.checked_samples)
-            #print(f"   ...scanned in {scanning_time} seconds")
         else:
-            #print("Scan for visibility of objects...")
-            #scanning_start_time = time.time()
             for obj in selected_objects:
-                ## Scan samples of previous position
                 self.drawing_camera.scan_previous_obj_area(obj.name)
-                ## Scan subj 
                 self.drawing_camera.scan_object_area(obj)
-            #print('scan samples\n', self.drawing_camera.checked_samples)
-            #scanning_time = time.time() - scanning_start_time
-            #print(f"   ...scanned in {scanning_time} seconds")
         objects_to_draw = self.drawing_camera.get_objects_to_draw()
         if self.draw_all:
             objects_to_draw = self.drawing_camera.get_visible_objects()
@@ -122,6 +111,28 @@ class Drawing_context:
         #print('subjects', subjects)
         return subjects
 
+    def set_scan_resolution(self, raw_resolution: str) -> None:
+        """ Set scanning_resolution based on raw_resolution arg """
+        search = re.search(r'[a-zA-Z]+', raw_resolution)
+        if search:
+            index = search.span()[0]
+            value = float(raw_resolution[:index])
+            units = search.group(0).lower()
+        else:
+            value = float(raw_resolution)
+            units = None
+        self.scanning_resolution = {'value': value, 'units': units}
+
+    def get_scan_step(self) -> float:
+        """ Calculate scanning step and return it """
+        value = self.scan_resolution['value']
+        units = self.scan_resolution['units']
+        cam_frame = self.drawing_camera.ortho_scale
+        if units:
+            factor = UNIT_FACTORS[units]
+            return (value /factor) / cam_frame
+        return float(value)
+
     def __set_flagged_options(self) -> list[str]:
         """ Set flagged values from args and return remaining args for 
             getting objects """
@@ -133,7 +144,8 @@ class Drawing_context:
             arg_idx = self.args.index(arg)
             options_idx.append(arg_idx)
             if arg == self.FLAGS['scanning_resolution']:
-                self.scanning_resolution = float(self.args[arg_idx + 1])
+                raw_resolution = self.args[arg_idx + 1]
+                self.set_scan_resolution(raw_resolution)
                 options_idx.append(arg_idx + 1)
                 continue
             self.style += [l for l in arg if l in STYLES]

@@ -26,6 +26,8 @@
 import bpy
 from mathutils import Vector
 
+import time
+
 class Scanner:
     depsgraph: bpy.types.Depsgraph
 
@@ -51,6 +53,9 @@ class Scanner:
     def scan_area(self, area_samples: list[tuple[float]], 
             camera: 'Drawing_camera') -> dict[tuple[float], dict]:
         """ Scan area by its samples and return checked_samples maps """
+        print("Start scan...")
+        scanning_start_time = time.time()
+
         checked_samples = {}
         print('total area to scan', len(area_samples))
         for sample in area_samples:
@@ -62,5 +67,8 @@ class Scanner:
                 continue
             checked_samples[sample] = {'result': res, 'location': loc,
                     'normal': nor, 'index': ind, 'object': obj, 'matrix': mat}
+
+        scanning_time = time.time() - scanning_start_time
+        print(f"   ...scanned in {scanning_time} seconds")
         return checked_samples
 

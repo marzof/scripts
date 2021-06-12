@@ -35,15 +35,21 @@ from prj.scanner import Scanner
 from prj.event import subscribe, post_event
 from prj.utils import get_obj_bound_box
 from prj.instance_object import Instance_object
+import time
 
 def range_2d(area: tuple[tuple[float]], step: float) -> list[tuple[float]]:
     """ Get a list representing a 2-dimensional array covering the area 
         by step interval """
     x_min, x_max = area[0][0], area[1][0] + step
     y_min, y_max = area[0][1], area[1][1] + step
+
+    print("Get scanning range...")
+    scanning_start_time = time.time()
     samples = [(round(x, prj.BASE_ROUNDING), round(y, prj.BASE_ROUNDING)) \
             for y in np.arange(y_min, y_max, step) 
             for x in np.arange(x_min, x_max, step)]
+    scanning_time = time.time() - scanning_start_time
+    print(f"   ...got in {scanning_time} seconds")
     return samples
 
 def round_to_base(x: float, base: float, round_func, 
@@ -81,6 +87,7 @@ class Drawing_camera:
         self.path = self.get_path()
         self.direction = camera.matrix_world.to_quaternion() @ \
                 Vector((0.0, 0.0, -1.0))
+        self.ortho_scale = camera.data.ortho_scale
         self.frame = [camera.matrix_world @ v for v in camera.data.view_frame()]
         self.frame_origin = self.frame[2]
         self.frame_x_vector = self.frame[1] - self.frame[2]
@@ -88,7 +95,11 @@ class Drawing_camera:
         self.frame_z_start = -camera.data.clip_start
 
         self.ray_cast_filepath = os.path.join(self.path, prj.RAY_CAST_FILENAME)
+        print("Get ray cast data...")
+        scanning_start_time = time.time()
         self.ray_cast = self.get_ray_cast_data()
+        scanning_time = time.time() - scanning_start_time
+        print(f"   ...got in {scanning_time} seconds")
         self.checked_samples = {}
 
         self.clip_start = camera.data.clip_start
