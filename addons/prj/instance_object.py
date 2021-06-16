@@ -37,11 +37,12 @@ class Instance_object:
         return super(Instance_object, cls).__new__(cls)
 
     def __init__(self, obj: 'bpy.types.Object', matrix: 'mathutils.Matrix'):
-        self.obj = obj
-        self.matrix = matrix.copy()
-        self.matrix_repr = [list(rows) for rows in self.matrix]
-        self.name = self.obj.name
-        instance_objects[(obj, matrix_to_tuple(matrix))] = self
+        if self not in instance_objects.values():
+            self.obj = obj
+            self.matrix = matrix.copy()
+            self.matrix_repr = [list(rows) for rows in self.matrix]
+            self.name = self.obj.name
+            instance_objects[(obj, matrix_to_tuple(matrix))] = self
 
     def __repr__(self):
         return f'{{"object": "{self.name}", "matrix": {self.matrix_repr}}}'

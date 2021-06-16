@@ -27,6 +27,7 @@ import bpy
 import os
 import prj
 from prj.utils import make_active
+from prj.svg_path import Svg_path
 from prj.drawing_subject import Drawing_subject
 
 def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object, 
@@ -107,6 +108,10 @@ class Drawing_maker:
         make_active(grease_pencil)
 
         svg_path = self.subject.get_svg_path(suffix=svg_suffix)
+        
+        svg_main_path = self.subject.svg_path
+        svg_main_path.add_object_path(self.subject, svg_path)
+
         bpy.ops.wm.gpencil_export_svg(filepath=svg_path, 
                 selected_object_type='VISIBLE')
         if remove:
@@ -137,6 +142,6 @@ class Drawing_maker:
             lineart_gp = self.__create_lineart_grease_pencil(draw_style)
             if not lineart_gp: 
                 continue
-            self.export_grease_pencil(lineart_gp, remove, file_suffix)
+            svg_path = self.export_grease_pencil(lineart_gp, remove, file_suffix)
             self.drawing_camera.restore_cam()
 

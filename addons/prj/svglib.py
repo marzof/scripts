@@ -109,6 +109,19 @@ class Style(Svg_container):
             self.content = content
             return self
 
+class Group(Svg_container):
+    drawing: 'Svg_drawing'
+    obj: svgwrite.container.Group
+
+    def __init__(self, container: Svg_container):
+        Svg_container.__init__(self)
+        self.container = container
+        self.drawing = self.drawing_container(self.container)
+        Svg_entity.__init__(self, 
+                entity_type = 'group',
+                obj = container.drawing.obj.g()
+                )
+
 class Layer(Svg_container):
     drawing: 'Svg_drawing'
     obj: svgwrite.container.Group
@@ -169,41 +182,47 @@ class Svg_drawing(Svg_container):
 
 # # # # UTILITIES # # # # 
 
-def redraw_svg(context: 'Drawing_context', subject: 'Drawing_subject') \
-        -> Svg_drawing:
-    """ Create a new svg with layers (from groups) and path (from polylines)
-        edited to fit scaled size and joined if cut """
+## TODO make it smaller
+def redraw_svg(context: 'Drawing_context', svg_path: 'Svg_path') -> Svg_drawing: 
+    """ Create a new svg with layers (from context.svg_styles) and path 
+    (from polylines) edited to fit scaled size and joined if cut """
     svg_size = context.svg_size
     factor = context.svg_factor
-    styles = context.svg_styles
-    groups = []
-    for svg in subject.svg_paths['styled']:
-        groups += get_svg_groups(svg, styles)
+    drawing_styles = context.svg_styles
     css = f"@import url(../{BASE_CSS});"
-    with Svg_drawing(subject.svg_paths['main'], svg_size) as svg:
+    with Svg_drawing(svg_path.path, svg_size) as svg:
         svg.set_id(SVG_ID)
         style = svg.add_entity(Style, content = css) 
-        for g in groups:
-            layer_label = g.attrib['id']
-            layer = svg.add_entity(Layer, label = layer_label) 
-            layer.set_id(f'{subject.name}_{layer_label}')
+        layers = {}
+        for drawing_style in context.svg_styles:
+            layers[drawing_style] = svg.add_entity(Layer, label = drawing_style)
+        for obj in svg_path.objects:
+            for f in svg_path.objects[obj]:
+                ## TODO use regex
+                layer_label = f[-7:-4]
+                layer = layers[layer_label]
+                gr = layer.add_entity(Group)
+                gr.set_id(f'{obj.name}_{layer_label}')
+                for e in get_svg_groups(f, drawing_styles):
 
-            pl_coords = [transform_points(pl.attrib['points'], 
-                scale_factor=factor, rounding=ROUNDING) for pl in g.iter(PL_TAG)]
+                    pl_coords = [transform_points(pl.attrib['points'], 
+                        scale_factor=factor, rounding=ROUNDING) \
+                                for pl in e.iter(PL_TAG)]
 
-            if layer.label == 'cut':
-                pl_coords = join_coords(pl_coords)
+                    if layer.label == 'cut':
+                        pl_coords = join_coords(pl_coords)
 
-            for coord in pl_coords:
-                path = layer.add_entity(Path, 
-                        coords_string = get_path_coords(coord), 
-                        coords_values = coord)
-                path.add_class(layer_label)
-                for collection in subject.collections:
-                    path.add_class(collection)
-                path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
-    for svg in subject.svg_paths['styled']:
-        os.remove(svg)
+                    for coord in pl_coords:
+                        path = gr.add_entity(Path, 
+                                coords_string = get_path_coords(coord), 
+                                coords_values = coord)
+                        path.add_class(layer_label)
+                        for collection in obj.collections:
+                            path.add_class(collection)
+                        path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
+    for obj in svg_path.objects:
+        for f in svg_path.objects[obj]:
+            os.remove(f)
     return svg
 
 

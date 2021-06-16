@@ -27,6 +27,7 @@ import prj
 from prj.drawing_context import Drawing_context
 from prj.drawing_maker import Drawing_maker
 from prj.drawing_subject import Drawing_subject
+from prj.svg_path import svgs_data
 from prj import svglib, BASE_CSS
 from prj.svglib import Svg_drawing, Layer, Use, Style, redraw_svg
 import time
@@ -55,9 +56,10 @@ for subject in draw_context.subjects:
     print(f"   ...drawn in {drawing_time} seconds")
     subjects.append(subject)
 
-for subject in subjects:
-    svg = redraw_svg(draw_context, subject)
-    drawings.append(svg)
+for svg_data in svgs_data:
+    drawing_data = svgs_data[svg_data]
+    svg = redraw_svg(draw_context, drawing_data)
+    drawings.append(drawing_data.path)
 
 with Svg_drawing(draw_context.drawing_camera.name + '.svg', 
         draw_context.svg_size) as composition:
@@ -68,7 +70,7 @@ with Svg_drawing(draw_context.drawing_camera.name + '.svg',
         layer.set_id(style)
         for subject in subjects:
             use = layer.add_entity(Use, 
-                link = f'{subject.svg_paths["main"]}#{subject.name}_{style}')
+                link = f'{subject.svg_path.path}#{subject.name}_{style}')
             use.set_id(subject.name)
             for collection in subject.collections:
                 use.add_class(collection)

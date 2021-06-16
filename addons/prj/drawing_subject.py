@@ -25,9 +25,10 @@
 import bpy
 import os
 from prj.utils import get_obj_bound_box
+from prj.svg_path import Svg_path
 from bpy_extras.object_utils import world_to_camera_view
 
-def reload_object(obj: bpy.types.Object, obj_matrix: 'mathutils.Matrix',
+def reload_linked_object(obj: bpy.types.Object, obj_matrix: 'mathutils.Matrix',
         link: bool = True, relative: bool = False) -> bpy.types.Object:
     """ Delete obj from scene and reload it from its libary 
         with obj_matrix applied """
@@ -54,7 +55,7 @@ class Drawing_subject:
     is_cut: bool
     is_behind: bool
     lineart: bpy.types.Object ## bpy.types.GreasePencil
-    svg_paths: dict
+    svg_path: Svg_path
 
     def __init__(self, instance_obj: 'Instance_object', 
             draw_context: 'Drawing_context', parent: bpy.types.Object = None):
@@ -65,10 +66,14 @@ class Drawing_subject:
         self.library = self.obj.library
         self.drawing_context = draw_context
         self.drawing_camera = draw_context.drawing_camera
-        self.svg_paths = {'styled': []}
-        self.svg_paths['main'] = self.get_svg_path(main=True)
+
+        svg_path_args = {'main': True}
         if self.library and self.parent:
-            self.obj = reload_object(self.obj, self.matrix)
+            self.obj = reload_linked_object(self.obj, self.matrix)
+            svg_path_args['obj'] = self.parent
+        self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
+        self.svg_path.add_object(self)
+
         visibility_condition = self.__get_condition()
         self.is_in_front = visibility_condition['in_front']
         self.is_cut = visibility_condition['cut']
@@ -79,7 +84,8 @@ class Drawing_subject:
         self.lineart_source_type = 'OBJECT'
         self.grease_pencil = None
 
-    def __get_condition(self):
+    def __get_condition(self) -> dict[str,bool]:
+        """ Return if object is cut, in front or behind the camera"""
         world_obj_bbox = get_obj_bound_box(self.obj, 
                 self.drawing_context.depsgraph)
         bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
@@ -98,20 +104,17 @@ class Drawing_subject:
     def get_drawing_context(self) -> 'Drawing_context':
         return self.drawing_context
 
-    def get_svg_path(self, main: bool = False, prefix: str = None, 
-            suffix: str = None) -> None:
+    def get_svg_path(self, obj: bpy.types.Object = None, main: bool = False, 
+            prefix: str = None, suffix: str = None) -> None:
         """ Return the svg filepath with prefix or suffix """
+        if not obj:
+            obj = self.obj
         path = self.drawing_camera.path
         sep = "" if path.endswith(os.sep) else os.sep
         pfx = f"{prefix}_" if prefix else ""
         sfx = f"_{suffix}" if suffix else ""
-        svg_path = f"{path}{sep}{pfx}{self.obj.name}{sfx}.svg"
-        if main:
-            self.svg_paths['main'] = svg_path
-            return svg_path
-        else:
-            self.svg_paths['styled'].append(svg_path)
-            return svg_path
+        svg_path = f"{path}{sep}{pfx}{obj.name}{sfx}.svg"
+        return svg_path
 
     def set_grease_pencil(self, gp: bpy.types.Object) -> None:
         self.grease_pencil = gp
