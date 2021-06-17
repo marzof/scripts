@@ -13,7 +13,7 @@ from prj import BASE_CSS, SVG_ID, ROUNDING
 POLYLINE_TAG: str = 'polyline'
 PL_TAG = '{http://www.w3.org/2000/svg}polyline'
 G_TAG = '{http://www.w3.org/2000/svg}g'
-SVG_ATTRIBUTES = {'prj': {}, 'cut': {}, 'hid': {}, 'bak': {}}
+#SVG_ATTRIBUTES = {'prj': {}, 'cut': {}, 'hid': {}, 'bak': {}}
         ## Set by style
         #'prj': {'stroke': '#000000', 'stroke-opacity': '1',
         #    'stroke-linecap': 'round', 'stroke-width': '.1', 
@@ -27,6 +27,8 @@ SVG_ATTRIBUTES = {'prj': {}, 'cut': {}, 'hid': {}, 'bak': {}}
 
 # # # # CLASSES # # # #
 
+## TODO make all classes instantiable without container (like Layer, 
+## Group and Path)
 class Svg_entity:
     obj: svgwrite.base.BaseElement
 
@@ -58,6 +60,11 @@ class Svg_container(Svg_entity):
         return self.drawing_container(container.container)
 
     def add_entity(self, class_type, **data) -> Svg_entity:
+        if not isinstance(class_type, type):
+            entity = class_type
+            self.obj.add(entity.obj)
+            entity.container = self
+            return entity
         entity = class_type(**data, container = self)
         if entity.type not in entity.container.entities:
             entity.container.entities[entity.type] = []
@@ -110,27 +117,34 @@ class Style(Svg_container):
             return self
 
 class Group(Svg_container):
-    drawing: 'Svg_drawing'
     obj: svgwrite.container.Group
 
-    def __init__(self, container: Svg_container):
+    def __init__(self, 
+            container: Svg_container = None,
+            drawing: 'Svg_drawing' = None):
         Svg_container.__init__(self)
         self.container = container
-        self.drawing = self.drawing_container(self.container)
+        self.drawing = drawing
+        if not drawing:
+            self.drawing = self.drawing_container(self.container)
         Svg_entity.__init__(self, 
                 entity_type = 'group',
-                obj = container.drawing.obj.g()
+                obj = self.drawing.obj.g()
                 )
 
 class Layer(Svg_container):
-    drawing: 'Svg_drawing'
     obj: svgwrite.container.Group
 
-    def __init__(self, label: str, container: Svg_container):
+    def __init__(self, 
+            label: str, 
+            container: Svg_container = None,
+            drawing: 'Svg_drawing' = None):
         Svg_container.__init__(self)
         self.label = label
         self.container = container
-        self.drawing = self.drawing_container(self.container)
+        self.drawing = drawing
+        if not drawing:
+            self.drawing = self.drawing_container(container)
         Svg_entity.__init__(self, 
                 entity_type = 'layer',
                 obj = Inkscape(self.drawing.obj).layer(label=label)
@@ -154,13 +168,14 @@ class Path(Svg_graphics):
     def __init__(self, 
             coords_string: str, 
             coords_values: list[tuple[float]], 
-            container: Svg_container): 
+            container: Svg_container = None,
+            drawing: 'Svg_drawing' = None): 
         self.container = container
-        self.drawing = container.drawing
+        self.drawing = container.drawing if container else drawing
         self.points = coords_values
         Svg_entity.__init__(self, 
                 entity_type = 'path',
-                obj = container.drawing.obj.path(coords_string)
+                obj = self.drawing.obj.path(coords_string)
                 )
 
 class Svg_drawing(Svg_container):
@@ -182,49 +197,70 @@ class Svg_drawing(Svg_container):
 
 # # # # UTILITIES # # # # 
 
-## TODO make it smaller
 def redraw_svg(context: 'Drawing_context', svg_path: 'Svg_path') -> Svg_drawing: 
     """ Create a new svg with layers (from context.svg_styles) and path 
     (from polylines) edited to fit scaled size and joined if cut """
-    svg_size = context.svg_size
-    factor = context.svg_factor
-    drawing_styles = context.svg_styles
+
     css = f"@import url(../{BASE_CSS});"
-    with Svg_drawing(svg_path.path, svg_size) as svg:
+    files = {f['path']: {'obj':obj, 'data':f['data']} 
+            for obj in svg_path.objects for f in svg_path.objects[obj]}
+
+    with Svg_drawing(svg_path.path, context.svg_size) as svg:
         svg.set_id(SVG_ID)
         style = svg.add_entity(Style, content = css) 
+
         layers = {}
         for drawing_style in context.svg_styles:
-            layers[drawing_style] = svg.add_entity(Layer, label = drawing_style)
-        for obj in svg_path.objects:
-            for f in svg_path.objects[obj]:
-                ## TODO use regex
-                layer_label = f[-7:-4]
-                layer = layers[layer_label]
-                gr = layer.add_entity(Group)
-                gr.set_id(f'{obj.name}_{layer_label}')
-                for e in get_svg_groups(f, drawing_styles):
+            layer = Layer(label = drawing_style, drawing = svg)
+            layers[drawing_style] = layer
+            svg.add_entity(layer)
 
-                    pl_coords = [transform_points(pl.attrib['points'], 
-                        scale_factor=factor, rounding=ROUNDING) \
-                                for pl in e.iter(PL_TAG)]
+        for f in files:
+            obj = files[f]['obj']
+            layer_label = files[f]['data']
+            layer = layers[layer_label]
+            g = Group(drawing = svg)
+            layer.add_entity(g)
+            g.set_id(f'{obj.name}_{layer.label}')
 
-                    if layer.label == 'cut':
-                        pl_coords = join_coords(pl_coords)
+            is_cut = layer.label == 'cut'
+            paths = paths_from_file(f, svg, context.svg_factor, obj, 
+                    layer.label, is_cut)
+            for path in paths:
+                g.add_entity(path)
 
-                    for coord in pl_coords:
-                        path = gr.add_entity(Path, 
-                                coords_string = get_path_coords(coord), 
-                                coords_values = coord)
-                        path.add_class(layer_label)
-                        for collection in obj.collections:
-                            path.add_class(collection)
-                        path.set_attribute(SVG_ATTRIBUTES[layer.label]) 
-    for obj in svg_path.objects:
-        for f in svg_path.objects[obj]:
-            os.remove(f)
+    for f in files:
+        os.remove(f)
     return svg
 
+def paths_from_file(f: str, svg:Svg_drawing, factor: float, 
+        obj:'Drawing_subject', layer_label: str, join: bool) -> list[Path]:
+    """ Extract paths from file f after applying factor and assign classes """
+    coords = []
+    paths = []
+    xml_groups = get_svg_groups(f, [layer_label])
+    for element in xml_groups:
+        pl_coords = get_svg_coords(element, factor, join)
+
+        for coord in pl_coords:
+            path = Path(coords_string = get_path_coords(coord), 
+                    coords_values = coord, drawing = svg)
+            path.add_class(layer_label)
+            for collection in obj.collections:
+                path.add_class(collection)
+            paths.append(path)
+    return paths
+
+def get_svg_coords(element: 'xml.etree.ElementTree.Element', 
+        factor: float, join: bool) -> list[list[tuple[float]]]:
+    """ Extract (and join if needed) coords from element and apply a 
+        transformation by factor """
+    pl_points = [pl.attrib['points'] for pl in element.iter(PL_TAG)]
+    pl_coords = [transform_points(points, scale_factor=factor, 
+        rounding=ROUNDING) for points in pl_points]
+    if join:
+        return join_coords(pl_coords)
+    return pl_coords
 
 def get_svg_groups(svg_file: str, styles: list[str]) -> list[ET.Element]:
     """ Get all groups in svg_file with id in styles """

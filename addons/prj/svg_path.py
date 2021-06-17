@@ -41,5 +41,7 @@ class Svg_path:
     def add_object(self, obj):
         self.objects[obj] = []
 
-    def add_object_path(self, obj, path):
-        self.objects[obj].append(path)
+    def add_object_path(self, obj, path, data):
+        file_data = {'path': path, 'data': data}
+        self.objects[obj].append(file_data)
+
