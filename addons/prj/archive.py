@@ -1,9 +1,32 @@
 #!/usr/bin/env python3.9
 # -*- coding: utf-8 -*- 
 
+tuple_points = lambda x: [tuple([float(n) for n in i.split(',')]) 
+        for i in x.split(' ')]
+
+get_xml_elements = lambda container, element: list(
+        container.iterdescendants(element))
+
+get_pl_points = lambda polylines: [tuple_points(pt.attrib['points']) 
+        for pt in polylines]
 
 point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, 
         cam, v)
+
+def get_rect_dimensions(rect) -> tuple[tuple[float], list[float]]: 
+    """ Get position and dimensions of polyline rect in svg """
+    min_val, max_val = math.inf, 0.0
+    polylines = get_xml_elements(rect.root, POLYLINE_TAG)
+    points = get_pl_points(polylines)
+    point_coords = [co for p in points for co in p]
+    for co in point_coords:
+        if sum(co) < min_val:
+            min_val, origin = sum(co), co
+        if sum(co) > max_val:
+            max_val, extension = sum(co), co
+    size = numpy.subtract(extension, origin)
+    return origin, size 
+
 
 def localize_obj(container: bpy.types.Object, 
         inner_obj: bpy.types.Object) -> bpy.types.Object:
