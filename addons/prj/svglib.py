@@ -1,13 +1,9 @@
 #!/usr/bin/env python3.9
 # -*- coding: utf-8 -*- 
 
-import re
 import os
-import numpy as np
-import math
 import svgwrite
 from svgwrite.extensions import Inkscape
-import xml.etree.ElementTree as ET
 from prj import BASE_CSS, SVG_ID, ROUNDING
 from prj.svgread import Svg_read
 
