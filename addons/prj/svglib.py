@@ -3,16 +3,17 @@
 
 import re
 import os
-import numpy, math
+import numpy as np
+import math
 import svgwrite
 from svgwrite.extensions import Inkscape
 import xml.etree.ElementTree as ET
 from prj import BASE_CSS, SVG_ID, ROUNDING
+from prj.svgread import Svg_read
 
 
 POLYLINE_TAG: str = 'polyline'
 PL_TAG = '{http://www.w3.org/2000/svg}polyline'
-G_TAG = '{http://www.w3.org/2000/svg}g'
 #SVG_ATTRIBUTES = {'prj': {}, 'cut': {}, 'hid': {}, 'bak': {}}
         ## Set by style
         #'prj': {'stroke': '#000000', 'stroke-opacity': '1',
@@ -26,6 +27,21 @@ G_TAG = '{http://www.w3.org/2000/svg}g'
         #    'stroke-dasharray': (0.8, 0.4), 'style': 'fill: none'}, }
 
 # # # # CLASSES # # # #
+
+class AbsSvg_entity: 
+    attributes: dict[str,str]
+
+    def __init__(self):
+        self.attributes = {}
+
+    def set_attribute(self, dic: dict[str, str]) -> None:
+        self.attributes.update(dic)
+
+    def add_class(self, entity_class: str) -> None:
+        self.set_attribute({'class': entity_class})
+
+    def set_id(self, entity_id: str) -> None:
+        self.set_attribute({'id': entity_id})
 
 class Svg_entity:
     obj: svgwrite.base.BaseElement
@@ -56,8 +72,19 @@ class Svg_entity:
     def set_attribute(self, dic: dict[str, str]) -> None:
         self.obj.update(dic)
 
+class AbsSvg_container(AbsSvg_entity):
+    entities: list[AbsSvg_entity]
+
+    def __init__(self):
+        AbsSvg_entity.__init__(self)
+        self.entities = []
+
+    def add_entity(self, abs_entity: AbsSvg_entity) -> None:
+        if abs_entity not in self.entities:
+            self.entities.append(abs_entity)
+
 class Svg_container(Svg_entity):
-    entities: dict[str,list[svgwrite.base.BaseElement]]
+    entities: dict[str,list[Svg_entity]]
 
     def __init__(self):
         self.entities = {}
@@ -74,14 +101,27 @@ class Svg_container(Svg_entity):
             entity.set_container(self)
         else:
             entity = class_type(**data, container = self, drawing = self.drawing)
-            if entity.type not in entity.container.entities:
-                entity.container.entities[entity.type] = []
-            entity.container.entities[entity.type].append(entity)
+        if entity.type not in entity.container.entities:
+            entity.container.entities[entity.type] = []
+        entity.container.entities[entity.type].append(entity)
         self.obj.add(entity.obj)
         return entity
 
 class Svg_graphics(Svg_entity):
     pass
+
+class AbsUse(AbsSvg_container):
+    def __init__(self, link: str):
+        self.link = link
+        self.tag = 'use'
+
+    def add_entity(self, link: str) -> 'Use':
+        self.link = link
+        return self
+
+    def replace_content(self, link: str) -> 'Use':
+        self.link = link
+        return self
 
 class Use(Svg_container):
     obj: svgwrite.container.Use
@@ -97,8 +137,26 @@ class Use(Svg_container):
         self.link = link
         return self
 
+class AbsStyle(AbsSvg_container):
+    def __init__(self, content: str):
+        AbsSvg_container.__init__(self)
+        self.content = content
+        self.tag = 'style'
+
+    def add_entity(self, content: str) -> 'Style':
+        self.content += content
+        return self
+
+    def replace_content(self, content: str) -> 'Style':
+        self.content = content
+        return self
+
+    def to_real(self, container: Svg_container = None, 
+            drawing: 'Svg_drawing' = None) -> 'Style': 
+        return Style(self.content, container, drawing)
+
 class Style(Svg_container):
-    obj: svgwrite.container.Style
+    obj:svgwrite.container.Style
 
     def __init__(self, content: str, container: Svg_container = None,
             drawing: 'Svg_drawing' = None): 
@@ -108,13 +166,22 @@ class Style(Svg_container):
                 obj = drawing.obj.style(content),
                 container = container, drawing = drawing)
 
-        def add_entity(self, content: str) -> 'Style':
-            self.content += content
-            return self
+    def add_entity(self, content: str) -> 'Style':
+        self.content += content
+        return self
 
-        def replace_content(self, content: str) -> 'Style':
-            self.content = content
-            return self
+    def replace_content(self, content: str) -> 'Style':
+        self.content = content
+        return self
+
+class AbsGroup(AbsSvg_container):
+    def __init__(self):
+        AbsSvg_container.__init__(self)
+        self.tag = 'g'
+
+    def to_real(self, container: Svg_container = None, 
+            drawing: 'Svg_drawing' = None) -> 'Group': 
+        return Group(container, drawing)
 
 class Group(Svg_container):
     obj: svgwrite.container.Group
@@ -125,6 +192,16 @@ class Group(Svg_container):
         self.container = container
         Svg_entity.__init__(self, entity_type = 'group', obj = drawing.obj.g(),
                 container = container, drawing = drawing)
+
+class AbsLayer(AbsSvg_container):
+    def __init__(self, label: str):
+        AbsSvg_container.__init__(self)
+        self.tag = 'g'
+        self.label = label
+
+    def to_real(self, container: Svg_container = None, 
+            drawing: 'Svg_drawing' = None) -> 'Layer': 
+        return Layer(self.label, container, drawing)
 
 class Layer(Svg_container):
     obj: svgwrite.container.Group
@@ -137,6 +214,16 @@ class Layer(Svg_container):
                 obj = Inkscape(drawing.obj).layer(label=label),
                 container = container, drawing = drawing)
 
+class AbsPolyline(AbsSvg_entity):
+    def __init__(self, points: list[tuple[float]]):
+        AbsSvg_entity.__init__(self)
+        self.points = points
+        self.tag = 'polyline'
+ 
+    def to_real(self, container: Svg_container = None, 
+            drawing: 'Svg_drawing' = None) -> 'Polyline': 
+        return Polyline(self.points, container, drawing)
+
 class Polyline(Svg_graphics):
     obj: svgwrite.shapes.Polyline
 
@@ -147,22 +234,57 @@ class Polyline(Svg_graphics):
                 obj = drawing.obj.polyline(points = self.points),
                 container = container, drawing = drawing)
 
+class AbsPath(AbsSvg_entity):
+    def __init__(self, coords_string: str, coords_values: list[tuple[float]]):
+        AbsSvg_entity.__init__(self)
+        self.string_points = coords_string
+        self.points = coords_values
+        self.tag = 'path'
+
+    def to_real(self, container: Svg_container = None, 
+            drawing: 'Svg_drawing' = None) -> 'Path': 
+        return Path(self.string_points, self.points, container, drawing)
+
 class Path(Svg_graphics):
     obj: svgwrite.path.Path
 
     def __init__(self, coords_string: str, coords_values: list[tuple[float]],
             container: Svg_container = None, drawing: 'Svg_drawing' = None): 
+        self.string_points = coords_string
         self.points = coords_values
         Svg_entity.__init__(self, entity_type = 'path',
                 obj = drawing.obj.path(coords_string), 
                 container = container, drawing = drawing)
+
+class AbsSvg_drawing(AbsSvg_container):
+    def __init__(self, size: tuple[str] = ('100mm', '100mm')):
+        AbsSvg_container.__init__(self)
+        self.size = size
+        self.tag = 'svg'
+
+    def to_real(self, filepath: str) -> 'Svg_drawing': 
+        """ Create a new Svg_drawing and make real all included elements """
+        with Svg_drawing(filepath, self.size) as drawing:
+            drawing.obj.attribs.update(self.attributes)
+            self._get_tree(self, drawing, drawing)
+        return drawing
+
+    def _get_tree(self, abs_element: AbsSvg_entity, container: Svg_container, 
+            drawing: 'Svg_drawing') -> None:
+        """ Go deep in abs_element.entities and make content real """
+        for e in abs_element.entities:
+            real_e = e.to_real(drawing=drawing)
+            real_e.obj.attribs.update(e.attributes)
+            container.add_entity(real_e)
+            if AbsSvg_container in e.__class__.__bases__:
+                self._get_tree(e, real_e, drawing)
 
 class Svg_drawing(Svg_container):
     obj: svgwrite.drawing.Drawing
     filepath: str 
     size: tuple[str]
 
-    def __init__(self, filepath: str, size = ('100mm', '100mm')):
+    def __init__(self, filepath: str, size: tuple[str] = ('100mm', '100mm')):
         Svg_container.__init__(self)
         self.filepath = filepath
         self.size = size
@@ -178,93 +300,99 @@ class Svg_drawing(Svg_container):
 
     def __exit__(self, type, value, traceback) -> None:
         self.obj.save(pretty=True)
+
 # # # # # # # # # # # #
 
 # # # # UTILITIES # # # # 
 
-def collect_and_fit_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
-        -> Svg_drawing: 
-    """ Collect drawing styles and object parts in a new svg,
-        scale entities to fit drawing size and join cut pahts """
+def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
+        -> AbsSvg_drawing:
+    """ Create an abstract version of object svg """
 
-    css = f"@import url(../{BASE_CSS});"
     files = {f['path']: {'obj':obj, 'data':f['data']} 
             for obj in svg_path.objects for f in svg_path.objects[obj]}
+    css = f"@import url(../{BASE_CSS});"
+    abssvg = AbsSvg_drawing(context.svg_size)
+    abssvg.set_id(SVG_ID)
+    absstyle = AbsStyle(content = css) 
+    abssvg.add_entity(absstyle)
 
-    with Svg_drawing(svg_path.path, context.svg_size) as svg:
-        svg.set_id(SVG_ID)
-        style = svg.add_entity(Style, content = css) 
-
-        layers = {}
-        for drawing_style in context.svg_styles:
-            layer = Layer(label = drawing_style, drawing = svg)
-            layers[drawing_style] = layer
-            svg.add_entity(layer)
-
-        for f in files:
-            obj = files[f]['obj']
-            layer_label = files[f]['data']
-            layer = layers[layer_label]
-            g = Group(drawing = svg)
-            layer.add_entity(g)
-            g.set_id(f'{obj.name}_{layer.label}')
-
-            is_cut = layer.label == 'cut'
-            paths = paths_from_file(f, svg, context.svg_factor, obj, 
-                    layer.label, is_cut)
-            for path in paths:
-                g.add_entity(path)
+    abslayers = {}
+    for drawing_style in context.svg_styles:
+        abslayer = AbsLayer(label = drawing_style)
+        abslayers[drawing_style] = abslayer
+        abssvg.add_entity(abslayer)
 
     for f in files:
-        os.remove(f)
-    return svg
+        obj = files[f]['obj']
+        layer_label = files[f]['data']
+        abslayer = abslayers[layer_label]
+        absgroup = AbsGroup()
+        absgroup.set_id(f'{obj.name}_{abslayer.label}')
+        abslayer.add_entity(absgroup)
+        is_cut = abslayer.label == 'cut'
 
-def paths_from_file(f: str, svg:Svg_drawing, factor: float, 
-        obj:'Drawing_subject', layer_label: str, join: bool) -> list[Path]:
-    """ Extract paths from file f after applying factor and assign classes """
-    coords = []
-    paths = []
-    xml_groups = get_svg_groups(f, [layer_label])
-    for element in xml_groups:
-        pl_coords = get_svg_coords(element, factor, join)
+        svg_read = Svg_read(f)
+        abspaths = []
+        all_points = []
+        abspolylines = svg_read.get_svg_elements('polyline')
+        for pl in abspolylines:
+            pl.points = transform_points(pl.points, context.svg_factor, ROUNDING)
+            all_points.append(pl.points[:])
 
-        for coord in pl_coords:
-            path = Path(coords_string = get_path_coords(coord), 
-                    coords_values = coord, drawing = svg)
-            path.add_class(layer_label)
+        if is_cut:
+            joined_points = join_coords(all_points)
+            for coords in joined_points:
+                abspath = AbsPath(coords_string = get_path_coords(coords), 
+                        coords_values = coords)
+                abspaths.append(abspath)
+        else:
+            for pl in abspolylines:
+                abspath = AbsPath(coords_string = get_path_coords(pl.points),
+                        coords_values = pl.points)
+                abspaths.append(abspath) 
+
+        for abspath in abspaths:
+            abspath.add_class(layer_label)
             for collection in obj.collections:
-                path.add_class(collection)
-            paths.append(path)
-    return paths
+                abspath.add_class(collection)
+            absgroup.add_entity(abspath)
 
-def get_svg_coords(element: 'xml.etree.ElementTree.Element', 
-        factor: float, join: bool) -> list[list[tuple[float]]]:
-    """ Extract (and join if needed) coords from element and apply a 
-        transformation by factor """
-    pl_points = [pl.attrib['points'] for pl in element.iter(PL_TAG)]
-    pl_coords = [transform_points(points, scale_factor=factor, 
-        rounding=ROUNDING) for points in pl_points]
-    if join:
-        return join_coords(pl_coords)
-    return pl_coords
+    #if 'cut' in context.svg_styles:
+    #    clip_cut(layers['prj'], layers['cut'])
 
-def get_svg_groups(svg_file: str, styles: list[str]) -> list[ET.Element]:
-    """ Get all groups in svg_file with id in styles """
-    svg_root = ET.parse(svg_file).getroot()
-    groups = [g for g in svg_root.iter(G_TAG) if g.attrib['id'] in styles]
-    return groups
+    #for f in files:
+    #    os.remove(f)
 
-def transform_points(pl_points: str, scale_factor: float = 1, 
-        offset: float = 0, rounding = 16) -> list[tuple[float]]:
-    """ Get pl_points from svg and return the edited coords 
-        (scaled, moved and rounded) as list of tuple of float """
-    coords = []
-    coords_iter = re.finditer(r'([-\d\.]+),([-\d\.]+)', pl_points)
-    for coord in coords_iter:
-        x = round(float(coord.group(1)) * scale_factor, rounding)
-        y = round(float(coord.group(2)) * scale_factor, rounding)
-        coords.append((x, y))
-    return coords
+    return abssvg
+
+## TODO develop this
+def clip_cut(prj_layer, cut_layer):
+    #clipper = Clipper()
+    prj_points, cut_points = [], []
+
+    prj_entities = list(prj_layer.entities.values())[0][0].entities
+    for entity in prj_entities:
+        if entity == 'path':
+            for path in prj_entities[entity]:
+                prj_points.append(path.points)
+
+    cut_entities = list(cut_layer.entities.values())[0][0].entities
+    for entity in cut_entities:
+        if entity == 'path':
+            for path in cut_entities[entity]:
+                cut_points.append(path.points)
+
+    #new_prj_points = clipper.clip(cut_points, prj_points)
+
+def transform_points(points:list[tuple[float]], factor: float = 1, 
+        rounding: int = 16) -> list[tuple[float]]:
+    """ Scale and round points """ 
+    new_points = []
+    for coords in points:
+        new_coord = tuple([round(co*factor, rounding) for co in coords])
+        new_points.append(new_coord)
+    return new_points
 
 def get_path_coords(coords: list[tuple[float]]) -> str:
     """ Return the coords as string for paths """
@@ -274,13 +402,6 @@ def get_path_coords(coords: list[tuple[float]]) -> str:
         string_coords += f'{str(co[0])},{str(co[1])} '
     closing = 'Z ' if closed else f'{str(coords[-1][0])},{str(coords[-1][1])} '
     string_coords += closing
-    return string_coords
-
-def get_polyline_coords(coords: list[tuple[float]]) -> str:
-    """ Return the coords as string for polyline """
-    string_coords = ''
-    for co in coords:
-        string_coords += f'{str(co[0])},{str(co[1])} '
     return string_coords
 
 def join_coords(coords: list[tuple[float]]) -> list[list[tuple[float]]]:

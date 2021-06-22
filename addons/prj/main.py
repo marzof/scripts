@@ -32,7 +32,7 @@ from prj.drawing_maker import Drawing_maker
 from prj.drawing_subject import Drawing_subject
 from prj.svg_path import svgs_data
 from prj import svglib, BASE_CSS
-from prj.svglib import Svg_drawing, Layer, Use, Style, collect_and_fit_svg
+from prj.svglib import Svg_drawing, Layer, Use, Style, prepare_obj_svg
 import time
 
 start_time = time.time()
@@ -61,7 +61,8 @@ for subject in draw_context.subjects:
 
 for svg_data in svgs_data:
     drawing_data = svgs_data[svg_data]
-    svg = collect_and_fit_svg(draw_context, drawing_data)
+    abstract_svg = prepare_obj_svg(draw_context, drawing_data)
+    svg = abstract_svg.to_real(drawing_data.path)
     drawings.append(drawing_data.path)
 
 print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
@@ -79,7 +80,6 @@ def get_use_objects(filepath: Filepath) -> list[str]:
     use_objects = [element.attrib[f'{xlink_ns}title'] \
             for element in svg_root.iter() if element.tag == use_tag]
     return use_objects
-
 def create_drawing_svg() -> None:
     with Svg_drawing(draw_context.drawing_camera.name + '.svg', 
             draw_context.svg_size) as composition:
