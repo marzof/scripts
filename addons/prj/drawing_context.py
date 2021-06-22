@@ -160,13 +160,19 @@ class Drawing_context:
     def __get_objects(self, object_args: list[str]) -> \
             tuple[list[bpy.types.Object], bpy.types.Object]:
         """ Extract the camera and renderable objects from args or selection """
-        all_objs = ''.join(object_args).split(';') if object_args \
-                else [obj.name for obj in bpy.context.selected_objects]
+        args_objs = ''.join(object_args).split(';')
+        selected_objs = bpy.context.selected_objects
+        cam = None
         objs = []
-        for ob in all_objs:
-            if bpy.data.objects[ob].type == 'CAMERA':
+        for ob in args_objs:
+            if ob and bpy.data.objects[ob].type == 'CAMERA':
                 cam = bpy.data.objects[ob]
-            elif prj.is_renderables(bpy.data.objects[ob]):
+            elif ob and prj.is_renderables(bpy.data.objects[ob]):
                 objs.append(bpy.data.objects[ob])
+        for ob in selected_objs:
+            if not cam and ob.type == 'CAMERA':
+                cam = ob
+            elif not objs and prj.is_renderables(ob):
+                objs.append(ob)
         return {'objects': objs, 'camera': cam}
         
