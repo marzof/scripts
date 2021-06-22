@@ -22,10 +22,11 @@
 # Dependencies: 
 # TODO...
 
-svgs_data = dict()
+svgs_data: dict[str,'Svg_path'] = dict()
 
-## TODO add some type hints and comments
 class Svg_path:
+    objects: dict['Drawing_subject', list[dict[str, str]]]
+
     def __new__(cls, *args, **data) -> 'Svg_path':
         path = data['path']
         if path in svgs_data:
