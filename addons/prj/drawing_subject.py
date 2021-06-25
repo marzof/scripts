@@ -78,7 +78,8 @@ class Drawing_subject:
         self.is_in_front = visibility_condition['in_front']
         self.is_cut = visibility_condition['cut']
         self.is_behind = visibility_condition['behind']
-        self.collections = [coll.name for coll in self.obj.users_collection]
+        self.collections = [coll.name for coll in self.obj.users_collection \
+                if coll is not bpy.context.scene.collection]
         self.obj_evaluated = self.obj.evaluated_get(draw_context.depsgraph)
         self.type = self.obj.type
         self.lineart_source_type = 'OBJECT'

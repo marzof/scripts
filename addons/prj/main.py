@@ -24,15 +24,13 @@
 
 import sys
 import prj
-import xml.etree.ElementTree as ET
-import re
 from pathlib import Path as Filepath
 from prj.drawing_context import Drawing_context
 from prj.drawing_maker import Drawing_maker
-from prj.drawing_subject import Drawing_subject
 from prj.svg_path import svgs_data
-from prj import svglib, BASE_CSS
-from prj.svglib import Svg_drawing, Layer, Use, Style, prepare_obj_svg
+from prj.svgread import Svg_read
+from prj.svg_handling import prepare_composition, prepare_obj_svg
+from prj.svg_handling import filter_subjects_for_svg, add_subjects_as_use
 import time
 
 start_time = time.time()
@@ -43,13 +41,14 @@ print('\n\n\n###################################\n\n\n')
 ARGS: list[str] = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
 
 
-drawings: list[Svg_drawing] = []
-subjects: list[Drawing_subject] = []
+drawings: list['Svg_drawing'] = []
+subjects: list['Drawing_subject'] = []
 drawing_times = {}
 
 draw_context = Drawing_context(args = ARGS)
 draw_maker = Drawing_maker(draw_context)
 
+## Get exported svgs for every subject (or parts of it) for every style
 for subject in draw_context.subjects:
     print('Drawing', subject.name)
     drawing_start_time = time.time()
@@ -59,55 +58,31 @@ for subject in draw_context.subjects:
     print(f"   ...drawn in {drawing_time} seconds")
     subjects.append(subject)
 
+## Get a single and organized svg for every subject
 for svg_data in svgs_data:
     drawing_data = svgs_data[svg_data]
-    abstract_svg = prepare_obj_svg(draw_context, drawing_data)
-    svg = abstract_svg.to_real(drawing_data.path)
+    abstract_subj_svg = prepare_obj_svg(draw_context, drawing_data)
+    subj_svg = abstract_subj_svg.to_real(drawing_data.path)
     drawings.append(drawing_data.path)
+
+## Collect every subject svg in a single composed svg 
+## or add new subject to existing composed svg
+composition_filepath = Filepath(draw_context.drawing_camera.name + '.svg')
+if not composition_filepath.is_file():
+#if False:
+    abstract_composition = prepare_composition(draw_context, subjects)
+else:
+    existing_composition = Svg_read(composition_filepath)
+    new_subjects = filter_subjects_for_svg(existing_composition, subjects)
+    #new_subjects = subjects
+    if new_subjects:
+        for style in draw_context.svg_styles:
+            container = existing_composition.get_svg_elements('g', 
+                    'inkscape:label', style)[0]
+            add_subjects_as_use(new_subjects, style, container)
+    abstract_composition = existing_composition.drawing
+composition = abstract_composition.to_real(composition_filepath)
 
 print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
 for t in sorted(drawing_times):
     print(drawing_times[t], t)
-
-## TODO clean up and complete here
-def get_use_objects(filepath: Filepath) -> list[str]:
-    svg_root = ET.parse(filepath).getroot()
-    namespaces = dict([node for _, node in ET.iterparse(
-        composition_filepath, events=['start-ns'])])
-    xmlns_ns = f'{{{namespaces[""]}}}'
-    xlink_ns = f'{{{namespaces["xlink"]}}}'
-    use_tag = f'{xmlns_ns}use'
-    use_objects = [element.attrib[f'{xlink_ns}title'] \
-            for element in svg_root.iter() if element.tag == use_tag]
-    return use_objects
-def create_drawing_svg() -> None:
-    with Svg_drawing(draw_context.drawing_camera.name + '.svg', 
-            draw_context.svg_size) as composition:
-        css = f"@import url({BASE_CSS});"
-        style = composition.add_entity(Style, content = css) 
-        for style in draw_context.svg_styles:
-            layer = composition.add_entity(Layer, label = style)
-            layer.set_id(style)
-            for subject in subjects:
-                use = layer.add_entity(Use, 
-                    link = f'{subject.svg_path.path}#{subject.name}_{style}')
-                use.set_id(f'{subject.name}_{style}')
-                use.set_attribute({'xlink:title': subject.name})
-                for collection in subject.collections:
-                    use.add_class(collection)
-
-def add_to_composition():
-    pass
-
-composition_filepath = Filepath(draw_context.drawing_camera.name + '.svg')
-if not composition_filepath.is_file():
-    create_drawing_svg()
-else:
-    use_objects = get_use_objects(composition_filepath)
-    new_objects = [obj.name for obj in subjects if obj.name not in use_objects]
-    if new_objects:
-        add_to_composition()
-
-create_drawing_svg() ## anyway
-
-

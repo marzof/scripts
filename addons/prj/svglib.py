@@ -4,8 +4,6 @@
 import os
 import svgwrite
 from svgwrite.extensions import Inkscape
-from prj import BASE_CSS, SVG_ID, ROUNDING
-from prj.svgread import Svg_read
 
 
 POLYLINE_TAG: str = 'polyline'
@@ -75,9 +73,14 @@ class AbsSvg_container(AbsSvg_entity):
         AbsSvg_entity.__init__(self)
         self.entities = []
 
-    def add_entity(self, abs_entity: AbsSvg_entity) -> None:
-        if abs_entity not in self.entities:
-            self.entities.append(abs_entity)
+    def add_entity(self, abs_entity: AbsSvg_entity,
+            abs_container: 'AbsSvg_container' = None) -> None:
+        if not abs_container:
+            abs_container = self
+        else:
+            print('add to container', abs_container)
+        if abs_entity not in abs_container.entities:
+            abs_container.entities.append(abs_entity)
 
 class Svg_container(Svg_entity):
     entities: dict[str,list[Svg_entity]]
@@ -108,16 +111,21 @@ class Svg_graphics(Svg_entity):
 
 class AbsUse(AbsSvg_container):
     def __init__(self, link: str):
+        AbsSvg_container.__init__(self)
         self.link = link
         self.tag = 'use'
 
-    def add_entity(self, link: str) -> 'Use':
+    def add_entity(self, link: str) -> 'AbsUse':
         self.link = link
         return self
 
-    def replace_content(self, link: str) -> 'Use':
+    def replace_content(self, link: str) -> 'AbsUse':
         self.link = link
         return self
+
+    def to_real(self, container: Svg_container = None, 
+            drawing: 'Svg_drawing' = None) -> 'Use': 
+        return Use(self.link, container, drawing)
 
 class Use(Svg_container):
     obj: svgwrite.container.Use
@@ -130,6 +138,10 @@ class Use(Svg_container):
                 container = container, drawing = drawing)
 
     def add_entity(self, link: str) -> 'Use':
+        self.link = link
+        return self
+
+    def replace_content(self, link: str) -> 'Use':
         self.link = link
         return self
 
@@ -169,6 +181,25 @@ class Style(Svg_container):
     def replace_content(self, content: str) -> 'Style':
         self.content = content
         return self
+
+class AbsDefs(AbsSvg_container):
+    def __init__(self):
+        AbsSvg_container.__init__(self)
+        self.tag = 'defs'
+
+    def to_real(self, container: Svg_container = None, 
+            drawing: 'Svg_drawing' = None) -> 'Defs': 
+        return Defs(container, drawing)
+
+class Defs(Svg_container):
+    obj: svgwrite.container.Defs
+
+    def __init__(self, container: Svg_container = None,
+            drawing: 'Svg_drawing' = None):
+        Svg_container.__init__(self)
+        self.container = container
+        Svg_entity.__init__(self, entity_type = 'defs', obj = drawing.obj.defs,
+                container = container, drawing = drawing)
 
 class AbsGroup(AbsSvg_container):
     def __init__(self):
@@ -262,18 +293,18 @@ class AbsSvg_drawing(AbsSvg_container):
         """ Create a new Svg_drawing and make real all included elements """
         with Svg_drawing(filepath, self.size) as drawing:
             drawing.obj.attribs.update(self.attributes)
-            self._get_tree(self, drawing, drawing)
+            self._get_tree_real(self, drawing, drawing)
         return drawing
 
-    def _get_tree(self, abs_element: AbsSvg_entity, container: Svg_container, 
-            drawing: 'Svg_drawing') -> None:
+    def _get_tree_real(self, abs_element: AbsSvg_entity, 
+            container: Svg_container, drawing: 'Svg_drawing') -> None:
         """ Go deep in abs_element.entities and make content real """
         for e in abs_element.entities:
             real_e = e.to_real(drawing=drawing)
             real_e.obj.attribs.update(e.attributes)
             container.add_entity(real_e)
             if AbsSvg_container in e.__class__.__bases__:
-                self._get_tree(e, real_e, drawing)
+                self._get_tree_real(e, real_e, drawing)
 
 class Svg_drawing(Svg_container):
     obj: svgwrite.drawing.Drawing
@@ -296,142 +327,4 @@ class Svg_drawing(Svg_container):
 
     def __exit__(self, type, value, traceback) -> None:
         self.obj.save(pretty=True)
-
-# # # # # # # # # # # #
-
-# # # # UTILITIES # # # # 
-
-def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
-        -> AbsSvg_drawing:
-    """ Create an abstract version of object svg """
-
-    files = {f['path']: {'obj':obj, 'data':f['data']} 
-            for obj in svg_path.objects for f in svg_path.objects[obj]}
-    css = f"@import url(../{BASE_CSS});"
-    abssvg = AbsSvg_drawing(context.svg_size)
-    abssvg.set_id(SVG_ID)
-    absstyle = AbsStyle(content = css) 
-    abssvg.add_entity(absstyle)
-
-    abslayers = {}
-    for drawing_style in context.svg_styles:
-        abslayer = AbsLayer(label = drawing_style)
-        abslayers[drawing_style] = abslayer
-        abssvg.add_entity(abslayer)
-
-    for f in files:
-        obj = files[f]['obj']
-        layer_label = files[f]['data']
-        abslayer = abslayers[layer_label]
-        absgroup = AbsGroup()
-        absgroup.set_id(f'{obj.name}_{abslayer.label}')
-        abslayer.add_entity(absgroup)
-        is_cut = abslayer.label == 'cut'
-
-        svg_read = Svg_read(f)
-        abspaths = []
-        all_points = []
-        abspolylines = svg_read.get_svg_elements('polyline')
-        for pl in abspolylines:
-            pl.points = transform_points(pl.points, context.svg_factor, ROUNDING)
-            all_points.append(pl.points[:])
-
-        if is_cut:
-            joined_points = join_coords(all_points)
-            for coords in joined_points:
-                abspath = AbsPath(coords_string = get_path_coords(coords), 
-                        coords_values = coords)
-                abspaths.append(abspath)
-        else:
-            for pl in abspolylines:
-                abspath = AbsPath(coords_string = get_path_coords(pl.points),
-                        coords_values = pl.points)
-                abspaths.append(abspath) 
-
-        for abspath in abspaths:
-            abspath.add_class(layer_label)
-            for collection in obj.collections:
-                abspath.add_class(collection)
-            absgroup.add_entity(abspath)
-
-    #if 'cut' in context.svg_styles:
-    #    clip_cut(layers['prj'], layers['cut'])
-
-    #for f in files:
-    #    os.remove(f)
-
-    return abssvg
-
-## TODO develop this
-def clip_cut(prj_layer, cut_layer):
-    #clipper = Clipper()
-    prj_points, cut_points = [], []
-
-    prj_entities = list(prj_layer.entities.values())[0][0].entities
-    for entity in prj_entities:
-        if entity == 'path':
-            for path in prj_entities[entity]:
-                prj_points.append(path.points)
-
-    cut_entities = list(cut_layer.entities.values())[0][0].entities
-    for entity in cut_entities:
-        if entity == 'path':
-            for path in cut_entities[entity]:
-                cut_points.append(path.points)
-
-    #new_prj_points = clipper.clip(cut_points, prj_points)
-
-def transform_points(points:list[tuple[float]], factor: float = 1, 
-        rounding: int = 16) -> list[tuple[float]]:
-    """ Scale and round points """ 
-    new_points = []
-    for coords in points:
-        new_coord = tuple([round(co*factor, rounding) for co in coords])
-        new_points.append(new_coord)
-    return new_points
-
-def get_path_coords(coords: list[tuple[float]]) -> str:
-    """ Return the coords as string for paths """
-    closed = coords[0] == coords[-1]
-    string_coords = 'M '
-    for co in coords[:-1]:
-        string_coords += f'{str(co[0])},{str(co[1])} '
-    closing = 'Z ' if closed else f'{str(coords[-1][0])},{str(coords[-1][1])} '
-    string_coords += closing
-    return string_coords
-
-def join_coords(coords: list[tuple[float]]) -> list[list[tuple[float]]]:
-    """ Join coords list (as from polyline) and put new coords lists in seqs """
-    seqs = []
-    for coord in coords:
-        seqs = add_tail(seqs, coord)
-    return seqs
-
-def add_tail(sequences: list[list[tuple[float]]], tail: list[tuple[float]]) -> \
-        list[list[tuple[float]]]:
-    """ Add tail to sequences and join it to every sequence 
-        whith corresponding ends """
-    to_del = []
-    new_seq = tail
-    last_joined = None
-    seqs = [seq for seq in sequences for t in [0, -1]]
-    for i, seq in enumerate(seqs):
-        t = -(i%2) ## -> alternate 0 and -1
-        ends = [seq[0], seq[-1]]
-        if new_seq[t] not in ends or last_joined == seq:
-            continue
-        index = -ends.index(new_seq[t]) ## -> 0 | 1
-        step = (-2 * index) - 1 ## -> -1 | 1
-        val = 1 if t == 0 else -1 ## -> 1 | -1 | 1 | -1
-        ## Cut first or last and reverse f necessary
-        seq_to_check = new_seq[1+t:len(new_seq)+t][::step*val]
-        ## Compose accordingly
-        new_seq = [ii for i in [seq,seq_to_check][::step] for ii in i]
-        last_joined = seq
-        if seq not in to_del:
-            to_del.append(seq)
-    for s in to_del:
-        sequences.remove(s)
-    sequences.append(new_seq)
-    return sequences
 
