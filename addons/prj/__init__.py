@@ -6,39 +6,11 @@ bl_info = {
 
 import bpy
 import os, pathlib
+from prj.drawing_context import Drawing_context, is_renderables
+from prj.drawing_maker import Drawing_maker
+from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
 
-ADDONS_PATH = str(pathlib.Path(__file__).parent.absolute())
-MAIN_PATH = 'main.py'
-GREASE_PENCIL_PREFIX = 'prj_'
-GREASE_PENCIL_LAYER = 'prj_lay'
-GREASE_PENCIL_MAT = 'prj_mat'
-GREASE_PENCIL_MOD = 'prj_la'
-SVG_GROUP_PREFIX = 'blender_object_' + GREASE_PENCIL_PREFIX
-SCANNING_STEP: float = .1
-RAY_CAST_FILENAME: str = 'ray_cast'
-BASE_ROUNDING: int = 6
-BASE_CSS = 'base.css'
-SVG_ID = 'svg'
-ROUNDING: int = 3
-STYLES = {
-        'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 1,
-            'chaining_threshold': 0, 'condition': 'is_in_front'},
-        'c': {'name': 'cut', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_cut'},
-        'h': {'name': 'hid', 'occlusion_start': 1, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_in_front'},
-        'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_behind'},
-        }
-prj_cmd = lambda args: [bpy.app.binary_path, "--background", 
-        bpy.data.filepath, "--python", ADDONS_PATH + "/" + MAIN_PATH, 
-        "--"] + args
-is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
-        in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
-
-from prj.main import get_context, draw_subjects, rewrite_svgs
-from prj.main import get_svg_composition
-
+# TODO add type hints
 class Prj(bpy.types.Operator):
     """Set view to camera to export svg from grease pencil"""
     bl_idname = "prj.modal_operator"
@@ -77,10 +49,11 @@ class Prj(bpy.types.Operator):
         bpy.ops.wm.save_mainfile()
         objs = ';'.join(self.get_objects(self.selection) + [self.camera.name])
         args = self.key.split() + [objs]
-        get_context(args, context)
-        draw_subjects()
-        rewrite_svgs()
-        get_svg_composition()
+        draw_context = Drawing_context(args, context)
+        draw_maker = Drawing_maker(draw_context)
+        draw_subjects(draw_context, draw_maker)
+        rewrite_svgs(draw_context)
+        get_svg_composition(draw_context)
         self.reset_scene(context)
 
     def modal(self, context, event):

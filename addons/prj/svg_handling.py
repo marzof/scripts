@@ -5,7 +5,10 @@ from prj.svgread import Svg_read
 from prj.svglib import AbsSvg_drawing, AbsStyle, AbsLayer, AbsUse
 from prj.svglib import AbsPath, AbsGroup
 from prj.utils import transform_points, get_path_coords, join_coords
-from prj import BASE_CSS, SVG_ID, ROUNDING
+
+BASE_CSS = 'base.css'
+SVG_ID = 'svg'
+ROUNDING: int = 3
 
 def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
         -> AbsSvg_drawing:

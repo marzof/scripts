@@ -26,32 +26,19 @@ import bpy
 import sys
 import prj
 from pathlib import Path as Filepath
-from prj.drawing_context import Drawing_context
-from prj.drawing_maker import Drawing_maker
 from prj.svg_path import svgs_data
 from prj.svgread import Svg_read
 from prj.svg_handling import prepare_composition, prepare_obj_svg
 from prj.svg_handling import filter_subjects_for_svg, add_subjects_as_use
 import time
 
-start_time = None
 drawing_times = {}
 drawings: list['Svg_drawing'] = []
 subjects: list['Drawing_subject'] = []
-draw_context = None
-draw_maker = None
+start_time = time.time()
 
-def get_context(args, context):
-    print('\n\n\n###################################\n\n\n')
-    global start_time
-    global draw_context
-    global draw_maker
-    start_time = time.time()
 
-    draw_context = Drawing_context(args, context)
-    draw_maker = Drawing_maker(draw_context)
-
-def draw_subjects():
+def draw_subjects(draw_context, draw_maker):
     """ Get exported svgs for every subject (or parts of it) for every style """
     for subject in draw_context.subjects:
         print('Drawing', subject.name)
@@ -62,7 +49,7 @@ def draw_subjects():
         print(f"   ...drawn in {drawing_time} seconds")
         subjects.append(subject)
 
-def rewrite_svgs():
+def rewrite_svgs(draw_context):
     """ Get a single and organized svg for every subject """
     for svg_data in svgs_data:
         print('rewrite', svg_data)
@@ -71,7 +58,7 @@ def rewrite_svgs():
         subj_svg = abstract_subj_svg.to_real(drawing_data.path)
         drawings.append(drawing_data.path)
 
-def get_svg_composition():
+def get_svg_composition(draw_context):
     """ Collect every subject svg in a single composed svg 
         or add new subject to existing composed svg """
     composition_filepath = Filepath(draw_context.drawing_camera.name + '.svg')
@@ -97,10 +84,11 @@ def get_svg_composition():
 def main():
     context = bpy.context
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
-    get_context(args, context)
-    draw_subjects()
-    rewrite_svgs()
-    get_svg_composition()
+    draw_context = Drawing_context(args, context)
+    draw_maker = Drawing_maker(draw_context)
+    draw_subjects(draw_context, draw_maker)
+    rewrite_svgs(draw_context)
+    get_svg_composition(draw_context)
 
 if __name__ == "__main__":
     main()

@@ -30,12 +30,15 @@ import numpy as np
 import math
 from mathutils import Vector, Matrix #, geometry
 from bpy_extras.object_utils import world_to_camera_view
-import prj
 from prj.scanner import Scanner
 from prj.event import subscribe, post_event
 from prj.utils import get_obj_bound_box
 from prj.instance_object import Instance_object
 import time
+
+SCANNING_STEP: float = .1
+RAY_CAST_FILENAME: str = 'ray_cast'
+BASE_ROUNDING: int = 6
 
 def range_2d(area: tuple[tuple[float]], step: float) -> list[tuple[float]]:
     """ Get a list representing a 2-dimensional array covering the area 
@@ -45,7 +48,7 @@ def range_2d(area: tuple[tuple[float]], step: float) -> list[tuple[float]]:
 
     print("Get scanning range...")
     scanning_start_time = time.time()
-    samples = [(round(x, prj.BASE_ROUNDING), round(y, prj.BASE_ROUNDING)) \
+    samples = [(round(x, BASE_ROUNDING), round(y, BASE_ROUNDING)) \
             for y in np.arange(y_min, y_max, step) 
             for x in np.arange(x_min, x_max, step)]
     scanning_time = time.time() - scanning_start_time
@@ -53,7 +56,7 @@ def range_2d(area: tuple[tuple[float]], step: float) -> list[tuple[float]]:
     return samples
 
 def round_to_base(x: float, base: float, round_func, 
-        rounding: int = prj.BASE_ROUNDING) -> float:
+        rounding: int = BASE_ROUNDING) -> float:
     """ Use rounding function to round x to base (for instance: 
         x = 4.77, base = 0.5, round_func = math.floor -> return 4.5 ) """
     return round(base * round_func(x / base), rounding)
@@ -83,7 +86,7 @@ class Drawing_camera:
         self.obj = camera
         self.name = camera.name
         self.drawing_context = draw_context
-        self.scanner = Scanner(draw_context.depsgraph, self, prj.SCANNING_STEP)
+        self.scanner = Scanner(draw_context.depsgraph, self, SCANNING_STEP)
         self.path = self.get_path()
         self.direction = camera.matrix_world.to_quaternion() @ \
                 Vector((0.0, 0.0, -1.0))
@@ -94,7 +97,7 @@ class Drawing_camera:
         self.frame_y_vector = self.frame[0] - self.frame[1]
         self.frame_z_start = -camera.data.clip_start
 
-        self.ray_cast_filepath = os.path.join(self.path, prj.RAY_CAST_FILENAME)
+        self.ray_cast_filepath = os.path.join(self.path, RAY_CAST_FILENAME)
         print("Get ray cast data...")
         scanning_start_time = time.time()
         self.ray_cast = self.get_ray_cast_data()
@@ -283,7 +286,7 @@ class Drawing_camera:
     def __get_translate_matrix(self) -> Matrix:
         """ Get matrix for move camera towards his clip_start """
         normal_vector = Vector((0.0, 0.0, -2 * self.clip_start))
-        z_scale = round(self.matrix.to_scale().z, prj.BASE_ROUNDING)
+        z_scale = round(self.matrix.to_scale().z, BASE_ROUNDING)
         opposite_matrix = Matrix().Scale(z_scale, 4, (.0,.0,1.0))
         base_matrix = self.matrix @ opposite_matrix
         translation = base_matrix.to_quaternion() @ (normal_vector * z_scale)

@@ -27,10 +27,22 @@ import bpy
 import re
 import prj
 from prj.drawing_subject import Drawing_subject
-from prj.drawing_camera import Drawing_camera
-from prj import SCANNING_STEP, STYLES
-
+from prj.drawing_camera import Drawing_camera, SCANNING_STEP
 import time
+
+STYLES = {
+        'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 1,
+            'chaining_threshold': 0, 'condition': 'is_in_front'},
+        'c': {'name': 'cut', 'occlusion_start': 0, 'occlusion_end': 128,
+            'chaining_threshold': 0, 'condition': 'is_cut'},
+        'h': {'name': 'hid', 'occlusion_start': 1, 'occlusion_end': 128,
+            'chaining_threshold': 0, 'condition': 'is_in_front'},
+        'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
+            'chaining_threshold': 0, 'condition': 'is_behind'},
+        }
+is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
+        in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
+
 start_time = time.time()
 
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
@@ -76,7 +88,7 @@ class Drawing_context:
                 self.frame_size * 10)
         self.svg_factor = self.frame_size/self.RENDER_RESOLUTION_X * \
                 self.RESOLUTION_FACTOR
-        self.svg_styles = [prj.STYLES[d_style]['name'] for d_style in 
+        self.svg_styles = [STYLES[d_style]['name'] for d_style in 
                 self.style]
 
     def __get_subjects(self, selected_objects: list[bpy.types.Object]) -> \
@@ -171,12 +183,12 @@ class Drawing_context:
         for ob in args_objs:
             if ob and bpy.data.objects[ob].type == 'CAMERA':
                 cam = bpy.data.objects[ob]
-            elif ob and prj.is_renderables(bpy.data.objects[ob]):
+            elif ob and is_renderables(bpy.data.objects[ob]):
                 objs.append(bpy.data.objects[ob])
         for ob in selected_objs:
             if not cam and ob.type == 'CAMERA':
                 cam = ob
-            elif not objs and prj.is_renderables(ob):
+            elif not objs and is_renderables(ob):
                 objs.append(ob)
         return {'objects': objs, 'camera': cam}
         
