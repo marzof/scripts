@@ -37,6 +37,9 @@ format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
 UNIT_FACTORS = {'m': 1, 'cm': 100, 'mm': 1000}
 
 class Drawing_context:
+    RENDER_BASEPATH: str
+    RENDER_RESOLUTION_X: int
+    RENDER_RESOLUTION_Y: int
     args: list[str]
     style: str
     scan_resolution: dict
@@ -49,17 +52,18 @@ class Drawing_context:
 
     DEFAULT_STYLES: list[str] = ['p', 'c']
     FLAGS: dict[str, str] = {'draw_all': '-a', 'scan_resolution': '-r'}
-    RENDER_BASEPATH: str = bpy.path.abspath(bpy.context.scene.render.filepath)
-    RENDER_RESOLUTION_X: int = bpy.context.scene.render.resolution_x
-    RENDER_RESOLUTION_Y: int = bpy.context.scene.render.resolution_y
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
-    def __init__(self, args: list[str]):
+    def __init__(self, args: list[str], context):
+        self.RENDER_BASEPATH = bpy.path.abspath(context.scene.render.filepath)
+        self.RENDER_RESOLUTION_X = context.scene.render.resolution_x
+        self.RENDER_RESOLUTION_Y = context.scene.render.resolution_y
+        self.context = context
         self.args = args
         self.draw_all = False
         self.style = []
         self.scan_resolution = {'value': SCANNING_STEP, 'units': None}
-        self.depsgraph = bpy.context.evaluated_depsgraph_get()
+        self.depsgraph = context.evaluated_depsgraph_get()
         self.depsgraph.update()
         object_args = self.__set_flagged_options()
         selection = self.__get_objects(object_args)
@@ -161,7 +165,7 @@ class Drawing_context:
             tuple[list[bpy.types.Object], bpy.types.Object]:
         """ Extract the camera and renderable objects from args or selection """
         args_objs = ''.join(object_args).split(';')
-        selected_objs = bpy.context.selected_objects
+        selected_objs = self.context.selected_objects
         cam = None
         objs = []
         for ob in args_objs:

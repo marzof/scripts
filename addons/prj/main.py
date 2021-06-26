@@ -22,6 +22,7 @@
 # Dependencies: 
 # TODO...
 
+import bpy
 import sys
 import prj
 from pathlib import Path as Filepath
@@ -40,14 +41,14 @@ subjects: list['Drawing_subject'] = []
 draw_context = None
 draw_maker = None
 
-def get_context(args):
+def get_context(args, context):
     print('\n\n\n###################################\n\n\n')
     global start_time
     global draw_context
     global draw_maker
     start_time = time.time()
 
-    draw_context = Drawing_context(args = args)
+    draw_context = Drawing_context(args, context)
     draw_maker = Drawing_maker(draw_context)
 
 def draw_subjects():
@@ -64,6 +65,7 @@ def draw_subjects():
 def rewrite_svgs():
     """ Get a single and organized svg for every subject """
     for svg_data in svgs_data:
+        print('rewrite', svg_data)
         drawing_data = svgs_data[svg_data]
         abstract_subj_svg = prepare_obj_svg(draw_context, drawing_data)
         subj_svg = abstract_subj_svg.to_real(drawing_data.path)
@@ -93,13 +95,12 @@ def get_svg_composition():
         print(drawing_times[t], t)
 
 def main():
+    context = bpy.context
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
-    get_context(args)
+    get_context(args, context)
     draw_subjects()
     rewrite_svgs()
     get_svg_composition()
 
-main()
-
-#if __name__ == "__main__":
-#    register()
+if __name__ == "__main__":
+    main()

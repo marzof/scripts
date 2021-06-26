@@ -5,14 +5,7 @@ bl_info = {
 }
 
 import bpy
-import subprocess, shlex
 import os, pathlib
-import prj
-## TODO import main and add a debug funtionality to allow
-##      to test timing for every single isolated object in frame
-#from prj.main import get_context
-#from prj.main import get_context, draw_subjects, rewrite_svgs
-#from prj.main import get_svg_conposition
 
 ADDONS_PATH = str(pathlib.Path(__file__).parent.absolute())
 MAIN_PATH = 'main.py'
@@ -42,6 +35,9 @@ prj_cmd = lambda args: [bpy.app.binary_path, "--background",
         "--"] + args
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
         in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
+
+from prj.main import get_context, draw_subjects, rewrite_svgs
+from prj.main import get_svg_composition
 
 class Prj(bpy.types.Operator):
     """Set view to camera to export svg from grease pencil"""
@@ -75,17 +71,23 @@ class Prj(bpy.types.Operator):
         return context.area.type == 'VIEW_3D'
 
     def execute(self, context):
+        ## TODO fix composition filepath (now it's on application directory)
+        ##      and add a debug funtionality to allow
+        ##      testing timing for every single isolated object in frame
         bpy.ops.wm.save_mainfile()
         objs = ';'.join(self.get_objects(self.selection) + [self.camera.name])
         args = self.key.split() + [objs]
-        subprocess.run(prj_cmd(args))
+        get_context(args, context)
+        draw_subjects()
+        rewrite_svgs()
+        get_svg_composition()
         self.reset_scene(context)
 
     def modal(self, context, event):
         context.area.header_text_set("Type Enter to create drawing, " + \
                 "H for hiddden, B for back, ESC for exit")
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
-            self.key = '-cp -a -r 10cm'
+            self.key = '-cp -a -r 80cm'
             #self.key = '-cp'
             self.execute(context)
             return {'FINISHED'}
