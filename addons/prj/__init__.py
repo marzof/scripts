@@ -8,6 +8,11 @@ import bpy
 import subprocess, shlex
 import os, pathlib
 import prj
+## TODO import main and add a debug funtionality to allow
+##      to test timing for every single isolated object in frame
+#from prj.main import get_context
+#from prj.main import get_context, draw_subjects, rewrite_svgs
+#from prj.main import get_svg_conposition
 
 ADDONS_PATH = str(pathlib.Path(__file__).parent.absolute())
 MAIN_PATH = 'main.py'
@@ -32,9 +37,9 @@ STYLES = {
         'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
             'chaining_threshold': 0, 'condition': 'is_behind'},
         }
-prj_cmd = lambda flags, objects: [bpy.app.binary_path, "--background", 
+prj_cmd = lambda args: [bpy.app.binary_path, "--background", 
         bpy.data.filepath, "--python", ADDONS_PATH + "/" + MAIN_PATH, 
-        "--", flags, objects]
+        "--"] + args
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
         in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
 
@@ -72,14 +77,16 @@ class Prj(bpy.types.Operator):
     def execute(self, context):
         bpy.ops.wm.save_mainfile()
         objs = ';'.join(self.get_objects(self.selection) + [self.camera.name])
-        subprocess.run(prj_cmd(self.key, objs))
+        args = self.key.split() + [objs]
+        subprocess.run(prj_cmd(args))
         self.reset_scene(context)
 
     def modal(self, context, event):
         context.area.header_text_set("Type Enter to create drawing, " + \
                 "H for hiddden, B for back, ESC for exit")
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
-            self.key = '-cp'
+            self.key = '-cp -a -r 10cm'
+            #self.key = '-cp'
             self.execute(context)
             return {'FINISHED'}
         elif event.type == 'H':

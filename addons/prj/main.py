@@ -33,56 +33,73 @@ from prj.svg_handling import prepare_composition, prepare_obj_svg
 from prj.svg_handling import filter_subjects_for_svg, add_subjects_as_use
 import time
 
-start_time = time.time()
-
-print('\n\n\n###################################\n\n\n')
-
-
-ARGS: list[str] = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
-
-
+start_time = None
+drawing_times = {}
 drawings: list['Svg_drawing'] = []
 subjects: list['Drawing_subject'] = []
-drawing_times = {}
+draw_context = None
+draw_maker = None
 
-draw_context = Drawing_context(args = ARGS)
-draw_maker = Drawing_maker(draw_context)
+def get_context(args):
+    print('\n\n\n###################################\n\n\n')
+    global start_time
+    global draw_context
+    global draw_maker
+    start_time = time.time()
 
-## Get exported svgs for every subject (or parts of it) for every style
-for subject in draw_context.subjects:
-    print('Drawing', subject.name)
-    drawing_start_time = time.time()
-    draw_maker.draw(subject, draw_context.style)
-    drawing_time = time.time() - drawing_start_time
-    drawing_times[drawing_time] = subject.name
-    print(f"   ...drawn in {drawing_time} seconds")
-    subjects.append(subject)
+    draw_context = Drawing_context(args = args)
+    draw_maker = Drawing_maker(draw_context)
 
-## Get a single and organized svg for every subject
-for svg_data in svgs_data:
-    drawing_data = svgs_data[svg_data]
-    abstract_subj_svg = prepare_obj_svg(draw_context, drawing_data)
-    subj_svg = abstract_subj_svg.to_real(drawing_data.path)
-    drawings.append(drawing_data.path)
+def draw_subjects():
+    """ Get exported svgs for every subject (or parts of it) for every style """
+    for subject in draw_context.subjects:
+        print('Drawing', subject.name)
+        drawing_start_time = time.time()
+        draw_maker.draw(subject, draw_context.style)
+        drawing_time = time.time() - drawing_start_time
+        drawing_times[drawing_time] = subject.name
+        print(f"   ...drawn in {drawing_time} seconds")
+        subjects.append(subject)
 
-## Collect every subject svg in a single composed svg 
-## or add new subject to existing composed svg
-composition_filepath = Filepath(draw_context.drawing_camera.name + '.svg')
-if not composition_filepath.is_file():
-#if False:
-    abstract_composition = prepare_composition(draw_context, subjects)
-else:
-    existing_composition = Svg_read(composition_filepath)
-    new_subjects = filter_subjects_for_svg(existing_composition, subjects)
-    #new_subjects = subjects
-    if new_subjects:
-        for style in draw_context.svg_styles:
-            container = existing_composition.get_svg_elements('g', 
-                    'inkscape:label', style)[0]
-            add_subjects_as_use(new_subjects, style, container)
-    abstract_composition = existing_composition.drawing
-composition = abstract_composition.to_real(composition_filepath)
+def rewrite_svgs():
+    """ Get a single and organized svg for every subject """
+    for svg_data in svgs_data:
+        drawing_data = svgs_data[svg_data]
+        abstract_subj_svg = prepare_obj_svg(draw_context, drawing_data)
+        subj_svg = abstract_subj_svg.to_real(drawing_data.path)
+        drawings.append(drawing_data.path)
 
-print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
-for t in sorted(drawing_times):
-    print(drawing_times[t], t)
+def get_svg_composition():
+    """ Collect every subject svg in a single composed svg 
+        or add new subject to existing composed svg """
+    composition_filepath = Filepath(draw_context.drawing_camera.name + '.svg')
+    if not composition_filepath.is_file():
+    #if False:
+        abstract_composition = prepare_composition(draw_context, subjects)
+    else:
+        existing_composition = Svg_read(composition_filepath)
+        new_subjects = filter_subjects_for_svg(existing_composition, subjects)
+        #new_subjects = subjects
+        if new_subjects:
+            for style in draw_context.svg_styles:
+                container = existing_composition.get_svg_elements('g', 
+                        'inkscape:label', style)[0]
+                add_subjects_as_use(new_subjects, style, container)
+        abstract_composition = existing_composition.drawing
+    composition = abstract_composition.to_real(composition_filepath)
+
+    print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
+    for t in sorted(drawing_times):
+        print(drawing_times[t], t)
+
+def main():
+    args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
+    get_context(args)
+    draw_subjects()
+    rewrite_svgs()
+    get_svg_composition()
+
+main()
+
+#if __name__ == "__main__":
+#    register()

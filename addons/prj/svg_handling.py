@@ -83,7 +83,7 @@ def prepare_composition(context: 'Drawing_context',
         abslayer.set_id(drawing_style)
         abslayers[drawing_style] = abslayer
         abssvg.add_entity(abslayer)
-        add_subjects_as_use(subjects, drawing_style, abslayer[drawing_style])
+        add_subjects_as_use(subjects, drawing_style, abslayers[drawing_style])
     return abssvg
 
 def filter_subjects_for_svg(abstract_svg: Svg_read, 
