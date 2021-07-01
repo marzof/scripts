@@ -10,18 +10,20 @@ from prj.drawing_context import Drawing_context, is_renderables
 from prj.drawing_maker import Drawing_maker
 from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
 
+import time
+
+def get_objects(selection):
+    ''' Get objects based on selection '''
+    objs = [obj.name.replace(';', '_') for obj in selection 
+            if is_renderables(obj)]
+    return objs
+
 # TODO add type hints
 class Prj(bpy.types.Operator):
     """Set view to camera to export svg from grease pencil"""
     bl_idname = "prj.modal_operator"
     bl_label = "Set 3d view as selected camera and launch prj"
     bl_options = {'REGISTER', 'UNDO'}
-
-    def get_objects(self, selection):
-        ''' Get objects based on selection '''
-        objs = [obj.name.replace(';', '_') for obj in selection 
-                if is_renderables(obj)]
-        return objs
 
     def get_camera(self, selection):
         ''' Get selected camera '''
@@ -44,44 +46,44 @@ class Prj(bpy.types.Operator):
 
     def execute(self, context):
         ## TODO fix composition filepath (now it's on application directory)
-        ##      and add a debug funtionality to allow
-        ##      testing timing for every single isolated object in frame
-        bpy.ops.wm.save_mainfile()
-        objs = ';'.join(self.get_objects(self.selection) + [self.camera.name])
-        args = self.key.split() + [objs]
-        draw_context = Drawing_context(args, context)
-        draw_maker = Drawing_maker(draw_context)
-        draw_subjects(draw_context, draw_maker)
-        rewrite_svgs(draw_context)
-        get_svg_composition(draw_context)
-        self.reset_scene(context)
+        rewrite_svgs(self.draw_context)
+        get_svg_composition(self.draw_context)
 
     def modal(self, context, event):
+        self.key = None
         context.area.header_text_set("Type Enter to create drawing, " + \
                 "H for hiddden, B for back, ESC for exit")
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
             self.key = '-cp -a -r 80cm'
             #self.key = '-cp'
-            self.execute(context)
-            return {'FINISHED'}
         elif event.type == 'H':
             self.key = '-h'
-            self.execute(context)
-            return {'FINISHED'}
         elif event.type == 'B':
             self.key = '-b'
-            self.execute(context)
-            return {'FINISHED'}
         elif event.type == 'ESC':
             self.reset_scene(context)
             return {'CANCELLED'}
 
+        if self.key:
+            start_time = time.time()
+            ## TODO use flag for time_test
+            time_test = False
+            objs = ';'.join(get_objects(self.selection) + [self.camera.name])
+            args = self.key.split() + [objs]
+            self.draw_context = Drawing_context(args, context)
+            self.draw_maker = Drawing_maker(self.draw_context)
+            draw_subjects(self.draw_context, self.draw_maker, time_test)
+            self.reset_scene(context)
+            self.execute(context)
+            print("\n--- Completed in %s seconds ---\n\n" % 
+                    (time.time() - start_time))
+            return {'FINISHED'}
+
         return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
-
         self.selection = bpy.context.selected_objects
-        self.objects = self.get_objects(self.selection)
+        self.objects = get_objects(self.selection)
         self.camera = self.get_camera(self.selection)
         if not self.camera:
             return {'CANCELLED'}

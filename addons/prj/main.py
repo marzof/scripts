@@ -30,17 +30,39 @@ from prj.svg_path import svgs_data
 from prj.svgread import Svg_read
 from prj.svg_handling import prepare_composition, prepare_obj_svg
 from prj.svg_handling import filter_subjects_for_svg, add_subjects_as_use
+from prj.drawing_context import Drawing_context, is_renderables
+from prj.drawing_maker import Drawing_maker
 import time
 
-drawing_times = {}
 drawings: list['Svg_drawing'] = []
 subjects: list['Drawing_subject'] = []
-start_time = time.time()
 
+def hide_objects(objs_to_hide: list[bpy.types.Object], 
+        objs_to_show: list[bpy.types.Object], hide_anyway: bool) \
+                -> dict[bpy.types.Object, bool]:
+    """ Hide all scene objects except subjects if hide_subjects """
+    object_visibility = {}
+    objects_to_hide = [obj for obj in objs_to_hide if obj not in objs_to_show]
+    objects = (objs_to_show * hide_anyway) + objects_to_hide
+    for obj in objects:
+        object_visibility[obj] = obj.hide_viewport
+        obj.hide_viewport = True
+    return object_visibility
 
-def draw_subjects(draw_context, draw_maker):
+def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
+        time_test: bool = False) -> None:
     """ Get exported svgs for every subject (or parts of it) for every style """
+    drawing_times: dict[float, str] = {}
+
+    ## Hide all not viewed objects to make drawing faster
+    subj_objs = [subj.obj for subj in draw_context.subjects]
+    other_objs = [obj for obj in bpy.context.scene.objects]
+    object_visibility = hide_objects(other_objs, subj_objs, time_test)
+
+    ## Draw every subject
     for subject in draw_context.subjects:
+        subject.obj.hide_viewport = False
+
         print('Drawing', subject.name)
         drawing_start_time = time.time()
         draw_maker.draw(subject, draw_context.style)
@@ -48,20 +70,28 @@ def draw_subjects(draw_context, draw_maker):
         drawing_times[drawing_time] = subject.name
         print(f"   ...drawn in {drawing_time} seconds")
         subjects.append(subject)
+        subject.obj.hide_viewport = time_test
 
-def rewrite_svgs(draw_context):
+    ## Restore objects visibility
+    for obj in object_visibility:
+        obj.hide_viewport = object_visibility[obj]
+
+    for t in sorted(drawing_times):
+        print(drawing_times[t], t)
+
+def rewrite_svgs(draw_context: 'Drawing_context') -> None:
     """ Get a single and organized svg for every subject """
     for svg_data in svgs_data:
-        print('rewrite', svg_data)
         drawing_data = svgs_data[svg_data]
         abstract_subj_svg = prepare_obj_svg(draw_context, drawing_data)
         subj_svg = abstract_subj_svg.to_real(drawing_data.path)
         drawings.append(drawing_data.path)
 
-def get_svg_composition(draw_context):
+def get_svg_composition(draw_context: 'Drawing_context') -> None:
     """ Collect every subject svg in a single composed svg 
         or add new subject to existing composed svg """
     composition_filepath = Filepath(draw_context.drawing_camera.name + '.svg')
+    print('composition filepath', composition_filepath)
     if not composition_filepath.is_file():
     #if False:
         abstract_composition = prepare_composition(draw_context, subjects)
@@ -77,11 +107,9 @@ def get_svg_composition(draw_context):
         abstract_composition = existing_composition.drawing
     composition = abstract_composition.to_real(composition_filepath)
 
-    print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
-    for t in sorted(drawing_times):
-        print(drawing_times[t], t)
 
-def main():
+def main() -> None:
+    start_time = time.time()
     context = bpy.context
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
     draw_context = Drawing_context(args, context)
@@ -89,6 +117,8 @@ def main():
     draw_subjects(draw_context, draw_maker)
     rewrite_svgs(draw_context)
     get_svg_composition(draw_context)
+    print("\n--- Completed in %s seconds ---\n\n" % 
+            (time.time() - start_time))
 
 if __name__ == "__main__":
     main()
