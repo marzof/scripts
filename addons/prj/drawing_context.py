@@ -53,6 +53,8 @@ class Drawing_context:
     RENDER_RESOLUTION_X: int
     RENDER_RESOLUTION_Y: int
     args: list[str]
+    draw_all: bool
+    timing_test: bool
     style: str
     scan_resolution: dict
     selected_objects: list[bpy.types.Object]
@@ -63,7 +65,8 @@ class Drawing_context:
 
 
     DEFAULT_STYLES: list[str] = ['p', 'c']
-    FLAGS: dict[str, str] = {'draw_all': '-a', 'scan_resolution': '-r'}
+    FLAGS: dict[str, str] = {'draw_all': '-a', 'scan_resolution': '-r',
+            'timing_test': '-t'}
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
     def __init__(self, args: list[str], context):
@@ -73,6 +76,7 @@ class Drawing_context:
         self.context = context
         self.args = args
         self.draw_all = False
+        self.timing_test = False
         self.style = []
         self.scan_resolution = {'value': SCANNING_STEP, 'units': None}
         self.depsgraph = context.evaluated_depsgraph_get()
@@ -154,6 +158,7 @@ class Drawing_context:
         """ Set flagged values from args and return remaining args for 
             getting objects """
         self.draw_all = self.FLAGS['draw_all'] in self.args
+        self.timing_test = self.FLAGS['timing_test'] in self.args
 
         options_idx = []
         flagged_args = [arg for arg in self.args if arg.startswith('-')]
