@@ -56,11 +56,15 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
     print('Prepare drawings')
     prepare_start_time = time.time()
 
+    cutter = draw_context.cutter
+    cutter.obj.hide_viewport = False
+
     ## Hide all not viewed objects to make drawing faster
     subj_objs = [subj.obj for subj in draw_context.subjects]
-    other_objs = [obj for obj in bpy.context.scene.objects]
+    other_objs = [obj for obj in bpy.context.scene.objects if obj != cutter.obj]
     object_visibility = hide_objects(other_objs, subj_objs, timing_test)
     print(f'\t...completed in {(time.time() - prepare_start_time)}\n')
+
 
     ## Draw every subject
     for subject in draw_context.subjects:
@@ -68,12 +72,17 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
 
         print('Drawing', subject.name)
         drawing_start_time = time.time()
-        draw_maker.draw(subject, draw_context.style)
+        draw_maker.draw(subject, draw_context.style, cutter)
         drawing_time = time.time() - drawing_start_time
         drawing_times[drawing_time] = subject.name
         print(f"\t...drawn in {drawing_time} seconds")
         subjects.append(subject)
         subject.obj.hide_viewport = timing_test
+
+    draw_context.cutter.delete()
+    ## TODO
+    ## remove new local instances created and check visibility of cutter 
+    ## and subjects
 
     ## Restore objects visibility
     print('Restore objects visibility')
@@ -103,7 +112,7 @@ def get_svg_composition(draw_context: 'Drawing_context') -> None:
         or add new subject to existing composed svg """
     print('Start composition')
     composition_start_time = time.time()
-    composition_filepath = Filepath(draw_context.drawing_camera.name + '.svg')
+    composition_filepath = Filepath(draw_context.drawing_camera.path + '.svg')
     if not composition_filepath.is_file():
     #if False:
         abstract_composition = prepare_composition(draw_context, subjects)

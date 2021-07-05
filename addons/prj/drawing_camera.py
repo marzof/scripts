@@ -91,7 +91,12 @@ class Drawing_camera:
         self.direction = camera.matrix_world.to_quaternion() @ \
                 Vector((0.0, 0.0, -1.0))
         self.ortho_scale = camera.data.ortho_scale
-        self.frame = [camera.matrix_world @ v for v in camera.data.view_frame()]
+        self.clip_start = camera.data.clip_start
+        self.clip_end = camera.data.clip_end
+        self.matrix = camera.matrix_world
+        self.local_frame = [v * Vector((1,1,self.clip_start)) 
+                for v in camera.data.view_frame()]
+        self.frame = [camera.matrix_world @ v for v in self.local_frame]
         self.frame_origin = self.frame[2]
         self.frame_x_vector = self.frame[1] - self.frame[2]
         self.frame_y_vector = self.frame[0] - self.frame[1]
@@ -105,9 +110,6 @@ class Drawing_camera:
         print(f"   ...got in {scanning_time} seconds")
         self.checked_samples = {}
 
-        self.clip_start = camera.data.clip_start
-        self.clip_end = camera.data.clip_end
-        self.matrix = camera.matrix_world
         self.inverse_matrix = Matrix().Scale(-1, 4, (.0,.0,1.0))
         self.objects_to_draw = []
         self.visible_objects = []
@@ -292,16 +294,13 @@ class Drawing_camera:
         translation = base_matrix.to_quaternion() @ (normal_vector * z_scale)
         return Matrix.Translation(translation)
 
-    def set_cam_for_style(self, style: str) -> None:
-        """ Prepare camera for creating lineart according to chosen style """
-        if style == 'c':
-            self.obj.data.clip_end = self.clip_start + .01
-        if style == 'b':
-            self.obj.matrix_world = (self.__get_translate_matrix() @ \
-                    self.matrix) @ self.inverse_matrix
-    
+    def reverse_cam(self, style: str) -> None:
+        """ Inverse camera matrix for back views """
+        self.obj.matrix_world = (self.__get_translate_matrix() @ \
+                self.matrix) @ self.inverse_matrix
+
     def restore_cam(self) -> None:
         """ Restore orginal camera values """
-        self.obj.data.clip_end = self.clip_end
+        #self.obj.data.clip_end = self.clip_end
         self.obj.matrix_world = self.matrix
 

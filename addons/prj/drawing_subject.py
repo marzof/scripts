@@ -58,7 +58,8 @@ class Drawing_subject:
     svg_path: Svg_path
 
     def __init__(self, instance_obj: 'Instance_object', 
-            draw_context: 'Drawing_context', parent: bpy.types.Object = None):
+            draw_context: 'Drawing_context', parent: bpy.types.Object = None,
+            cutter: bool = False):
         self.obj = instance_obj.obj
         self.name = instance_obj.name
         self.matrix = instance_obj.matrix
@@ -74,10 +75,11 @@ class Drawing_subject:
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
 
-        visibility_condition = self.__get_condition()
-        self.is_in_front = visibility_condition['in_front']
-        self.is_cut = visibility_condition['cut']
-        self.is_behind = visibility_condition['behind']
+        if not cutter:
+            visibility_condition = self.__get_condition()
+            self.is_in_front = visibility_condition['in_front']
+            self.is_cut = visibility_condition['cut']
+            self.is_behind = visibility_condition['behind']
         self.collections = [coll.name for coll in self.obj.users_collection \
                 if coll is not bpy.context.scene.collection]
         self.obj_evaluated = self.obj.evaluated_get(draw_context.depsgraph)

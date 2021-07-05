@@ -28,6 +28,7 @@ import re
 import prj
 from prj.drawing_subject import Drawing_subject
 from prj.drawing_camera import Drawing_camera, SCANNING_STEP
+from prj.cutter import Cutter
 import time
 
 STYLES = {
@@ -62,8 +63,6 @@ class Drawing_context:
     camera: Drawing_camera 
     depsgraph: bpy.types.Depsgraph
     frame_size: float ## tuple[float, float] ... try?
-
-
     DEFAULT_STYLES: list[str] = ['p', 'c']
     FLAGS: dict[str, str] = {'draw_all': '-a', 'scan_resolution': '-r',
             'timing_test': '-t'}
@@ -85,6 +84,7 @@ class Drawing_context:
         selection = self.__get_objects(object_args)
         self.selected_objects = selection['objects']
         self.drawing_camera = Drawing_camera(selection['camera'], self)
+        self.cutter = Cutter(self)
         self.drawing_camera.scanner.set_step(self.get_scan_step())
         self.frame_size = self.drawing_camera.obj.data.ortho_scale
         self.subjects = self.__get_subjects(self.selected_objects)
@@ -98,16 +98,14 @@ class Drawing_context:
     def __get_subjects(self, selected_objects: list[bpy.types.Object]) -> \
             list[Drawing_subject]:
         """ Execute scanning to acquire the subjects to draw """
-        if not selected_objects:
+        if not selected_objects or self.draw_all:
             self.drawing_camera.scan_all()
+            objects_to_draw = self.drawing_camera.get_visible_objects()
         else:
             for obj in selected_objects:
                 self.drawing_camera.scan_previous_obj_area(obj.name)
                 self.drawing_camera.scan_object_area(obj)
-        objects_to_draw = self.drawing_camera.get_objects_to_draw()
-        if self.draw_all:
-            objects_to_draw = self.drawing_camera.get_visible_objects()
-
+            objects_to_draw = self.drawing_camera.get_objects_to_draw()
 
         deps_instances_data = {}
         for inst in self.depsgraph.object_instances:
@@ -129,7 +127,6 @@ class Drawing_context:
                 instance = instances_to_draw_data[instance_data]
                 subjects.append(Drawing_subject(instance, self, parent))
 
-        #print('subjects', subjects)
         return subjects
 
     def set_scan_resolution(self, raw_resolution: str) -> None:
@@ -196,4 +193,3 @@ class Drawing_context:
             elif not objs and is_renderables(ob):
                 objs.append(ob)
         return {'objects': objs, 'camera': cam}
-        

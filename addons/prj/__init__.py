@@ -42,7 +42,6 @@ class Prj(bpy.types.Operator):
         return context.area.type == 'VIEW_3D'
 
     def execute(self, context: bpy.types.Context):
-        ## TODO fix composition filepath (now it's on application directory)
         rewrite_svgs(self.draw_context)
         get_svg_composition(self.draw_context)
 
@@ -55,6 +54,7 @@ class Prj(bpy.types.Operator):
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
             #self.key = '-cp -a -t -r 80cm'
             self.key = '-cp -a -r 80cm'
+            #self.key = '-c -r 80cm'
             #self.key = '-cp'
         elif event.type == 'H':
             self.key = '-h'
