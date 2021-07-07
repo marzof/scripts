@@ -28,19 +28,25 @@ from prj.utils import get_obj_bound_box
 from prj.svg_path import Svg_path
 from bpy_extras.object_utils import world_to_camera_view
 
+
 def reload_linked_object(obj: bpy.types.Object, obj_matrix: 'mathutils.Matrix',
-        link: bool = True, relative: bool = False) -> bpy.types.Object:
+        scene: bpy.types.Scene, link: bool = True, 
+        relative: bool = False) -> bpy.types.Object:
     """ Delete obj from scene and reload it from its libary 
         with obj_matrix applied """
     obj_name = obj.name
     obj_lib_filepath = obj.library.filepath
+    ## TODO is remove needed?
     bpy.data.objects.remove(obj)
     with bpy.data.libraries.load(obj_lib_filepath, link=link, 
             relative=relative) as (data_from, data_to):
         data_to.objects.append(obj_name)
 
     new_obj = data_to.objects[0]
-    bpy.context.collection.objects.link(new_obj)
+    #bpy.context.collection.objects.link(new_obj)
+    if not scene:
+        scene = bpy.context.scene
+    scene.collection.objects.link(new_obj)
     new_obj.matrix_world = obj_matrix
     return new_obj
 
@@ -69,9 +75,12 @@ class Drawing_subject:
         self.drawing_camera = draw_context.drawing_camera
 
         svg_path_args = {'main': True}
+        working_scene = self.drawing_context.working_scene
         if self.library and self.parent:
-            self.obj = reload_linked_object(self.obj, self.matrix)
+            self.obj = reload_linked_object(self.obj, self.matrix, working_scene)
             svg_path_args['obj'] = self.parent
+        elif self.obj.name not in working_scene.objects:
+            working_scene.collection.objects.link(self.obj)
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
 

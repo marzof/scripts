@@ -13,12 +13,14 @@ import time
 
 class Prj(bpy.types.Operator):
     """Set view to camera to export svg from grease pencil"""
+    initial_scene: bpy.types.Scene
     initial_scene_camera: bpy.types.Object
     draw_context: Drawing_context
     draw_maker: Drawing_maker
     key: str
     selected_objects_names: list[str]
     selected_camera: bpy.types.Object
+
 
     bl_idname = "prj.modal_operator"
     bl_label = "Set 3d view as selected camera and launch prj"
@@ -33,6 +35,7 @@ class Prj(bpy.types.Operator):
         return cams[0]
 
     def reset_scene(self, context: bpy.types.Context) -> set[str]:
+        bpy.context.window.scene = self.initial_scene
         bpy.context.scene.camera = self.initial_scene_camera
         bpy.ops.view3d.view_camera()
         return {'FINISHED'}
@@ -52,9 +55,9 @@ class Prj(bpy.types.Operator):
                 "H for hiddden, B for back, ESC for exit")
         ## TODO allow set key by UI
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
-            #self.key = '-cp -a -t -r 80cm'
-            self.key = '-cp -a -r 80cm'
-            #self.key = '-c -r 80cm'
+            #self.key = '-a -t -r 80cm'
+            #self.key = '-a -r 80cm'
+            self.key = '-a -r 80cm'
             #self.key = '-cp'
         elif event.type == 'H':
             self.key = '-h'
@@ -94,6 +97,7 @@ class Prj(bpy.types.Operator):
         if not self.selected_camera:
             return {'CANCELLED'}
 
+        self.initial_scene = bpy.context.scene
         self.initial_scene_camera = bpy.context.scene.camera
         bpy.context.scene.camera = self.selected_camera
         bpy.ops.view3d.view_camera()

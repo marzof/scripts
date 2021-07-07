@@ -72,6 +72,10 @@ class Drawing_context:
         self.RENDER_BASEPATH = bpy.path.abspath(context.scene.render.filepath)
         self.RENDER_RESOLUTION_X = context.scene.render.resolution_x
         self.RENDER_RESOLUTION_Y = context.scene.render.resolution_y
+        self.working_scene = bpy.data.scenes.new(name='prj')
+        self.working_scene.render.resolution_x = self.RENDER_RESOLUTION_X
+        self.working_scene.render.resolution_y = self.RENDER_RESOLUTION_Y
+        self.working_scene.render.filepath = self.RENDER_BASEPATH
         self.context = context
         self.args = args
         self.draw_all = False

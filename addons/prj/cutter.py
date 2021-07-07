@@ -30,11 +30,14 @@ from prj.drawing_subject import Drawing_subject
 from prj.instance_object import Instance_object
 import time
 
-def mesh_by_verts(obj_name: str, verts: list[Vector]) -> bpy.types.Object:
+def mesh_by_verts(obj_name: str, verts: list[Vector], scene: bpy.types.Scene) \
+        -> bpy.types.Object:
     """ Create a mesh object from verts """
     mesh = bpy.data.meshes.new(obj_name)
     obj = bpy.data.objects.new(obj_name, mesh)
-    bpy.context.collection.objects.link(obj)
+    if not scene:
+        scene = bpy.context.scene
+    scene.collection.objects.link(obj)
 
     bm = bmesh.new()
     bm.from_object(obj, bpy.context.view_layer.depsgraph)
@@ -58,14 +61,15 @@ class Cutter:
         self.drawing_context = drawing_context
         camera = drawing_context.drawing_camera
         cutter_verts = [v + (camera.direction*.01) for v in camera.frame]
-        self.obj = mesh_by_verts('cutter', cutter_verts)
+        self.obj = mesh_by_verts('cutter', cutter_verts, 
+                drawing_context.working_scene)
         self.instance = Instance_object(obj=self.obj, 
                 matrix=self.obj.matrix_world)
         self.subject = Drawing_subject(self.instance, drawing_context, 
                 cutter=True)
         self.modifier = self.add_boolean_mod()
-        self.lineart_gp = create_lineart(source=self.subject, style='p')
-        #self.drawing_context.depsgraph.update()
+        self.lineart_gp = create_lineart(source=self.subject, style='p', 
+                scene=self.drawing_context.working_scene)
         self.obj.hide_viewport = True
 
     def add_boolean_mod(self) -> bpy.types.BooleanModifier:
@@ -76,11 +80,14 @@ class Cutter:
     def link_to_scene(self) -> None:
         bpy.context.collection.objects.link(self.obj)
 
-    def delete(self) -> None:
+    def delete(self, remove_lineart_gp: bool) -> None:
         bpy.data.objects.remove(self.obj, do_unlink=True)
+        if remove_lineart_gp:
+            bpy.data.objects.remove(self.lineart_gp, do_unlink=True)
 
     def set_source(self, subject: Drawing_subject) -> None:
         self.modifier.object = subject.obj
+        ## TODO use variable, not "cut"
         self.lineart_gp.name = f'cut_{subject.obj.name}'
         self.lineart_gp.hide_viewport = False
 

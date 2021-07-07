@@ -86,6 +86,9 @@ class Drawing_camera:
         self.obj = camera
         self.name = camera.name
         self.drawing_context = draw_context
+        working_scene = self.drawing_context.working_scene
+        working_scene.collection.objects.link(self.obj)
+        working_scene.camera = self.obj
         self.scanner = Scanner(draw_context.depsgraph, self, SCANNING_STEP)
         self.path = self.get_path()
         self.direction = camera.matrix_world.to_quaternion() @ \

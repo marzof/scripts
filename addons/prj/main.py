@@ -59,13 +59,15 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
     cutter = draw_context.cutter
     cutter.obj.hide_viewport = False
 
-    ## Hide all not viewed objects to make drawing faster
-    subj_objs = [subj.obj for subj in draw_context.subjects]
-    other_objs = [obj for obj in bpy.context.scene.objects if obj != cutter.obj]
-    object_visibility = hide_objects(other_objs, subj_objs, timing_test)
+    bpy.context.window.scene = draw_context.working_scene
+    ## TODO update hide_objects() to handle timing_test
+    #subj_objs = [subj.obj for subj in draw_context.subjects]
+    #other_objs = [obj for obj in bpy.context.scene.objects if obj != cutter.obj]
+    #object_visibility = hide_objects(other_objs, subj_objs, timing_test)
     print(f'\t...completed in {(time.time() - prepare_start_time)}\n')
 
 
+    ## TODO check time increase due to cutter
     ## Draw every subject
     for subject in draw_context.subjects:
         subject.obj.hide_viewport = False
@@ -79,16 +81,16 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
         subjects.append(subject)
         subject.obj.hide_viewport = timing_test
 
-    draw_context.cutter.delete()
-    ## TODO
-    ## remove new local instances created and check visibility of cutter 
-    ## and subjects
+    draw_context.cutter.delete(remove_lineart_gp=True)
+    bpy.data.scenes.remove(draw_context.working_scene, do_unlink=True)
+    ## TODO remove newly created local instances
 
     ## Restore objects visibility
     print('Restore objects visibility')
     restore_start_time = time.time()
-    for obj in object_visibility:
-        obj.hide_viewport = object_visibility[obj]
+    ## TODO check if needed for timing_test
+    #for obj in object_visibility:
+    #    obj.hide_viewport = object_visibility[obj]
     print(f'\t...completed in {(time.time() - restore_start_time)}\n')
 
     print('\n')
@@ -110,6 +112,7 @@ def rewrite_svgs(draw_context: 'Drawing_context') -> None:
 def get_svg_composition(draw_context: 'Drawing_context') -> None:
     """ Collect every subject svg in a single composed svg 
         or add new subject to existing composed svg """
+    ## TODO check why a lot of defs elements are created
     print('Start composition')
     composition_start_time = time.time()
     composition_filepath = Filepath(draw_context.drawing_camera.path + '.svg')
@@ -139,8 +142,7 @@ def main() -> None:
     draw_subjects(draw_context, draw_maker)
     rewrite_svgs(draw_context)
     get_svg_composition(draw_context)
-    print("\n--- Completed in %s seconds ---\n\n" % 
-            (time.time() - start_time))
+    print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
 
 if __name__ == "__main__":
     main()

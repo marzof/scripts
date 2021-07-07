@@ -67,6 +67,7 @@ class Drawing_maker:
         """ Create a grease pencil for subject (and add a lineart modifier) for
             every draw_style. Then export the grease pencil """
         self.subject = subject
+        ## TODO check why cutter doesn't hide prj
         cutter.set_source(self.subject)
         styles_to_process = [s for s in styles if 
                     getattr(subject, STYLES[s]['condition'])]
@@ -74,7 +75,8 @@ class Drawing_maker:
             print('draw', subject.name, 'in style', draw_style)
             remove = draw_style != 'c'
             file_suffix = STYLES[draw_style]['name']
-            lineart_gp = create_lineart(source=self.subject, style=draw_style)
+            lineart_gp = create_lineart(source=self.subject, style=draw_style,
+                    scene=self.drawing_context.working_scene)
             svg_path = self.export_grease_pencil(lineart_gp, remove, file_suffix)
 
             self.drawing_camera.restore_cam()

@@ -56,6 +56,7 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
     gp_mod.target_material = gp_mat
     gp_mod.chaining_image_threshold = STYLES[style]['chaining_threshold']
     gp_mod.use_multiple_levels = True
+    gp_mod.use_remove_doubles = True
     gp_mod.level_start = STYLES[style]['occlusion_start']
     gp_mod.level_end = STYLES[style]['occlusion_end']
     gp_mod.source_type = source_type
@@ -64,7 +65,7 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
     elif source_type == 'COLLECTION':
         gp_mod.source_collection = source
 
-def create_grease_pencil(name: str) -> bpy.types.Object:
+def create_grease_pencil(name: str, scene: bpy.types.Scene) -> bpy.types.Object:
     """ Create a grease pencil """
     gp = bpy.data.grease_pencils.new(name)
 
@@ -76,10 +77,11 @@ def create_grease_pencil(name: str) -> bpy.types.Object:
     gp.materials.append(gp_mat)
 
     obj = bpy.data.objects.new(name, gp)
-    bpy.context.collection.objects.link(obj)
+    scene.collection.objects.link(obj)
     return obj
 
-def create_lineart(source: 'Drawing_subject', style: str) -> bpy.types.Object:
+def create_lineart(source: 'Drawing_subject', style: str, 
+        scene: bpy.types.Scene) -> bpy.types.Object:
     """ Create source.grease_pencil if needed and add a lineart modifier 
         with style to it """
     if style == 'c':
@@ -90,9 +92,11 @@ def create_lineart(source: 'Drawing_subject', style: str) -> bpy.types.Object:
         camera = source.drawing_context.drawing_camera
         camera.reverse_cam()
 
+    if not scene:
+        scene = bpy.context.scene
     if not source.grease_pencil:
         source.set_grease_pencil(create_grease_pencil(
-                GREASE_PENCIL_PREFIX + source.obj.name))
+                GREASE_PENCIL_PREFIX + source.obj.name, scene))
     add_line_art_mod(source.grease_pencil, source.obj, 
             source.lineart_source_type, style)
     return source.grease_pencil
