@@ -8,6 +8,7 @@ import bpy
 import os, pathlib
 from prj.drawing_context import Drawing_context, is_renderables
 from prj.drawing_maker import Drawing_maker
+from prj.drawing_subject import libraries
 from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
 import time
 
@@ -36,6 +37,15 @@ class Prj(bpy.types.Operator):
 
     def reset_scene(self, context: bpy.types.Context) -> set[str]:
         bpy.context.window.scene = self.initial_scene
+
+        self.draw_context.cutter.delete(remove_lineart_gp=True)
+        scene = self.draw_context.working_scene
+        for obj in scene.collection.all_objects:
+            scene.collection.objects.unlink(obj)
+        bpy.data.scenes.remove(scene, do_unlink=True)
+        for library in libraries:
+            library.reload()
+
         bpy.context.scene.camera = self.initial_scene_camera
         bpy.ops.view3d.view_camera()
         return {'FINISHED'}
@@ -56,8 +66,8 @@ class Prj(bpy.types.Operator):
         ## TODO allow set key by UI
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
             #self.key = '-a -t -r 80cm'
-            #self.key = '-a -r 80cm'
             self.key = '-a -r 80cm'
+            self.key = '-r 1cm'
             #self.key = '-cp'
         elif event.type == 'H':
             self.key = '-h'

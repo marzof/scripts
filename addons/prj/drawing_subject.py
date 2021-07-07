@@ -28,6 +28,7 @@ from prj.utils import get_obj_bound_box
 from prj.svg_path import Svg_path
 from bpy_extras.object_utils import world_to_camera_view
 
+libraries = []
 
 def reload_linked_object(obj: bpy.types.Object, obj_matrix: 'mathutils.Matrix',
         scene: bpy.types.Scene, link: bool = True, 
@@ -36,14 +37,12 @@ def reload_linked_object(obj: bpy.types.Object, obj_matrix: 'mathutils.Matrix',
         with obj_matrix applied """
     obj_name = obj.name
     obj_lib_filepath = obj.library.filepath
-    ## TODO is remove needed?
     bpy.data.objects.remove(obj)
     with bpy.data.libraries.load(obj_lib_filepath, link=link, 
             relative=relative) as (data_from, data_to):
         data_to.objects.append(obj_name)
 
     new_obj = data_to.objects[0]
-    #bpy.context.collection.objects.link(new_obj)
     if not scene:
         scene = bpy.context.scene
     scene.collection.objects.link(new_obj)
@@ -71,6 +70,8 @@ class Drawing_subject:
         self.matrix = instance_obj.matrix
         self.parent = parent
         self.library = self.obj.library
+        if self.library and self.library not in libraries:
+            libraries.append(self.library)
         self.drawing_context = draw_context
         self.drawing_camera = draw_context.drawing_camera
 
