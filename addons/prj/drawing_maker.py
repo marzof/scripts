@@ -67,8 +67,16 @@ class Drawing_maker:
         """ Create a grease pencil for subject (and add a lineart modifier) for
             every draw_style. Then export the grease pencil """
         self.subject = subject
-        ## TODO check why cutter doesn't hide prj
         cutter.set_source(self.subject)
+
+        ## If cutter doesn't work switch boolean modifier to FAST solver
+        if self.subject.is_cut:
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            depsgraph.update()
+            evaluated_cutter = cutter.obj.evaluated_get(depsgraph)
+            if not list(evaluated_cutter.data.vertices):
+                cutter.change_solver('FAST')
+
         styles_to_process = [s for s in styles if 
                     getattr(subject, STYLES[s]['condition'])]
         for draw_style in styles_to_process:
@@ -77,8 +85,12 @@ class Drawing_maker:
             file_suffix = STYLES[draw_style]['name']
             lineart_gp = create_lineart(source=self.subject, style=draw_style,
                     scene=self.drawing_context.working_scene)
+            ## In order to update lineart visibility set a frame (twice)
+            bpy.context.scene.frame_set(1)
+            bpy.context.scene.frame_set(1)
             svg_path = self.export_grease_pencil(lineart_gp, remove, file_suffix)
-
             self.drawing_camera.restore_cam()
             self.subject.obj.hide_viewport = False 
+
+        cutter.reset_solver()
             

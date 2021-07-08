@@ -13,6 +13,25 @@ get_pl_points = lambda polylines: [tuple_points(pt.attrib['points'])
 point_from_camera = lambda v, cam: world_to_camera_view(bpy.context.scene, 
         cam, v)
 
+## To develop 
+def clip_cut(prj_layer, cut_layer):
+    #clipper = Clipper()
+    prj_points, cut_points = [], []
+
+    prj_entities = list(prj_layer.entities.values())[0][0].entities
+    for entity in prj_entities:
+        if entity == 'path':
+            for path in prj_entities[entity]:
+                prj_points.append(path.points)
+
+    cut_entities = list(cut_layer.entities.values())[0][0].entities
+    for entity in cut_entities:
+        if entity == 'path':
+            for path in cut_entities[entity]:
+                cut_points.append(path.points)
+
+    #new_prj_points = clipper.clip(cut_points, prj_points)
+
 def get_rect_dimensions(rect) -> tuple[tuple[float], list[float]]: 
     """ Get position and dimensions of polyline rect in svg """
     min_val, max_val = math.inf, 0.0
@@ -149,7 +168,7 @@ def apply_mod(obj, mod_type: list[str] = []) -> None:
     bpy.ops.object.mode_set(mode = 'OBJECT')
 
     ## Remove shape keys
-    ## TODO apply the active shape key after the other to keep the shape
+    ## TO_DO apply the active shape key after the other to keep the shape
     if obj.data.shape_keys:
         bpy.context.view_layer.objects.active = obj
         bpy.ops.object.shape_key_remove(all=True)

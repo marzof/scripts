@@ -54,7 +54,6 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
             subject.obj.hide_viewport = True
     print(f'\t...completed in {(time.time() - prepare_start_time)}\n')
 
-
     ## TODO check time increase due to cutter
     ## Draw every subject
     for subject in draw_context.subjects:

@@ -12,25 +12,6 @@ GREASE_PENCIL_LAYER = 'prj_lay'
 GREASE_PENCIL_MAT = 'prj_mat'
 GREASE_PENCIL_MOD = 'prj_la'
 
-## TODO develop this
-def clip_cut(prj_layer, cut_layer):
-    #clipper = Clipper()
-    prj_points, cut_points = [], []
-
-    prj_entities = list(prj_layer.entities.values())[0][0].entities
-    for entity in prj_entities:
-        if entity == 'path':
-            for path in prj_entities[entity]:
-                prj_points.append(path.points)
-
-    cut_entities = list(cut_layer.entities.values())[0][0].entities
-    for entity in cut_entities:
-        if entity == 'path':
-            for path in cut_entities[entity]:
-                cut_points.append(path.points)
-
-    #new_prj_points = clipper.clip(cut_points, prj_points)
-
 def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object, 
         source_type: str, style: str) -> None:
     """ Add a line art modifier to gp from source of the source_type 
@@ -57,6 +38,7 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
     gp_mod.chaining_image_threshold = STYLES[style]['chaining_threshold']
     gp_mod.use_multiple_levels = True
     gp_mod.use_remove_doubles = True
+    gp_mod.use_clip_plane_boundaries = False
     gp_mod.level_start = STYLES[style]['occlusion_start']
     gp_mod.level_end = STYLES[style]['occlusion_end']
     gp_mod.source_type = source_type

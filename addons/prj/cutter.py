@@ -75,6 +75,7 @@ class Cutter:
     def add_boolean_mod(self) -> bpy.types.BooleanModifier:
         modifier = self.obj.modifiers.new('Cut', 'BOOLEAN')
         modifier.operation = 'INTERSECT'
+        modifier.solver = 'EXACT'
         return modifier
 
     def link_to_scene(self) -> None:
@@ -91,3 +92,8 @@ class Cutter:
         self.lineart_gp.name = f'cut_{subject.obj.name}'
         self.lineart_gp.hide_viewport = False
 
+    def change_solver(self, solver: str) -> None:
+        self.modifier.solver = solver
+
+    def reset_solver(self) -> None:
+        self.modifier.solver = 'EXACT'

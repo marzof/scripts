@@ -32,7 +32,7 @@ from prj.cutter import Cutter
 import time
 
 STYLES = {
-        'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 1,
+        'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 0,
             'chaining_threshold': 0, 'condition': 'is_in_front'},
         'c': {'name': 'cut', 'occlusion_start': 0, 'occlusion_end': 128,
             'chaining_threshold': 0, 'condition': 'is_cut'},

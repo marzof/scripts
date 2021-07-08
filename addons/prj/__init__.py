@@ -44,7 +44,10 @@ class Prj(bpy.types.Operator):
             scene.collection.objects.unlink(obj)
         bpy.data.scenes.remove(scene, do_unlink=True)
         for library in libraries:
-            library.reload()
+            try:
+                library.reload()
+            except ReferenceError:
+                pass
 
         bpy.context.scene.camera = self.initial_scene_camera
         bpy.ops.view3d.view_camera()
@@ -66,8 +69,8 @@ class Prj(bpy.types.Operator):
         ## TODO allow set key by UI
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
             #self.key = '-a -t -r 80cm'
-            self.key = '-a -r 80cm'
-            self.key = '-r 1cm'
+            #self.key = '-a -r 80cm'
+            self.key = '-r 10cm'
             #self.key = '-cp'
         elif event.type == 'H':
             self.key = '-h'
@@ -75,6 +78,7 @@ class Prj(bpy.types.Operator):
             self.key = '-b'
         elif event.type == 'ESC':
             self.reset_scene(context)
+            context.area.header_text_set(None)
             return {'CANCELLED'}
 
         if self.key:
@@ -94,6 +98,7 @@ class Prj(bpy.types.Operator):
             self.execute(context)
             print("\n--- Completed in %s seconds ---\n\n" % 
                     (time.time() - start_time))
+            context.area.header_text_set(None)
             return {'FINISHED'}
 
         return {'RUNNING_MODAL'}

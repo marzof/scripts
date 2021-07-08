@@ -189,7 +189,6 @@ class Drawing_camera:
         print('area to scan', area_to_scan)
         if area_to_scan:
             area_samples = range_2d(area_to_scan, self.scanner.step)
-            print('area samples\n', area_samples)
             self.scan_area(area_samples)
 
     def scan_previous_obj_area(self, obj_name: str) -> None:

@@ -6,7 +6,7 @@ from svgwrite import cm, mm
 import pyclipper
 import xml.etree.ElementTree as ET
 
-path = '/home/mf/Documents/TODO/svg_composition/test_clipper.svg'
+path = '/home/mf/Documents/TO_DO/svg_composition/test_clipper.svg'
 
 draw = svgwrite.drawing.Drawing(filename= path, size=('100mm','100mm'))
 
