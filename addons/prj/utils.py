@@ -12,6 +12,14 @@ GREASE_PENCIL_LAYER = 'prj_lay'
 GREASE_PENCIL_MAT = 'prj_mat'
 GREASE_PENCIL_MOD = 'prj_la'
 
+def point_in_quad(point: Vector, quad_vert: list[Vector]) -> bool:
+    """ Check if point is inside quad (2d only) """
+    intersect_point = geometry.intersect_point_quad_2d(point,
+            quad_vert[0], quad_vert[1], quad_vert[2], quad_vert[3])
+    if not intersect_point:
+        return False
+    return True
+
 def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object, 
         source_type: str, style: str) -> None:
     """ Add a line art modifier to gp from source of the source_type 
@@ -150,6 +158,8 @@ def get_obj_bound_box(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> 
         calculate the bounding box for all the objects """
     obj_bbox = []
     for obj_inst in depsgraph.object_instances:
+        if not prj.drawing_context.is_renderables(obj_inst.object):
+            continue
         is_obj_instance = obj_inst.is_instance and \
                 obj_inst.parent.name == obj.name
         is_obj = obj_inst.object.name == obj.name

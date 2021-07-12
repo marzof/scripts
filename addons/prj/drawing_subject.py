@@ -24,7 +24,9 @@
 
 import bpy
 import os
-from prj.utils import get_obj_bound_box
+from mathutils import Vector
+from prj.utils import get_obj_bound_box, point_in_quad
+from prj.drawing_camera import frame_obj_bound_rect
 from prj.svg_path import Svg_path
 from bpy_extras.object_utils import world_to_camera_view
 
@@ -53,6 +55,8 @@ class Drawing_subject:
     obj: bpy.types.Object
     drawing_context: 'Drawing_context'
     name: str
+    bounding_rect: list[Vector]
+    overlapping_subjects: list['Drawing_object']
     matrix: 'mathutils.Matrix'
     parent: bpy.types.Object
     library: bpy.types.Library
@@ -74,6 +78,7 @@ class Drawing_subject:
             libraries.append(self.library)
         self.drawing_context = draw_context
         self.drawing_camera = draw_context.drawing_camera
+        self.overlapping_subjects = []
 
         svg_path_args = {'main': True}
         working_scene = self.drawing_context.working_scene
@@ -131,4 +136,28 @@ class Drawing_subject:
 
     def set_grease_pencil(self, gp: bpy.types.Object) -> None:
         self.grease_pencil = gp
+    
+    def get_bounding_rect(self) -> None:
+        bounding_rect = frame_obj_bound_rect(self.obj, self.drawing_camera.obj)
+        verts = [Vector((bounding_rect['x_min'], bounding_rect['y_min'])),
+                Vector((bounding_rect['x_max'], bounding_rect['y_min'])),
+                Vector((bounding_rect['x_max'], bounding_rect['y_max'])),
+                Vector((bounding_rect['x_min'], bounding_rect['y_max']))]
+        self.bounding_rect = verts
+
+    def add_overlapping_obj(self, subject: 'Drawing_subject') -> None:
+        if subject not in self.overlapping_subjects:
+            self.overlapping_objects.append(subject)
+
+
+    def get_overlap_subjects(self, subjects: list['Drawing_subject']) -> None:
+        for subject in subjects:
+            if subject == self:
+                continue
+            for vert in self.bounding_rect:
+                if point_in_quad(vert, subject.bounding_rect):
+                    self.overlapping_objects.append(subject)
+                    subject.add_overlapping_obj(self)
+                    break
+
 

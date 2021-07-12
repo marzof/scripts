@@ -70,7 +70,7 @@ class Prj(bpy.types.Operator):
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
             #self.key = '-a -t -r 80cm'
             #self.key = '-a -r 80cm'
-            self.key = '-r 10cm'
+            self.key = '-r 1cm'
             #self.key = '-cp'
         elif event.type == 'H':
             self.key = '-h'

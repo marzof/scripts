@@ -49,6 +49,11 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
     cutter.obj.hide_viewport = False
 
     bpy.context.window.scene = draw_context.working_scene
+
+    for subject in draw_context.subjects:
+        subject.get_bounding_rect()
+        subject.get_overlap_subjects(subjects)
+
     if timing_test:
         for subject in draw_context.subjects:
             subject.obj.hide_viewport = True
@@ -57,16 +62,22 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
     ## TODO check time increase due to cutter
     ## Draw every subject
     for subject in draw_context.subjects:
-        subject.obj.hide_viewport = False
-
         print('Drawing', subject.name)
+        hidden_subjects = []
         drawing_start_time = time.time()
+        subject.obj.hide_viewport = False
+        for other_subj in draw_context.subjects:
+            if other_subj not in subject.overlapping_subjects + [subjects, cutter]:
+                hidden_subjects.append(other_subj)
+                other_subj.obj.hide_viewport = True
         draw_maker.draw(subject, draw_context.style, cutter)
         drawing_time = time.time() - drawing_start_time
         drawing_times[drawing_time] = subject.name
-        print(f"\t...drawn in {drawing_time} seconds")
         subjects.append(subject)
         subject.obj.hide_viewport = timing_test
+        for other_subj in hidden_subjects:
+            other_subj.obj.hide_viewport = False
+        print(f"\t...drawn in {drawing_time} seconds")
 
     ## Restore objects visibility
     if timing_test:

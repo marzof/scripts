@@ -61,6 +61,32 @@ def round_to_base(x: float, base: float, round_func,
         x = 4.77, base = 0.5, round_func = math.floor -> return 4.5 ) """
     return round(base * round_func(x / base), rounding)
 
+def frame_obj_bound_rect(obj: bpy.types.Object, camera: bpy.types.Object,
+        round_up: float = None) -> dict[str,float]:
+    """ Get the bounding rect of obj in cam view coords  """
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    depsgraph.update()
+    world_obj_bbox = get_obj_bound_box(obj, depsgraph)
+    bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
+        camera, v) for v in world_obj_bbox]
+    bbox_xs = [v.x for v in bbox_from_cam_view]
+    bbox_ys = [v.y for v in bbox_from_cam_view]
+    bbox_zs = [v.z for v in bbox_from_cam_view]
+    x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
+    y_min, y_max = max(0.0, min(bbox_ys)), min(1.0, max(bbox_ys))
+    if x_min > 1 or x_max < 0 or y_min > 1 or y_max < 0:
+        ## obj is out of frame
+        return None
+    if round_up:
+        x_min_round = round_to_base(x_min, round_up, math.floor)
+        x_max_round = round_to_base(x_max, round_up, math.ceil)
+        y_min_round = round_to_base(y_min, round_up, math.floor)
+        y_max_round = round_to_base(y_max, round_up, math.ceil)
+        result = {'x_min': x_min_round, 'y_min': y_min_round, 
+                'x_max': x_max_round, 'y_max': y_max_round}
+        return result
+    return {'x_min': x_min, 'y_min': y_min, 'x_max': x_max, 'y_max': y_max}
+
 class Drawing_camera:
     obj: bpy.types.Object
     name: str
@@ -157,26 +183,6 @@ class Drawing_camera:
             print (f'{cam_path} already exists. Going on')
         return cam_path
 
-    def frame_obj_bound_rect(self, obj: bpy.types.Object) -> tuple[tuple[float]]:
-        """ Get the bounding rect of obj in cam view coords 
-            (rect is just greater than object and accords with the step grid) """
-        world_obj_bbox = get_obj_bound_box(obj, self.drawing_context.depsgraph)
-        bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
-            self.obj, v) for v in world_obj_bbox]
-        bbox_xs = [v.x for v in bbox_from_cam_view]
-        bbox_ys = [v.y for v in bbox_from_cam_view]
-        bbox_zs = [v.z for v in bbox_from_cam_view]
-        x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
-        y_min, y_max = max(0.0, min(bbox_ys)), min(1.0, max(bbox_ys))
-        if x_min > 1 or x_max < 0 or y_min > 1 or y_max < 0:
-            ## obj is out of frame
-            return None
-        x_min_round = round_to_base(x_min, self.scanner.step, math.floor)
-        x_max_round = round_to_base(x_max, self.scanner.step, math.ceil)
-        y_min_round = round_to_base(y_min, self.scanner.step, math.floor)
-        y_max_round = round_to_base(y_max, self.scanner.step, math.ceil)
-        return (x_min_round, y_min_round), (x_max_round, y_max_round)
-        
     def scan_all(self) -> None:
         """ Scan all the camera frame """
         area_to_scan = ((0.0, 0.0), (1.0, 1.0))
@@ -185,7 +191,9 @@ class Drawing_camera:
 
     def scan_object_area(self, obj: bpy.types.Object) -> None:
         """ Scan the area of subj """
-        area_to_scan = self.frame_obj_bound_rect(obj)
+        scan_limits = frame_obj_bound_rect(obj, self.obj, self.scanner.step)
+        area_to_scan = ((scan_limits['x_min'], scan_limits['y_min']), 
+                (scan_limits['x_max'], scan_limits['y_max']))
         print('area to scan', area_to_scan)
         if area_to_scan:
             area_samples = range_2d(area_to_scan, self.scanner.step)
