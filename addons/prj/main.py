@@ -52,22 +52,23 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
 
     for subject in draw_context.subjects:
         subject.get_bounding_rect()
-        subject.get_overlap_subjects(subjects)
+    for subject in draw_context.subjects:
+        subject.get_overlap_subjects(draw_context.subjects)
 
     if timing_test:
         for subject in draw_context.subjects:
             subject.obj.hide_viewport = True
     print(f'\t...completed in {(time.time() - prepare_start_time)}\n')
 
-    ## TODO check time increase due to cutter
-    ## Draw every subject
+    ## Draw every subject (while hiding not overlapping other ones)
     for subject in draw_context.subjects:
         print('Drawing', subject.name)
         hidden_subjects = []
         drawing_start_time = time.time()
         subject.obj.hide_viewport = False
+        overlapping_subjects = subject.overlapping_objects + [subject, cutter]
         for other_subj in draw_context.subjects:
-            if other_subj not in subject.overlapping_subjects + [subjects, cutter]:
+            if other_subj not in overlapping_subjects:
                 hidden_subjects.append(other_subj)
                 other_subj.obj.hide_viewport = True
         draw_maker.draw(subject, draw_context.style, cutter)

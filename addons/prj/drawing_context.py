@@ -93,10 +93,6 @@ class Drawing_context:
         self.frame_size = self.drawing_camera.obj.data.ortho_scale
         self.subjects = self.__get_subjects(self.selected_objects)
 
-        #for subject in self.subjects:
-        #    subject.get_bounding_rect()
-        #    subject.get_overlap_subjects(subjects)
-
         self.svg_size = format_svg_size(self.frame_size * 10, 
                 self.frame_size * 10)
         self.svg_factor = self.frame_size/self.RENDER_RESOLUTION_X * \

@@ -56,7 +56,7 @@ class Drawing_subject:
     drawing_context: 'Drawing_context'
     name: str
     bounding_rect: list[Vector]
-    overlapping_subjects: list['Drawing_object']
+    overlapping_objects: list['Drawing_object']
     matrix: 'mathutils.Matrix'
     parent: bpy.types.Object
     library: bpy.types.Library
@@ -78,7 +78,8 @@ class Drawing_subject:
             libraries.append(self.library)
         self.drawing_context = draw_context
         self.drawing_camera = draw_context.drawing_camera
-        self.overlapping_subjects = []
+        self.overlapping_objects = []
+        self.bounding_rect = []
 
         svg_path_args = {'main': True}
         working_scene = self.drawing_context.working_scene
@@ -146,7 +147,7 @@ class Drawing_subject:
         self.bounding_rect = verts
 
     def add_overlapping_obj(self, subject: 'Drawing_subject') -> None:
-        if subject not in self.overlapping_subjects:
+        if subject not in self.overlapping_objects:
             self.overlapping_objects.append(subject)
 
 
