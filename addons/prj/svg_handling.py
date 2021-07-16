@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.9
 # -*- coding: utf-8 -*- 
 
+import os
 from prj.svgread import Svg_read
 from prj.svglib import AbsSvg_drawing, AbsStyle, AbsLayer, AbsUse
 from prj.svglib import AbsPath, AbsGroup
@@ -66,8 +67,8 @@ def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
     #if 'cut' in context.svg_styles:
     #    clip_cut(layers['prj'], layers['cut'])
 
-    #for f in files:
-    #    os.remove(f)
+    for f in files:
+        os.remove(f)
 
     return abssvg
 

@@ -42,8 +42,18 @@ class Instance_object:
             self.matrix = matrix.copy()
             self.matrix_repr = [list(rows) for rows in self.matrix]
             self.name = self.obj.name
+            self.is_instance = False
+            self.parent = None
             instance_objects[(obj, matrix_to_tuple(matrix))] = self
 
-    def __repr__(self):
-        return f'{{"object": "{self.name}", "matrix": {self.matrix_repr}}}'
+    def __repr__(self) -> str:
+        parent_name = None if not self.parent else self.parent.name
+        repr_dict = {"object": self.name, "is_instance": self.is_instance,
+                "parent": parent_name, "matrix": self.matrix_repr}
+        return str(repr_dict)
+
+    def add_instance_data(self, is_instance: bool, 
+            parent: 'bpy.types.Object') -> None:
+        self.is_instance = is_instance
+        self.parent = parent
 

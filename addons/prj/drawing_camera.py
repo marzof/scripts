@@ -87,6 +87,8 @@ def frame_obj_bound_rect(obj: bpy.types.Object, camera: bpy.types.Object,
         return result
     return {'x_min': x_min, 'y_min': y_min, 'x_max': x_max, 'y_max': y_max}
 
+is_selected_inst_collection = lambda inst_coll, sel_colls: inst_coll in sel_colls
+
 class Drawing_camera:
     obj: bpy.types.Object
     name: str
@@ -145,17 +147,48 @@ class Drawing_camera:
         subscribe('scanned_area', self.update_checked_samples)
         subscribe('scanned_area', self.analyze_samples)
         subscribe('analyzed_data', self.update_visible_objects)
+        subscribe('analyzed_data', self.update_instances)
         subscribe('analyzed_data', self.update_objects_to_draw)
         subscribe('analyzed_data', self.update_ray_cast)
         subscribe('updated_ray_cast', self.write_ray_cast)
+
+    def update_instances(self, 
+            samples: dict[tuple[float], Instance_object]) -> None:
+        """ Add data about being instance and parent to 
+            visible Instance_objects """
+        depsgraph = self.drawing_context.depsgraph
+        visible_instance_objs = {inst.obj: inst for inst in self.visible_objects}
+        for obj_inst in depsgraph.object_instances:
+            original_obj = obj_inst.object.original
+            is_instance_has_parent = obj_inst.is_instance and obj_inst.parent
+            if original_obj in visible_instance_objs and is_instance_has_parent:
+                visible_instance_objs[original_obj].add_instance_data(
+                        obj_inst.is_instance, obj_inst.parent)
     
     def update_checked_samples(self,
             samples: dict[tuple[float], Instance_object]) -> None:
         self.checked_samples.update(samples)
 
     def get_selected_instances(self) -> list[Instance_object]:
-        selected_instances = [inst_obj for inst_obj in self.visible_objects
-                if inst_obj.obj in self.drawing_context.selected_objects]
+        """ Compare visible_objects with selected_objects and return
+            selected instances"""
+        sel_objs = {sel_obj: sel_obj.instance_collection \
+                for sel_obj in self.drawing_context.selected_objects}
+        selected_instances = []
+        for inst_obj in self.visible_objects:
+            if inst_obj.obj in sel_objs:
+                selected_instances.append(inst_obj)
+                continue
+            if inst_obj.parent and inst_obj.parent.original in sel_objs:
+                ## It's a linked object from same file
+                selected_instances.append(inst_obj)
+                continue
+            if inst_obj.parent and is_selected_inst_collection(
+                    inst_obj.parent.original.instance_collection, 
+                    sel_objs.values()):
+                ## It's a linked object from other file
+                selected_instances.append(inst_obj)
+                continue
         return selected_instances
 
     def update_objects_to_draw(self, scan_result: dict) -> None:
@@ -225,6 +258,8 @@ class Drawing_camera:
         return self.visible_objects
 
     def get_objects_to_draw(self) -> list[bpy.types.Object]:
+        """ Add selected object (instance objects) to objects_to_draw and 
+            return objects_to_draw """
         for inst in self.get_selected_instances():
             if inst in self.objects_to_draw:
                 continue

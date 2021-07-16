@@ -30,6 +30,8 @@ from prj.drawing_subject import Drawing_subject
 from prj.instance_object import Instance_object
 import time
 
+CAMERA_DISTANCE = .0001
+
 def mesh_by_verts(obj_name: str, verts: list[Vector], scene: bpy.types.Scene) \
         -> bpy.types.Object:
     """ Create a mesh object from verts """
@@ -60,7 +62,7 @@ class Cutter:
     def __init__(self, drawing_context: 'Drawing_context'):
         self.drawing_context = drawing_context
         camera = drawing_context.drawing_camera
-        cutter_verts = [v + (camera.direction*.01) for v in camera.frame]
+        cutter_verts = [v + (camera.direction*CAMERA_DISTANCE) for v in camera.frame]
         self.obj = mesh_by_verts('cutter', cutter_verts, 
                 drawing_context.working_scene)
         self.instance = Instance_object(obj=self.obj, 

@@ -25,28 +25,33 @@
 import bpy
 import os
 from mathutils import Vector
-from prj.utils import get_obj_bound_box, point_in_quad
+from prj.utils import point_in_quad, linked_obj_to_real
 from prj.drawing_camera import frame_obj_bound_rect
 from prj.svg_path import Svg_path
 from bpy_extras.object_utils import world_to_camera_view
 
 libraries = []
 
-def reload_linked_object(obj: bpy.types.Object, obj_matrix: 'mathutils.Matrix',
-        scene: bpy.types.Scene, link: bool = True, 
-        relative: bool = False) -> bpy.types.Object:
-    """ Delete obj from scene and reload it from its libary 
-        with obj_matrix applied """
-    obj_name = obj.name
-    obj_lib_filepath = obj.library.filepath
-    bpy.data.objects.remove(obj)
-    with bpy.data.libraries.load(obj_lib_filepath, link=link, 
-            relative=relative) as (data_from, data_to):
-        data_to.objects.append(obj_name)
-
-    new_obj = data_to.objects[0]
+def make_linked_object_real(obj: bpy.types.Object, 
+        obj_matrix: 'mathutils.Matrix', scene: bpy.types.Scene, 
+        parent: bpy.types.Object, link: bool = True, relative: bool = False) \
+                -> bpy.types.Object:
+    """ Make linked obj real and put it into scene with obj_matrix applied """
+    depsgraph = bpy.context.evaluated_depsgraph_get()
     if not scene:
         scene = bpy.context.scene
+    obj_name = obj.name
+    if parent:
+        new_obj_name = f"{parent.name}_{obj.name}"
+
+    if obj.library:
+        new_obj = linked_obj_to_real(obj, link, relative)
+        new_obj.name = new_obj_name
+    else:
+        eval_obj = obj.evaluated_get(depsgraph)
+        new_mesh = bpy.data.meshes.new_from_object(eval_obj)
+        new_obj = bpy.data.objects.new(new_obj_name, new_mesh)
+
     scene.collection.objects.link(new_obj)
     new_obj.matrix_world = obj_matrix
     return new_obj
@@ -67,12 +72,13 @@ class Drawing_subject:
     svg_path: Svg_path
 
     def __init__(self, instance_obj: 'Instance_object', 
-            draw_context: 'Drawing_context', parent: bpy.types.Object = None,
-            cutter: bool = False):
+            draw_context: 'Drawing_context', cutter: bool = False):
+        self.instance_obj = instance_obj
         self.obj = instance_obj.obj
         self.name = instance_obj.name
         self.matrix = instance_obj.matrix
-        self.parent = parent
+        self.parent = instance_obj.parent
+        self.is_instance = instance_obj.is_instance
         self.library = self.obj.library
         if self.library and self.library not in libraries:
             libraries.append(self.library)
@@ -83,9 +89,9 @@ class Drawing_subject:
 
         svg_path_args = {'main': True}
         working_scene = self.drawing_context.working_scene
-        if self.library and self.parent:
-            self.obj = reload_linked_object(self.obj, self.matrix, working_scene)
-            svg_path_args['obj'] = self.parent
+        if not cutter and self.is_instance:
+            self.obj = make_linked_object_real(self.obj, self.matrix, 
+                    working_scene, self.parent)
         elif self.obj.name not in working_scene.objects:
             working_scene.collection.objects.link(self.obj)
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
@@ -105,8 +111,7 @@ class Drawing_subject:
 
     def __get_condition(self) -> dict[str,bool]:
         """ Return if object is cut, in front or behind the camera"""
-        world_obj_bbox = get_obj_bound_box(self.obj, 
-                self.drawing_context.depsgraph)
+        world_obj_bbox = [self.matrix @ Vector(v) for v in self.obj.bound_box]
         bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
             self.drawing_camera.obj, v) for v in world_obj_bbox]
         zs = [v.z for v in bbox_from_cam_view]

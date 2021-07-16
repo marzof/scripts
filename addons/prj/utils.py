@@ -165,11 +165,13 @@ def get_obj_bound_box(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> 
         is_obj = obj_inst.object.name == obj.name
         if is_obj_instance or is_obj:
             bbox = obj_inst.object.bound_box
-            obj_bbox += [obj_inst.object.matrix_world @ Vector(v) \
-                    for v in bbox]
+            obj_bbox += [obj_inst.object.matrix_world @ Vector(v) for v in bbox]
     if is_obj:
         return obj_bbox
-    ## It's a group of objects: get the overall bounding box
+    return get_overall_bound_box(obj_bbox)
+
+def get_overall_bound_box(obj_bbox: list[Vector]):
+    """ Get the overall bounding box of obj_bbox list of Vectors"""
     bbox_xs, bbox_ys, bbox_zs = [], [], []
     for v in obj_bbox:
         bbox_xs.append(v.x)
@@ -189,3 +191,14 @@ def get_obj_bound_box(obj: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> 
             Vector((x_max, y_max, z_min))]
     return bound_box
 
+def linked_obj_to_real(obj: bpy.types.Object, link: bool, 
+        relative: bool) -> bpy.types.Object:
+    """ Remove linked object and reload it as real object """
+    obj_name = obj.name
+    filepath = obj.library.filepath
+    ## Need removal to relink obj from library
+    bpy.data.objects.remove(obj)
+    with bpy.data.libraries.load(filepath, link=link, relative=relative) \
+            as (data_from, data_to):
+        data_to.objects.append(obj_name)
+    return data_to.objects[0]

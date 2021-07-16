@@ -112,25 +112,9 @@ class Drawing_context:
                 self.drawing_camera.scan_object_area(obj)
             objects_to_draw = self.drawing_camera.get_objects_to_draw()
 
-        deps_instances_data = {}
-        for inst in self.depsgraph.object_instances:
-            deps_inst_matrix = inst.matrix_world.copy().freeze()
-            deps_inst_obj = inst.object.original
-            deps_instances_data[(deps_inst_obj, deps_inst_matrix)] = {
-                    'instance': inst, 'parent': inst.parent}
-            
-        instances_to_draw_data = {}
-        for inst in objects_to_draw:
-            inst_matrix = inst.matrix.freeze() 
-            instances_to_draw_data[(inst.obj, inst_matrix)] = inst 
-
         subjects = []
-        for instance_data in instances_to_draw_data:
-            if instance_data in deps_instances_data:
-                deps_inst = deps_instances_data[instance_data]['instance']
-                parent = deps_instances_data[instance_data]['parent']
-                instance = instances_to_draw_data[instance_data]
-                subjects.append(Drawing_subject(instance, self, parent))
+        for instance in objects_to_draw:
+            subjects.append(Drawing_subject(instance, self))
 
         return subjects
 
@@ -192,9 +176,10 @@ class Drawing_context:
                 cam = bpy.data.objects[ob]
             elif ob and is_renderables(bpy.data.objects[ob]):
                 objs.append(bpy.data.objects[ob])
+        got_objs = bool(objs)
         for ob in selected_objs:
             if not cam and ob.type == 'CAMERA':
                 cam = ob
-            elif not objs and is_renderables(ob):
+            if not got_objs and is_renderables(ob):
                 objs.append(ob)
         return {'objects': objs, 'camera': cam}
