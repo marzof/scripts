@@ -131,6 +131,7 @@ def get_svg_composition(draw_context: 'Drawing_context') -> None:
 
 
 def main() -> None:
+    print('Start now')
     start_time = time.time()
     context = bpy.context
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]

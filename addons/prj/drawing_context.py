@@ -57,9 +57,12 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
         camera: bpy.types.Object) -> bool:
     """ CHeck if (real) object_instance is viewed from camera """
     inst_obj = object_instance.object
-    if not is_renderables(inst_obj) or inst_obj.type == 'EMPTY':
+    ## TODO handle better (ok for some curves: e.g. the extruded ones, 
+    ##      not custom shapes)
+    if inst_obj.type != 'MESH':
+    #if not is_renderables(inst_obj) or inst_obj.type == 'EMPTY':
         return
-    matrix = object_instance.object.matrix_world.copy()
+    matrix = inst_obj.matrix_world.copy()
     obj_bound_box = [matrix @ Vector(v) for v in inst_obj.bound_box]
     bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
         camera, v) for v in obj_bound_box]
@@ -68,6 +71,25 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
         if is_in:
             return True
     return False
+
+def get_instances(camera: bpy.types.Object):
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    instance_objects = []
+    for obj_inst in depsgraph.object_instances:
+        if not is_framed(obj_inst, camera):
+            continue
+        obj = obj_inst.object.original
+        lib = obj_inst.object.library 
+        inst = obj_inst.is_instance
+        par = obj_inst.parent
+        mat = obj_inst.object.matrix_world.copy().freeze()
+        instance = Instance_object(obj=obj, library=lib, is_instance=inst,
+                parent=par, matrix=mat)
+        instance_objects.append(instance)
+        parent_name = instance.parent.name if instance.parent else None
+        library = instance.library.filepath if instance.library else 'file'
+        obj = obj_inst.object.original
+    return instance_objects
 
 def objects_to_instances(objects: list[bpy.types.Object], 
         camera: bpy.types.Object = None) -> list[Instance_object]: 
@@ -169,25 +191,26 @@ class Drawing_context:
     def __get_subjects(self, selected_objects: list[bpy.types.Object]) -> \
             list[Drawing_subject]:
         """ Execute scanning to acquire the subjects to draw """
-        if not selected_objects or self.draw_all:
-            self.draw_all = True
-            self.drawing_camera.scan_all()
-            objects_to_draw = self.drawing_camera.get_visible_objects()
-        else:
-            for obj in selected_objects:
-                self.drawing_camera.scan_previous_obj_area(obj.name)
-                self.drawing_camera.scan_object_area(obj)
-            objects_to_draw = self.drawing_camera.get_objects_to_draw()
-        
-        ## Add selected_objects in case of not being scanned
-        all_objects_to_draw = list(set(objects_to_draw + self.selected_objects))
-        instances_to_draw = objects_to_instances(all_objects_to_draw, 
-                self.drawing_camera.obj)
-        for obj in all_objects_to_draw:
-            print('to instance', obj)
-        for inst in instances_to_draw:
-            print('to draw', inst)
-        raise Exception('Stop here and fix the multiple instances error')
+        #if not selected_objects or self.draw_all:
+        #    self.draw_all = True
+        #    self.drawing_camera.scan_all()
+        #    objects_to_draw = self.drawing_camera.get_visible_objects()
+        #else:
+        #    for obj in selected_objects:
+        #        self.drawing_camera.scan_previous_obj_area(obj.name)
+        #        self.drawing_camera.scan_object_area(obj)
+        #    objects_to_draw = self.drawing_camera.get_objects_to_draw()
+        #
+        ### Add selected_objects in case of not being scanned
+        #all_objects_to_draw = list(set(objects_to_draw + self.selected_objects))
+        #instances_to_draw = objects_to_instances(all_objects_to_draw, 
+        #        self.drawing_camera.obj)
+        #for obj in all_objects_to_draw:
+        #    print('to instance', obj)
+        #for inst in instances_to_draw:
+        #    print('to draw', inst)
+        instances_to_draw = get_instances(self.drawing_camera.obj)
+        #raise Exception('Stop here')
 
         subjects = []
         for instance in instances_to_draw:

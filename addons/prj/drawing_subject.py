@@ -75,6 +75,8 @@ class Drawing_subject:
     def __init__(self, instance_obj: 'Instance_object', 
             draw_context: 'Drawing_context', cutter: bool = False):
         print('Create subject for', instance_obj.name)
+    #    print('\tof', instance_obj.parent, 'from', instance_obj.library)
+    #    print('\tin', instance_obj.obj)
         self.instance_obj = instance_obj
         self.obj = instance_obj.obj
         self.name = instance_obj.name
