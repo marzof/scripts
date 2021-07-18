@@ -25,12 +25,16 @@
 
 import bpy
 import re
+from mathutils import Vector
+from bpy_extras.object_utils import world_to_camera_view
 import prj
 from prj.drawing_subject import Drawing_subject
 from prj.drawing_camera import Drawing_camera, SCANNING_STEP
+from prj.instance_object import Instance_object
 from prj.cutter import Cutter
 import time
 
+UNIT_FACTORS = {'m': 1, 'cm': 100, 'mm': 1000}
 STYLES = {
         'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 0,
             'chaining_threshold': 0, 'condition': 'is_in_front'},
@@ -47,7 +51,69 @@ is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
 start_time = time.time()
 
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
-UNIT_FACTORS = {'m': 1, 'cm': 100, 'mm': 1000}
+is_selected_inst_collection = lambda inst_coll, sel_colls: inst_coll in sel_colls
+    
+def is_framed(object_instance: bpy.types.DepsgraphObjectInstance, 
+        camera: bpy.types.Object) -> bool:
+    """ CHeck if (real) object_instance is viewed from camera """
+    inst_obj = object_instance.object
+    if not is_renderables(inst_obj) or inst_obj.type == 'EMPTY':
+        return
+    matrix = object_instance.object.matrix_world.copy()
+    obj_bound_box = [matrix @ Vector(v) for v in inst_obj.bound_box]
+    bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
+        camera, v) for v in obj_bound_box]
+    for v in bbox_from_cam_view:
+        is_in = 0 <= v.x <= 1 and 0 <= v.y <= 1
+        if is_in:
+            return True
+    return False
+
+def objects_to_instances(objects: list[bpy.types.Object], 
+        camera: bpy.types.Object = None) -> list[Instance_object]: 
+    """ Convert objects to Instance_object (and check if objects are 
+        inside camera frame """
+    ## TODO clean up here (two different scopes for one function)
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    instance_objects = []
+    objs = {obj: obj.instance_collection for obj in objects}
+    obj = None
+
+    for obj_inst in depsgraph.object_instances:
+        #if not is_framed(obj_inst, camera):
+        #    continue
+        ## TODO BLOCKING ERROR, to fix:
+        ##      multiple instances of same object are not distinguished
+        if 'bidet' in obj_inst.object.name or 'Cube' == obj_inst.object.name:
+            print(obj_inst.object)
+            print('child of', obj_inst.parent)
+            print('in scan result + sel', obj_inst.object.original in objs)
+            print('is framed', is_framed(obj_inst, camera))
+            print(obj_inst.object.matrix_world)
+
+        if obj_inst.object.original in objs:
+            obj = obj_inst.object.original
+        elif obj_inst.parent and obj_inst.parent.original in objs:
+            obj = obj_inst.parent.original
+        elif obj_inst.parent and is_selected_inst_collection(
+                obj_inst.parent.original.instance_collection, objs.values()):
+            obj = obj_inst.parent.original.instance_collection
+        else:
+            if camera:
+                #is_in_frame = is_framed(obj_inst, camera)
+                #print(obj_inst.object.name, 'is in camera frame:', is_in_frame)
+                continue
+            continue
+
+        if obj:
+            lib = obj.library 
+            inst = obj_inst.is_instance
+            par = obj_inst.parent
+            mat = obj_inst.object.matrix_world.copy()
+            instance = Instance_object(obj=obj, library=lib, is_instance=inst,
+                    parent=par, matrix=mat)
+            instance_objects.append(instance)
+    return instance_objects
 
 class Drawing_context:
     RENDER_BASEPATH: str
@@ -104,6 +170,7 @@ class Drawing_context:
             list[Drawing_subject]:
         """ Execute scanning to acquire the subjects to draw """
         if not selected_objects or self.draw_all:
+            self.draw_all = True
             self.drawing_camera.scan_all()
             objects_to_draw = self.drawing_camera.get_visible_objects()
         else:
@@ -111,9 +178,19 @@ class Drawing_context:
                 self.drawing_camera.scan_previous_obj_area(obj.name)
                 self.drawing_camera.scan_object_area(obj)
             objects_to_draw = self.drawing_camera.get_objects_to_draw()
+        
+        ## Add selected_objects in case of not being scanned
+        all_objects_to_draw = list(set(objects_to_draw + self.selected_objects))
+        instances_to_draw = objects_to_instances(all_objects_to_draw, 
+                self.drawing_camera.obj)
+        for obj in all_objects_to_draw:
+            print('to instance', obj)
+        for inst in instances_to_draw:
+            print('to draw', inst)
+        raise Exception('Stop here and fix the multiple instances error')
 
         subjects = []
-        for instance in objects_to_draw:
+        for instance in instances_to_draw:
             subjects.append(Drawing_subject(instance, self))
 
         return subjects

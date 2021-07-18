@@ -40,6 +40,7 @@ def make_linked_object_real(obj: bpy.types.Object,
     depsgraph = bpy.context.evaluated_depsgraph_get()
     if not scene:
         scene = bpy.context.scene
+    print('make real', obj)
     obj_name = obj.name
     if parent:
         new_obj_name = f"{parent.name}_{obj.name}"
@@ -73,13 +74,14 @@ class Drawing_subject:
 
     def __init__(self, instance_obj: 'Instance_object', 
             draw_context: 'Drawing_context', cutter: bool = False):
+        print('Create subject for', instance_obj.name)
         self.instance_obj = instance_obj
         self.obj = instance_obj.obj
         self.name = instance_obj.name
         self.matrix = instance_obj.matrix
         self.parent = instance_obj.parent
         self.is_instance = instance_obj.is_instance
-        self.library = self.obj.library
+        self.library = instance_obj.library
         if self.library and self.library not in libraries:
             libraries.append(self.library)
         self.drawing_context = draw_context

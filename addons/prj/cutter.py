@@ -62,11 +62,12 @@ class Cutter:
     def __init__(self, drawing_context: 'Drawing_context'):
         self.drawing_context = drawing_context
         camera = drawing_context.drawing_camera
-        cutter_verts = [v + (camera.direction*CAMERA_DISTANCE) for v in camera.frame]
+        cutter_verts = [v + (camera.direction*CAMERA_DISTANCE) \
+                for v in camera.frame]
         self.obj = mesh_by_verts('cutter', cutter_verts, 
                 drawing_context.working_scene)
-        self.instance = Instance_object(obj=self.obj, 
-                matrix=self.obj.matrix_world)
+        self.instance = Instance_object(obj=self.obj, library=None, 
+                    is_instance=False, parent=None, matrix=self.obj.matrix_world)
         self.subject = Drawing_subject(self.instance, drawing_context, 
                 cutter=True)
         self.modifier = self.add_boolean_mod()

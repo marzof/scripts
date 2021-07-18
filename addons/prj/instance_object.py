@@ -24,36 +24,29 @@
 
 instance_objects = dict()
 
-def matrix_to_tuple(matrix) -> tuple[tuple[float]]:
-    return tuple([tuple(row) for row in matrix])
-
 class Instance_object:
     def __new__(cls, *args, **data) -> 'Instance_object':
         """ Create a new Instance_object only if data are not yet
             used (and kept in instance_objects) """
-        instance_data = (data['obj'], matrix_to_tuple(data['matrix']))
+        instance_data = (data['obj'], data['library'])
         if instance_data in instance_objects:
             return instance_objects[instance_data] 
         return super(Instance_object, cls).__new__(cls)
 
-    def __init__(self, obj: 'bpy.types.Object', matrix: 'mathutils.Matrix'):
+    def __init__(self, obj: 'bpy.types.Object', library: str, is_instance: bool,
+            parent: 'bpy.types.Object', matrix: 'mathutils.Matrix'):
         if self not in instance_objects.values():
             self.obj = obj
-            self.matrix = matrix.copy()
-            self.matrix_repr = [list(rows) for rows in self.matrix]
             self.name = self.obj.name
-            self.is_instance = False
-            self.parent = None
-            instance_objects[(obj, matrix_to_tuple(matrix))] = self
+            self.library = library
+            self.is_instance = is_instance
+            self.parent = parent
+            self.matrix = matrix
+            instance_objects[(obj, library)] = self
 
     def __repr__(self) -> str:
         parent_name = None if not self.parent else self.parent.name
-        repr_dict = {"object": self.name, "is_instance": self.is_instance,
-                "parent": parent_name, "matrix": self.matrix_repr}
+        repr_dict = {"object": self.name, "library": self.library, 
+                "is_instance": self.is_instance, "parent": parent_name}
         return str(repr_dict)
-
-    def add_instance_data(self, is_instance: bool, 
-            parent: 'bpy.types.Object') -> None:
-        self.is_instance = is_instance
-        self.parent = parent
 
