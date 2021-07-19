@@ -59,16 +59,24 @@ def round_to_base(x: float, base: float, round_func,
         x = 4.77, base = 0.5, round_func = math.floor -> return 4.5 ) """
     return round(base * round_func(x / base), rounding)
 
-def frame_obj_bound_rect(obj: bpy.types.Object, camera: bpy.types.Object,
-        round_up: float = None) -> dict[str,float]:
-    """ Get the bounding rect of obj in cam view coords  """
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    world_obj_bbox = [obj.matrix_world @ Vector(v) for v in obj.bound_box]
+def get_obj_bound_box_from_cam_view(obj: bpy.types.Object, 
+        camera: bpy.types.Object, matrix: Matrix = None) -> list[Vector]:
+    """ Get object bounding box relative to camera frame"""
+    if not matrix:
+        matrix = obj.matrix_world
+    world_obj_bbox = [matrix @ Vector(v) for v in obj.bound_box]
     bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
         camera, v) for v in world_obj_bbox]
-    bbox_xs = [v.x for v in bbox_from_cam_view]
-    bbox_ys = [v.y for v in bbox_from_cam_view]
-    bbox_zs = [v.z for v in bbox_from_cam_view]
+    return bbox_from_cam_view
+
+def frame_obj_bound_rect(obj: bpy.types.Object, camera: bpy.types.Object, 
+        matrix: Matrix = None, round_up: float = None) -> dict[str,float]:
+    """ Get the bounding rect of obj in cam view coords  """
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    bound_box = get_obj_bound_box_from_cam_view(obj, camera, matrix)
+    bbox_xs = [v.x for v in bound_box]
+    bbox_ys = [v.y for v in bound_box]
+    bbox_zs = [v.z for v in bound_box]
     x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
     y_min, y_max = max(0.0, min(bbox_ys)), min(1.0, max(bbox_ys))
     if x_min > 1 or x_max < 0 or y_min > 1 or y_max < 0:
@@ -185,14 +193,34 @@ class Drawing_camera:
         area_samples = range_2d(area_to_scan, self.scanner.step)
         self.scan_area(area_samples)
 
-    def scan_object_area(self, obj: bpy.types.Object) -> None:
-        """ Scan the area of subj """
-        scan_limits = frame_obj_bound_rect(obj, self.obj, self.scanner.step)
+    def quick_scan_obj(self, obj: bpy.types.Object, matrix: Matrix = None, 
+            scanning_step: float = None) -> bool:
+        #""" Scan the area of subj """
+        if not scanning_step:
+            scanning_step = self.scanner.step
+        if not matrix:
+            matrix = obj.matrix_world
+
+        scan_limits = frame_obj_bound_rect(obj, self.obj, matrix, 
+                scanning_step)
         area_to_scan = ((scan_limits['x_min'], scan_limits['y_min']), 
                 (scan_limits['x_max'], scan_limits['y_max']))
         print('area to scan', area_to_scan)
         if area_to_scan:
-            area_samples = range_2d(area_to_scan, self.scanner.step)
+            area_samples = range_2d(area_to_scan, scanning_step)
+            ## TODO try to keep checked samples for faster searching
+            #new_samples = [sample for sample in area_samples \
+            #        if sample not in self.checked_samples]
+            return self.scanner.scan_area(area_samples, self, obj)
+
+    def scan_object_area(self, obj: bpy.types.Object) -> None:
+        """ Scan the area of subj """
+        scan_limits = frame_obj_bound_rect(obj, self.obj, self.scanner_step)
+        area_to_scan = ((scan_limits['x_min'], scan_limits['y_min']), 
+                (scan_limits['x_max'], scan_limits['y_max']))
+        print('area to scan', area_to_scan)
+        if area_to_scan:
+            area_samples = range_2d(area_to_scan, self.scanner_step)
             self.scan_area(area_samples)
 
     def scan_previous_obj_area(self, obj_name: str) -> None:
@@ -212,7 +240,7 @@ class Drawing_camera:
         for sample in checked_samples:
             if checked_samples[sample]:
                 obj = checked_samples[sample]['object']
-                #matrix = checked_samples[sample]['matrix'].copy().freeze()
+                matrix = checked_samples[sample]['matrix'].copy()#.freeze()
                 library = obj.library.filepath if obj.library else obj.library
                 checked_samples[sample] = {'object': obj.name, 
                         'library': library}

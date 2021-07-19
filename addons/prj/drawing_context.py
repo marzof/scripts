@@ -29,7 +29,8 @@ from mathutils import Vector
 from bpy_extras.object_utils import world_to_camera_view
 import prj
 from prj.drawing_subject import Drawing_subject
-from prj.drawing_camera import Drawing_camera, SCANNING_STEP
+from prj.drawing_camera import Drawing_camera, SCANNING_STEP 
+from prj.drawing_camera import get_obj_bound_box_from_cam_view
 from prj.instance_object import Instance_object
 from prj.cutter import Cutter
 import time
@@ -55,20 +56,22 @@ is_selected_inst_collection = lambda inst_coll, sel_colls: inst_coll in sel_coll
     
 def is_framed(object_instance: bpy.types.DepsgraphObjectInstance, 
         camera: bpy.types.Object) -> bool:
-    """ CHeck if (real) object_instance is viewed from camera """
+    """ Check if (real) object_instance is viewed from camera """
     inst_obj = object_instance.object
     ## TODO handle better (ok for some curves: e.g. the extruded ones, 
     ##      not custom shapes)
-    if inst_obj.type != 'MESH':
-    #if not is_renderables(inst_obj) or inst_obj.type == 'EMPTY':
+    if inst_obj.type not in ['CURVE', 'MESH']:
         return
     matrix = inst_obj.matrix_world.copy()
-    obj_bound_box = [matrix @ Vector(v) for v in inst_obj.bound_box]
-    bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
-        camera, v) for v in obj_bound_box]
-    for v in bbox_from_cam_view:
-        is_in = 0 <= v.x <= 1 and 0 <= v.y <= 1
-        if is_in:
+    bound_box = get_obj_bound_box_from_cam_view(inst_obj, camera, matrix)
+    is_in_camera_limits = False
+    for v in bound_box:
+        ## TODO handle back objects as well (and avoid far objects)
+        if camera.data.clip_start <= v.z <= camera.data.clip_end:
+            is_in_camera_limits = True
+        if not is_in_camera_limits:
+            continue
+        if 0 <= v.x <= 1 and 0 <= v.y <= 1:
             return True
     return False
 
@@ -86,9 +89,7 @@ def get_instances(camera: bpy.types.Object):
         instance = Instance_object(obj=obj, library=lib, is_instance=inst,
                 parent=par, matrix=mat)
         instance_objects.append(instance)
-        parent_name = instance.parent.name if instance.parent else None
-        library = instance.library.filepath if instance.library else 'file'
-        obj = obj_inst.object.original
+        print(instance)
     return instance_objects
 
 def objects_to_instances(objects: list[bpy.types.Object], 
@@ -191,10 +192,30 @@ class Drawing_context:
     def __get_subjects(self, selected_objects: list[bpy.types.Object]) -> \
             list[Drawing_subject]:
         """ Execute scanning to acquire the subjects to draw """
-        #if not selected_objects or self.draw_all:
-        #    self.draw_all = True
-        #    self.drawing_camera.scan_all()
-        #    objects_to_draw = self.drawing_camera.get_visible_objects()
+        instances = get_instances(self.drawing_camera.obj)
+        if not selected_objects or self.draw_all:
+            self.draw_all = True
+            self.drawing_camera.scan_all()
+            objects_to_draw = self.drawing_camera.get_visible_objects()
+        print('1st scan result') 
+        for obj in objects_to_draw:
+            print(obj)
+        to_rescan = [instance for instance in instances 
+                if instance.obj not in objects_to_draw]
+        for inst in to_rescan:
+            print('rescan', inst)
+            found = self.drawing_camera.quick_scan_obj(inst.obj, 
+                    inst.matrix, .001)
+            if found:
+                print('found', found)
+                objects_to_draw.append(inst.obj)
+        #raise Exception('Stop here')
+        #print('2nd scan result') 
+        #for obj in objects_to_draw:
+        #    print(obj)
+        instances_to_draw = [instance for instance in instances 
+                if instance.obj in objects_to_draw]
+
         #else:
         #    for obj in selected_objects:
         #        self.drawing_camera.scan_previous_obj_area(obj.name)
@@ -209,8 +230,6 @@ class Drawing_context:
         #    print('to instance', obj)
         #for inst in instances_to_draw:
         #    print('to draw', inst)
-        instances_to_draw = get_instances(self.drawing_camera.obj)
-        #raise Exception('Stop here')
 
         subjects = []
         for instance in instances_to_draw:

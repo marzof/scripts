@@ -49,7 +49,7 @@ class Instance_object:
     def __repr__(self) -> str:
         parent_name = None if not self.parent else self.parent.name
         repr_dict = {"object": self.name, "library": self.library, 
-                "is_instance": self.is_instance, "parent": parent_name, 
-                "matrix": self.matrix}
+                "is_instance": self.is_instance, "parent": parent_name,} 
+                #"matrix": self.matrix}
         return str(repr_dict)
 

@@ -51,7 +51,8 @@ class Scanner:
         return Vector(coord)
 
     def scan_area(self, area_samples: list[tuple[float]], 
-            camera: 'Drawing_camera') -> dict[tuple[float], dict]:
+            camera: 'Drawing_camera', target: bpy.types.Object = None) -> \
+                    dict[tuple[float], dict]:
         """ Scan area by its samples and return checked_samples maps """
         print("Start scan...")
         scanning_start_time = time.time()
@@ -65,9 +66,14 @@ class Scanner:
                 self.depsgraph, ray_origin, camera.direction)
             if not obj:
                 continue
+            if obj == target:
+                scanning_time = time.time() - scanning_start_time
+                print(f"   ...scanned in {scanning_time} seconds")
+                return True
             checked_samples[sample] = {'result': res, 'location': loc,
                     'normal': nor, 'index': ind, 'object': obj, 'matrix': mat}
-
+        if target:
+            return False
         scanning_time = time.time() - scanning_start_time
         print(f"   ...scanned in {scanning_time} seconds")
         return checked_samples
