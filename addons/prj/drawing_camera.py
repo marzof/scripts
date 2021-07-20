@@ -149,8 +149,8 @@ class Drawing_camera:
         self.objects_to_draw = []
         self.visible_objects = []
         subscribe('scanned_area', self.update_checked_samples)
-        subscribe('scanned_area', self.update_ray_cast)
-        subscribe('scanned_area', self.analyze_samples)
+        subscribe('updated_samples', self.analyze_samples)
+        subscribe('updated_samples', self.update_ray_cast)
         subscribe('analyzed_data', self.update_visible_objects)
         subscribe('analyzed_data', self.update_objects_to_draw)
         subscribe('updated_ray_cast', self.write_ray_cast)
@@ -158,6 +158,7 @@ class Drawing_camera:
     def update_checked_samples(self,
             samples: dict[tuple[float], dict[str, str]]) -> None:
         self.checked_samples.update(samples)
+        post_event('updated_samples', samples)
 
     def update_objects_to_draw(self, scan_result: dict) -> None:
         changed_objects = scan_result['changed_objects']
@@ -173,7 +174,7 @@ class Drawing_camera:
 
     def update_ray_cast(self, samples:dict[tuple[float], dict[str, str]]) -> \
             None:
-        prev_ray_cast = self.ray_cast
+        prev_ray_cast = self.ray_cast.copy()
         self.ray_cast.update(samples)
         if self.ray_cast != prev_ray_cast:
             post_event('updated_ray_cast')
@@ -195,11 +196,12 @@ class Drawing_camera:
 
     def quick_scan_obj(self, obj: bpy.types.Object, matrix: Matrix = None, 
             scanning_step: float = None) -> bool:
-        #""" Scan the area of subj """
+        """ Scan the obj area, update checked_samples and get if obj is found """
         if not scanning_step:
             scanning_step = self.scanner.step
         if not matrix:
             matrix = obj.matrix_world
+        checked_samples = None
 
         scan_limits = frame_obj_bound_rect(obj, self.obj, matrix, 
                 scanning_step)
@@ -208,10 +210,23 @@ class Drawing_camera:
         print('area to scan', area_to_scan)
         if area_to_scan:
             area_samples = range_2d(area_to_scan, scanning_step)
-            ## TODO try to keep checked samples for faster searching
-            #new_samples = [sample for sample in area_samples \
-            #        if sample not in self.checked_samples]
-            return self.scanner.scan_area(area_samples, self, obj)
+            ## TODO do filtered sample pass new objects to object_to_draw?
+            new_samples = [sample for sample in area_samples \
+                    if sample not in self.checked_samples]
+            scan_result = self.scanner.scan_area_for_target(new_samples, self, 
+                    obj)
+            checked_samples = scan_result['samples']
+        if not checked_samples:
+            return
+        for sample in checked_samples:
+            if checked_samples[sample]:
+                obj = checked_samples[sample]['object']
+                library = obj.library.filepath if obj.library \
+                        else obj.library
+                checked_samples[sample] = {'object': obj.name, 
+                        'library': library}
+        post_event('scanned_area', checked_samples)
+        return scan_result['result']
 
     def scan_object_area(self, obj: bpy.types.Object) -> None:
         """ Scan the area of subj """
@@ -255,6 +270,11 @@ class Drawing_camera:
             return objects_to_draw """
         return self.objects_to_draw
 
+    def set_objects_to_draw(self, objs: list[bpy.types.Object]) -> \
+            list[bpy.types.Object]:
+        self.objects_to_draw = objs
+        return self.objects_to_draw
+
     def get_ray_cast_data(self) -> dict[tuple[float], dict[str, str]]:
         """ Get data (in a dictionary) from ray_cast file if it exists 
             (or creates it if missing )"""
@@ -287,7 +307,7 @@ class Drawing_camera:
         for sample in samples:
             obj_data = samples[sample]
             obj = bpy.data.objects[obj_data['object'], obj_data['library']] \
-                    if obj_data else None
+                    if obj_data else obj_data
             visible_objects.append(obj)
             
             prev_sample_value = self.ray_cast[sample] \

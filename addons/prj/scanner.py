@@ -30,12 +30,16 @@ import time
 
 class Scanner:
     depsgraph: bpy.types.Depsgraph
+    target = bpy.types.Object
+    target_found = bool
 
     def __init__(self, depsgraph: bpy.types.Depsgraph, 
             draw_camera: 'Drawing_camera', step: float = 1.0):
         self.depsgraph = depsgraph
         self.draw_camera = draw_camera
         self.step = step
+        self.target = None
+        self.target_found = None
 
     def get_step(self) -> float:
         return self.step
@@ -49,10 +53,21 @@ class Scanner:
         x_coord = camera.frame_origin + (camera.frame_x_vector * v[0])
         coord = x_coord + (camera.frame_y_vector * v[1])
         return Vector(coord)
+    
+    def scan_area_for_target(self, area_samples: list[tuple[float]], 
+            camera: 'Drawing_camera', target: bpy.types.Object = None) -> dict:
+        """ Scan area by its sample and return if target is found 
+            and scan_result """
+        self.target = target
+        scan_result = self.scan_area(area_samples, camera)
+        target_found = self.target_found
+        ## Reset target values
+        self.target = None
+        self.target_found = None
+        return {'result': target_found, 'samples': scan_result}
 
     def scan_area(self, area_samples: list[tuple[float]], 
-            camera: 'Drawing_camera', target: bpy.types.Object = None) -> \
-                    dict[tuple[float], dict]:
+            camera: 'Drawing_camera') -> dict[tuple[float], dict]:
         """ Scan area by its samples and return checked_samples maps """
         print("Start scan...")
         scanning_start_time = time.time()
@@ -66,14 +81,18 @@ class Scanner:
                 self.depsgraph, ray_origin, camera.direction)
             if not obj:
                 continue
-            if obj == target:
+            if self.target and obj == self.target:
                 scanning_time = time.time() - scanning_start_time
                 print(f"   ...scanned in {scanning_time} seconds")
-                return True
+                self.target_found = True
+                return checked_samples
             checked_samples[sample] = {'result': res, 'location': loc,
                     'normal': nor, 'index': ind, 'object': obj, 'matrix': mat}
-        if target:
-            return False
+        if self.target:
+            scanning_time = time.time() - scanning_start_time
+            print(f"   ...scanned in {scanning_time} seconds")
+            self.target_found = False
+            return checked_samples
         scanning_time = time.time() - scanning_start_time
         print(f"   ...scanned in {scanning_time} seconds")
         return checked_samples
