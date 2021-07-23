@@ -40,13 +40,17 @@ UNIT_FACTORS = {'m': 1, 'cm': 100, 'mm': 1000}
 DENSE_SCANNING_STEPS = .001
 STYLES = {
         'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 0,
-            'chaining_threshold': 0, 'condition': 'is_in_front'},
+            'chaining_threshold': 0, 'condition': 'is_in_front', 'instances': [],
+            'bigger_instances': []},
         'c': {'name': 'cut', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_cut'},
+            'chaining_threshold': 0, 'condition': 'is_cut', 'instances': [],
+            'bigger_instances': []},
         'h': {'name': 'hid', 'occlusion_start': 1, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_in_front'},
+            'chaining_threshold': 0, 'condition': 'is_in_front', 'instances': [],
+            'bigger_instances': []},
         'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_behind'},
+            'chaining_threshold': 0, 'condition': 'is_behind', 'instances': [],
+            'bigger_instances': []},
         }
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
         in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
@@ -181,30 +185,46 @@ class Drawing_context:
         instances_dict = get_framed_instances(draw_cam.obj)
         framed_instances = instances_dict['framed']
         bigger_instances = instances_dict['bigger']
-        in_front_instances = instances_dict['in_front']
-        behind_instances = instances_dict['behind']
-        cut_instances = [instance for instance in framed_instances if
-                instance in in_front_instances and instance in behind_instances]
-        cut_bigger_instances = [instance for instance in bigger_instances if
-                instance in in_front_instances and instance in behind_instances]
+        for instance in framed_instances:
+            if instance in instances_dict['in_front']:
+                STYLES['p']['instances'].append(instance)
+                STYLES['h']['instances'].append(instance)
+            if instance in instances_dict['behind']:
+                STYLES['b']['instances'].append(instance)
+            if instance in instances_dict['in_front'] and \
+                    instances_dict['behind']:
+                STYLES['c']['instances'].append(instance)
+        for instance in bigger_instances:
+            if instance in instances_dict['in_front']:
+                STYLES['p']['bigger_instances'].append(instance)
+                STYLES['h']['bigger_instances'].append(instance)
+            if instance in instances_dict['behind']:
+                STYLES['b']['bigger_instances'].append(instance)
+            if instance in instances_dict['in_front'] and \
+                    instances_dict['behind']:
+                STYLES['c']['bigger_instances'].append(instance)
 
-        ## TODO handle style flags
-        style_instances = in_front_instances 
-        instances = [instance for instance in framed_instances \
-                if instance in style_instances]
+        ## Get instance to draw by scanning
+        instances = []
+        for style in self.style:
+            instances += STYLES[style]['instances']
+        instances = list(set(instances))
         if not selected_objects or self.draw_all:
             instances_to_draw = self.get_instances_to_draw_all(instances)
         else:
             instances_to_draw = self.get_instances_to_draw_selection(instances)
 
         ## Add visible bigger objects
-        instances_to_draw += [instance for instance in bigger_instances 
-                if instance in style_instances and
-                instance in draw_cam.get_visible_objects()]
+        instances = []
+        for style in self.style:
+            instances += STYLES[style]['bigger_instances']
+        instances = list(set(instances))
+        instances_to_draw += [instance for instance in instances 
+                if instance in draw_cam.get_visible_objects()]
+
         ## Add possible not intercepted cut objects
-        skipped_cut_instances = [instance for instance in framed_instances 
-                if instance not in instances_to_draw and
-                instance in cut_instances]
+        skipped_cut_instances = [instance for instance in 
+                STYLES['c']['instances'] if instance not in instances_to_draw]
         cut_verts = draw_cam.frame
         cut_normal = draw_cam.direction
         for inst in skipped_cut_instances:
