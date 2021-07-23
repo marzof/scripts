@@ -28,14 +28,15 @@ class Instance_object:
     def __new__(cls, *args, **data) -> 'Instance_object':
         """ Create a new Instance_object only if data are not yet
             used (and kept in instance_objects) """
-        matrix = data['matrix'].copy().freeze()
-        instance_data = (data['obj'], data['library'], matrix)
-        if instance_data in instance_objects:
-            return instance_objects[instance_data] 
+        if data:
+            matrix = data['matrix'].copy().freeze()
+            instance_data = (data['obj'], data['library'], matrix)
+            if instance_data in instance_objects:
+                return instance_objects[instance_data] 
         return super(Instance_object, cls).__new__(cls)
 
     def __init__(self, obj: 'bpy.types.Object', library: 'bpy.types.Library', 
-            is_instance: bool, parent: 'bpy.types.Object', 
+            is_instance: bool, parent: 'bpy.types.Object', cam_z_status: str,
             matrix: 'mathutils.Matrix'):
         if self not in instance_objects.values():
             self.obj = obj
@@ -43,13 +44,22 @@ class Instance_object:
             self.library = library
             self.is_instance = is_instance
             self.parent = parent
+            self.cam_z_status = cam_z_status
             self.matrix = matrix.copy().freeze()
             instance_objects[(self.obj, self.library, self.matrix)] = self
+
+    def is_same_content_as(self, content: 'Instance_object') -> bool:
+        """ Check if self and content have the same content """
+        if not content:
+            return False
+        return self.obj == content.obj and self.matrix == content.matrix
 
     def __repr__(self) -> str:
         parent_name = None if not self.parent else self.parent.name
         repr_dict = {"object": self.name, "library": self.library, 
-                "is_instance": self.is_instance, "parent": parent_name,} 
-                #"matrix": self.matrix}
+                "is_instance": self.is_instance, "parent": parent_name, 
+                'cam_z_status': self.cam_z_status, 
+                #"matrix": self.matrix,
+                }
         return str(repr_dict)
 

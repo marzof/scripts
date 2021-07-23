@@ -81,13 +81,13 @@ class Scanner:
                 self.depsgraph, ray_origin, camera.direction)
             if not obj:
                 continue
+            checked_samples[sample] = {'result': res, 'location': loc,
+                    'normal': nor, 'index': ind, 'object': obj, 'matrix': mat}
             if self.target and obj == self.target:
                 scanning_time = time.time() - scanning_start_time
                 print(f"   ...scanned in {scanning_time} seconds")
                 self.target_found = True
                 return checked_samples
-            checked_samples[sample] = {'result': res, 'location': loc,
-                    'normal': nor, 'index': ind, 'object': obj, 'matrix': mat}
         if self.target:
             scanning_time = time.time() - scanning_start_time
             print(f"   ...scanned in {scanning_time} seconds")

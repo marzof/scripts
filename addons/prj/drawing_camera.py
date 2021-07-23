@@ -31,6 +31,7 @@ import math
 from mathutils import Vector, Matrix
 from bpy_extras.object_utils import world_to_camera_view
 from prj.scanner import Scanner
+from prj.checked_sample import Checked_sample, checked_samples
 from prj.event import subscribe, post_event
 import time
 
@@ -92,6 +93,17 @@ def frame_obj_bound_rect(obj: bpy.types.Object, camera: bpy.types.Object,
         return result
     return {'x_min': x_min, 'y_min': y_min, 'x_max': x_max, 'y_max': y_max}
 
+def get_obj_area_samples(obj: 'bpy.types.Object', cam: 'bpy.types.Object', 
+        scanning_step: float, matrix: Matrix = None):
+    """ Return samples grid (at scanning_step interval) for obj area """
+    scan_limits = frame_obj_bound_rect(obj, cam, matrix, scanning_step)
+    area_to_scan = ((scan_limits['x_min'], scan_limits['y_min']), 
+            (scan_limits['x_max'], scan_limits['y_max']))
+    print('area to scan', area_to_scan)
+    if not area_to_scan:
+        return None
+    area_samples = range_2d(area_to_scan, scanning_step)
+    return area_samples
 
 class Drawing_camera:
     obj: bpy.types.Object
@@ -105,13 +117,12 @@ class Drawing_camera:
     frame_y_vector: Vector
     frame_z_start: float
     ray_cast_filepath: str
-    ray_cast: dict[tuple[float], dict[str, str]]
-    checked_samples: dict[tuple[float], dict[str, str]]
+    ray_cast: dict[tuple[float], Checked_sample]
     clip_start: float
     clip_end: float
     matrix: Matrix
-    objects_to_draw: list[bpy.types.Object]
-    visible_objects: list[bpy.types.Object]
+    objects_to_draw: list[Checked_sample]
+    visible_objects: list[Checked_sample]
 
     def __init__(self, camera: bpy.types.Object, 
             draw_context: 'Drawing_context'):
@@ -143,39 +154,34 @@ class Drawing_camera:
         self.ray_cast = self.get_ray_cast_data()
         scanning_time = time.time() - scanning_start_time
         print(f"   ...got in {scanning_time} seconds")
-        self.checked_samples = {}
 
         self.inverse_matrix = Matrix().Scale(-1, 4, (.0,.0,1.0))
         self.objects_to_draw = []
         self.visible_objects = []
-        subscribe('scanned_area', self.update_checked_samples)
-        subscribe('updated_samples', self.analyze_samples)
-        subscribe('updated_samples', self.update_ray_cast)
+        subscribe('scanned_area', self.analyze_samples)
+        subscribe('scanned_area', self.update_ray_cast)
         subscribe('analyzed_data', self.update_visible_objects)
         subscribe('analyzed_data', self.update_objects_to_draw)
         subscribe('updated_ray_cast', self.write_ray_cast)
 
-    def update_checked_samples(self,
-            samples: dict[tuple[float], dict[str, str]]) -> None:
-        self.checked_samples.update(samples)
-        post_event('updated_samples', samples)
-
-    def update_objects_to_draw(self, scan_result: dict) -> None:
+    def update_objects_to_draw(self, 
+            scan_result: dict[str, list['Instance_object']]) -> None:
         changed_objects = scan_result['changed_objects']
         new_objects_to_draw = [obj for obj in changed_objects 
                 if obj not in self.objects_to_draw]
         self.objects_to_draw += new_objects_to_draw
 
-    def update_visible_objects(self, scan_result: dict) -> None:
+    def update_visible_objects(self, 
+            scan_result: dict[str, list['Instance_object']]) -> None:
         visible_objects = scan_result['visible_objects']
         new_visible_objects = [obj for obj in visible_objects
                 if obj not in self.visible_objects]
         self.visible_objects += new_visible_objects
 
-    def update_ray_cast(self, samples:dict[tuple[float], dict[str, str]]) -> \
-            None:
+    def update_ray_cast(self, samples:list[Checked_sample]) -> None:
         prev_ray_cast = self.ray_cast.copy()
-        self.ray_cast.update(samples)
+        for sample in samples:
+            self.ray_cast[sample.coords] = sample.content
         if self.ray_cast != prev_ray_cast:
             post_event('updated_ray_cast')
 
@@ -201,40 +207,32 @@ class Drawing_camera:
             scanning_step = self.scanner.step
         if not matrix:
             matrix = obj.matrix_world
-        checked_samples = None
 
-        scan_limits = frame_obj_bound_rect(obj, self.obj, matrix, 
-                scanning_step)
-        area_to_scan = ((scan_limits['x_min'], scan_limits['y_min']), 
-                (scan_limits['x_max'], scan_limits['y_max']))
-        print('area to scan', area_to_scan)
-        if area_to_scan:
-            area_samples = range_2d(area_to_scan, scanning_step)
-            ## TODO do filtered sample pass new objects to object_to_draw?
-            new_samples = [sample for sample in area_samples \
-                    if sample not in self.checked_samples]
-            scan_result = self.scanner.scan_area_for_target(new_samples, self, 
-                    obj)
-            checked_samples = scan_result['samples']
-        if not checked_samples:
+        area_samples = get_obj_area_samples(obj, self.obj, scanning_step, matrix)
+        if not area_samples:
             return
-        for sample in checked_samples:
-            if checked_samples[sample]:
-                obj = checked_samples[sample]['object']
-                library = obj.library.filepath if obj.library \
-                        else obj.library
-                checked_samples[sample] = {'object': obj.name, 
-                        'library': library}
-        post_event('scanned_area', checked_samples)
+        new_samples = [sample for sample in area_samples \
+                if sample not in checked_samples]
+        scan_result = self.scanner.scan_area_for_target(new_samples, self, obj)
+        samples_result = scan_result['samples']
+        sample_objects = []
+        for sample in samples_result:
+            if samples_result[sample]:
+                obj = samples_result[sample]['object'] 
+                matrix = samples_result[sample]['matrix'].copy()
+            else:
+                obj, matrix = None, None
+            sample_objects.append(Checked_sample(coords=sample, obj=obj, 
+                matrix=matrix))
+
+        if sample_objects:
+            post_event('scanned_area', sample_objects)
         return scan_result['result']
 
     def scan_object_area(self, obj: bpy.types.Object) -> None:
         """ Scan the area of subj """
-        scan_limits = frame_obj_bound_rect(obj, self.obj, self.scanner_step)
-        area_to_scan = ((scan_limits['x_min'], scan_limits['y_min']), 
-                (scan_limits['x_max'], scan_limits['y_max']))
-        print('area to scan', area_to_scan)
-        if area_to_scan:
+        area_samples = get_obj_area_samples(obj, self.obj, self.scanner_step)
+        if area_samples:
             area_samples = range_2d(area_to_scan, self.scanner_step)
             self.scan_area(area_samples)
 
@@ -247,20 +245,21 @@ class Drawing_camera:
         self.scan_area(samples)
 
     def scan_area(self, area_samples: list[tuple[float]]) -> None:
-        """ Scan area_samples and return checked_samples 
-            (maintaining updated self.checked_samples) """
+        """ Scan area_samples and collect result into Checked_sample objects """
         new_samples = [sample for sample in area_samples \
-                if sample not in self.checked_samples]
-        checked_samples = self.scanner.scan_area(new_samples, self)
-        for sample in checked_samples:
-            if checked_samples[sample]:
-                obj = checked_samples[sample]['object']
-                matrix = checked_samples[sample]['matrix'].copy()#.freeze()
-                library = obj.library.filepath if obj.library else obj.library
-                checked_samples[sample] = {'object': obj.name, 
-                        'library': library}
+                if sample not in checked_samples]
+        samples_result = self.scanner.scan_area(new_samples, self)
+        sample_objects = []
+        for sample in samples_result:
+            if samples_result[sample]:
+                obj = samples_result[sample]['object'] 
+                matrix = samples_result[sample]['matrix'].copy()
+            else:
+                obj, matrix = None, None
+            sample_objects.append(Checked_sample(coords=sample, obj=obj, 
+                matrix=matrix))
 
-        post_event('scanned_area', checked_samples)
+        post_event('scanned_area', sample_objects)
 
     def get_visible_objects(self) -> list[bpy.types.Object]:
         return self.visible_objects
@@ -275,15 +274,26 @@ class Drawing_camera:
         self.objects_to_draw = objs
         return self.objects_to_draw
 
-    def get_ray_cast_data(self) -> dict[tuple[float], dict[str, str]]:
+    def get_ray_cast_data(self) -> dict[tuple[float], Checked_sample]:
         """ Get data (in a dictionary) from ray_cast file if it exists 
             (or creates it if missing )"""
         data = {}
         try:
             with open(self.ray_cast_filepath) as f:
                 for line in f:
-                    sample = ast.literal_eval(line)
-                    data[sample[0]] = sample[1]
+                    raw_sample = ast.literal_eval(line)
+                    raw_coords = raw_sample[0]
+                    raw_content = raw_sample[1]
+                    obj_name = raw_content['object']
+                    library_filepath = raw_content['library']
+                    obj = None if not raw_content['object'] else \
+                            bpy.data.objects[obj_name, library_filepath]
+                    matrix = None if not raw_content['matrix'] else \
+                            Matrix(raw_content['matrix']).copy()
+                    sample_object = Checked_sample(coords=raw_coords, obj=obj,
+                            matrix=matrix, collect=False)
+                    data[raw_coords] = sample_object.content
+                    #data[raw_coords] = sample_object.instance_object
             return data
         except OSError:
             print (f"{self.ray_cast_filepath} doesn't exists. Create it now")
@@ -298,31 +308,31 @@ class Drawing_camera:
                 value = self.ray_cast[sample] 
                 f.write(f'{sample}, {value}\n')
 
-    def analyze_samples(self, 
-            samples:dict[tuple[float], dict[str, str]]) -> None:
+    def analyze_samples(self, samples:list[Checked_sample]) -> None:
         """ Compare samples with ray_cast data and get the dict:
-            {'changed_objects': list[bpy.types.Object],
-            'visible_objects': list[bpy.types.Object]} """
+            {'changed_objects': list[Instance_object],
+            'visible_objects': list[Instance_object]} """
         changed_objects, visible_objects = [], []
         for sample in samples:
-            obj_data = samples[sample]
-            obj = bpy.data.objects[obj_data['object'], obj_data['library']] \
-                    if obj_data else obj_data
-            visible_objects.append(obj)
+            instance = None if not sample.obj else sample.instance_object
+            if instance and instance not in visible_objects:
+                visible_objects.append(instance)
             
-            prev_sample_value = self.ray_cast[sample] \
-                    if sample in self.ray_cast else None
-            prev_obj = bpy.data.objects[prev_sample_value['object'], 
-                    prev_sample_value['library']] if prev_sample_value else None
-            if not obj and not prev_obj:
+            prev_sample_content = self.ray_cast[sample.coords] \
+                    if sample.coords in self.ray_cast else None
+            if prev_sample_content and not prev_sample_content.is_none:
+                prev_instance = prev_sample_content.get_instance_object()
+            else:
+                prev_instance = None
+            if not instance and not prev_instance:
                 continue
-            if obj and obj == prev_obj:
+            if instance and instance.is_same_content_as(prev_instance):
                 continue
-            changed_objects.append(prev_sample_value)
-            changed_objects.append(obj)
+            if prev_instance and prev_instance not in changed_objects:
+                changed_objects.append(prev_instance)
+            if instance and instance not in changed_objects:
+                changed_objects.append(instance)
 
-        changed_objects = [obj for obj in list(set(changed_objects)) if obj]
-        visible_objects = [obj for obj in list(set(visible_objects)) if obj]
         result = {'changed_objects': changed_objects,
                 'visible_objects': visible_objects}
         post_event('analyzed_data', result)
