@@ -30,10 +30,10 @@ from bpy_extras.object_utils import world_to_camera_view
 import prj
 from prj.drawing_subject import Drawing_subject
 from prj.drawing_camera import Drawing_camera, SCANNING_STEP 
-from prj.drawing_camera import get_obj_bound_box_from_cam_view
 from prj.checked_sample import matrix_to_tuple
 from prj.instance_object import Instance_object
 from prj.cutter import Cutter
+from prj.utils import is_cut, is_framed
 import time
 
 UNIT_FACTORS = {'m': 1, 'cm': 100, 'mm': 1000}
@@ -54,95 +54,16 @@ is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
 start_time = time.time()
 
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
-is_selected_inst_collection = lambda inst_coll, sel_colls: inst_coll in sel_colls
 
-## TODO clean up
-def is_cut(obj: bpy.types.Object, matrix: 'mathutils.Matrix', 
-        cut_verts: list[Vector], cut_normal: Vector) -> bool:
-    """ Check if an edge of obj intersect cut_verts quad plane """
-    print('Get cut for', obj.name)
-    mesh = obj.to_mesh()
-    for edge in mesh.edges:
-        verts = edge.vertices
-        v0 = matrix @ mesh.vertices[verts[0]].co
-        v1 = matrix @ mesh.vertices[verts[1]].co
-        #print('edge', edge.index)
-        #print('\t', v0, v1)
-        ## line and plane are extended to find intersection
-        intersection =  geometry.intersect_line_plane(
-                v0, v1, cut_verts[0], cut_normal)
-        if not intersection:
-            continue
-        point_on_line = geometry.intersect_point_line(intersection, v0, v1)
-        distance_from_line = point_on_line[1]
-        if not 0 <= distance_from_line <= 1: ## intersection is not on edge
-            continue
-        point_on_cut_plane = geometry.intersect_point_quad_2d(intersection, 
-                cut_verts[0], cut_verts[1], cut_verts[2], cut_verts[3])
-        if not point_on_cut_plane:
-            continue
-        print('It cuts at', intersection)
-        obj.to_mesh_clear()
-        return True
-    obj.to_mesh_clear()
-    return False
-
-## TODO too specialized: get more generalized
-def get_cam_z_status(bound_box: list[Vector], camera: bpy.types.Object) -> str:
-    """ Check if bound_box is cut, inf front or behind camera plane """
-    zs = [v.z for v in bound_box]
-    z_min, z_max = min(zs), max(zs)
-    cut_plane = camera.data.clip_start
-    if z_min <= cut_plane <= z_max:
-        return 'CUT'
-    if cut_plane < z_max:
-        return 'IN_FRONT'
-    else: ## z_min < cut_plane
-        return 'BEHIND'
-
-def is_framed(object_instance: bpy.types.DepsgraphObjectInstance, 
-        camera: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> \
-                dict[str, bool]:
-    """ Check if (real, not empty) object_instance is viewed from camera """
-    inst_obj = object_instance.object
-    ## TODO handle better (ok for some curves: e.g. the extruded ones, 
-    ##      not custom shapes)
-    if inst_obj.type not in ['CURVE', 'MESH']:
-        return {'result': None, 'inside_frame': None, 'cam_z_status': None}
-    matrix = inst_obj.matrix_world.copy()
-    if inst_obj.type == 'CURVE':
-        ## Assign a harmless modifier to the curve in order to calculate
-        ## its correct bounding box. Then remove the tmp modifier
-        tmp_mod = inst_obj.original.modifiers.new("tmp", 'WELD')
-        depsgraph.update()
-        matrix = inst_obj.original.matrix_world.copy()
-        inst_obj.original.modifiers.remove(tmp_mod)
-    bound_box = get_obj_bound_box_from_cam_view(inst_obj, camera, matrix)
-
-    cam_z_status = get_cam_z_status(bound_box, camera)
-    for v in bound_box:
-        ## TODO handle back objects as well (and avoid far objects)
-        if 0 <= v.x <= 1 and 0 <= v.y <= 1:
-            return {'result': True, 'inside_frame': True, 
-                    'cam_z_status': cam_z_status}
-    ## Check if camera frame is in bound_box (e.g. inst_obj bigger than frame)
-    bound_box_min = bound_box[0]
-    bound_box_max = bound_box[-1]
-    for frame_x in [0, 1]:
-        for frame_y in [0, 1]:
-            frame_x_is_in = bound_box_min.x <= frame_x <= bound_box_max.x
-            frame_y_is_in = bound_box_min.y <= frame_y <= bound_box_max.y
-            if frame_x_is_in and frame_y_is_in:
-                return {'result': True, 'inside_frame': False,
-                        'cam_z_status': cam_z_status}
-    return {'result': False, 'inside_frame': None, 'cam_z_status': cam_z_status}
-
-def get_instances(camera: bpy.types.Object) -> tuple[list[Instance_object]]:
+def get_framed_instances(camera: bpy.types.Object) -> \
+        tuple[list[Instance_object]]:
     """ Check for all object instances in scene and return those which are 
         inside camera frame (and limits) as Instance_object(s)"""
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    instance_objects = []
+    framed_instances = []
     bigger_instances = []
+    in_front_instances = []
+    behind_instances = []
     for obj_inst in depsgraph.object_instances:
         is_in_frame = is_framed(obj_inst, camera, depsgraph)
         if not is_in_frame['result']:
@@ -152,16 +73,21 @@ def get_instances(camera: bpy.types.Object) -> tuple[list[Instance_object]]:
         lib = obj_inst.object.library 
         inst = obj_inst.is_instance
         par = obj_inst.parent
-        cam_z = is_in_frame['cam_z_status']
         mat = obj_inst.object.matrix_world.copy().freeze()
         instance = Instance_object(obj=obj, library=lib, is_instance=inst,
-                parent=par, cam_z_status=cam_z, matrix=mat)
+                parent=par, matrix=mat)
 
         if is_in_frame['inside_frame']:
-            instance_objects.append(instance)
+            framed_instances.append(instance)
         else:
             bigger_instances.append(instance)
-    return instance_objects, bigger_instances
+
+        if is_in_frame['in_front']:
+            in_front_instances.append(instance)
+        if is_in_frame['behind']:
+            behind_instances.append(instance)
+    return {'framed': framed_instances, 'bigger': bigger_instances,
+            'in_front': in_front_instances, 'behind': behind_instances}
 
 
 class Drawing_context:
@@ -171,7 +97,7 @@ class Drawing_context:
     args: list[str]
     draw_all: bool
     timing_test: bool
-    style: str
+    style: list[str]
     scan_resolution: dict
     selected_objects: list[bpy.types.Object]
     subjects: list[Drawing_subject]
@@ -198,7 +124,6 @@ class Drawing_context:
         self.style = []
         self.scan_resolution = {'value': SCANNING_STEP, 'units': None}
         self.depsgraph = context.evaluated_depsgraph_get()
-        self.depsgraph.update()
         object_args = self.__set_flagged_options()
         selection = self.__get_objects(object_args)
         self.selected_objects = selection['objects']
@@ -222,15 +147,12 @@ class Drawing_context:
         draw_cam.scan_all()
         visible_objects = draw_cam.get_visible_objects()[:]
         ## Get not found objects and rescan them with a denser step grid
-        ## TODO handle behind objects as well
         instances_to_check = [instance for instance in instances 
-                if instance not in visible_objects and 
-                instance.cam_z_status != 'BEHIND']
+                if instance not in visible_objects]
         ## TODO get timing for rescan
         for inst in instances_to_check:
-            print('Rescan', inst.obj)
-            draw_cam.quick_scan_obj(inst.obj, inst.matrix, 
-                    DENSE_SCANNING_STEPS)
+            print('Rescan', inst)
+            draw_cam.quick_scan_obj(inst.obj, inst.matrix, DENSE_SCANNING_STEPS)
         instances_to_draw = draw_cam.get_visible_objects()
         return instances_to_draw
 
@@ -256,27 +178,39 @@ class Drawing_context:
             list[Drawing_subject]:
         """ Execute scanning to acquire the subjects to draw """
         draw_cam = self.drawing_camera
-        all_instances = get_instances(draw_cam.obj)
-        instances = all_instances[0]
-        bigger_instances = all_instances[1]
+        instances_dict = get_framed_instances(draw_cam.obj)
+        framed_instances = instances_dict['framed']
+        bigger_instances = instances_dict['bigger']
+        in_front_instances = instances_dict['in_front']
+        behind_instances = instances_dict['behind']
+        cut_instances = [instance for instance in framed_instances if
+                instance in in_front_instances and instance in behind_instances]
+        cut_bigger_instances = [instance for instance in bigger_instances if
+                instance in in_front_instances and instance in behind_instances]
 
+        ## TODO handle style flags
+        style_instances = in_front_instances 
+        instances = [instance for instance in framed_instances \
+                if instance in style_instances]
         if not selected_objects or self.draw_all:
             instances_to_draw = self.get_instances_to_draw_all(instances)
         else:
             instances_to_draw = self.get_instances_to_draw_selection(instances)
 
+        ## Add visible bigger objects
         instances_to_draw += [instance for instance in bigger_instances 
-                if instance in draw_cam.get_visible_objects()]
-        skipped_instances = [instance for instance in instances 
-                if instance not in instances_to_draw]
+                if instance in style_instances and
+                instance in draw_cam.get_visible_objects()]
+        ## Add possible not intercepted cut objects
+        skipped_cut_instances = [instance for instance in framed_instances 
+                if instance not in instances_to_draw and
+                instance in cut_instances]
         cut_verts = draw_cam.frame
         cut_normal = draw_cam.direction
-        ## TODO pass to is_cut just obj with bounding box cutting camera frame
-        for inst in skipped_instances:
-            if inst.cam_z_status == 'CUT':
-                obj = inst.obj.evaluated_get(self.depsgraph)
-                if is_cut(obj, inst.matrix, cut_verts, cut_normal):
-                    instances_to_draw.append(inst)
+        for inst in skipped_cut_instances:
+            obj = inst.obj.evaluated_get(self.depsgraph)
+            if is_cut(obj, inst.matrix, cut_verts, cut_normal):
+                instances_to_draw.append(inst)
 
         subjects = []
         for instance in instances_to_draw:

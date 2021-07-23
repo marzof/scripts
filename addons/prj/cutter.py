@@ -67,7 +67,7 @@ class Cutter:
         self.obj = mesh_by_verts('cutter', cutter_verts, 
                 drawing_context.working_scene)
         self.instance = Instance_object(obj=self.obj, library=None, 
-                    is_instance=False, parent=None, cam_z_status= None,
+                    is_instance=False, parent=None,
                     matrix=self.obj.matrix_world)
         self.subject = Drawing_subject(self.instance, drawing_context, 
                 cutter=True)

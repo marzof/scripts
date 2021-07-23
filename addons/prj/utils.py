@@ -5,12 +5,97 @@ import bpy, bmesh
 from mathutils import Matrix, Vector, geometry
 from bpy_extras.object_utils import world_to_camera_view
 import prj.drawing_context
+from prj.drawing_camera import get_obj_bound_box_from_cam_view
 import time
 
 GREASE_PENCIL_PREFIX = 'prj_'
 GREASE_PENCIL_LAYER = 'prj_lay'
 GREASE_PENCIL_MAT = 'prj_mat'
 GREASE_PENCIL_MOD = 'prj_la'
+
+def is_framed(object_instance: bpy.types.DepsgraphObjectInstance, 
+        camera: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> \
+                dict[str, bool]:
+    """ Check if object_instance is viewed by camera, if is in front or 
+        behind camera frame. If not inside_frame then object bounding box 
+        is surrounding camera frame """
+    inst_obj = object_instance.object
+    in_front = False
+    behind = False
+
+    ## TODO handle better (ok for some curves: e.g. the extruded ones, 
+    ##      not custom shapes)
+    if inst_obj.type not in ['CURVE', 'MESH']:
+        return {'result': None, 'inside_frame': None, 
+                'in_front': in_front, 'behind': behind}
+    matrix = inst_obj.matrix_world.copy()
+
+    ## Assign a harmless modifier to the curve in order to update depsgraph
+    ## and calculate correctly its bounding box. Then remove the tmp modifier
+    ## (after mod removal the depsgraph should be updated but is time-consuming
+    ## so do it onky for curves if necessary)
+    if inst_obj.type == 'CURVE':
+        tmp_mod = inst_obj.original.modifiers.new("tmp", 'WELD')
+        depsgraph.update()
+        matrix = inst_obj.original.matrix_world.copy()
+        inst_obj.original.modifiers.remove(tmp_mod)
+
+    bound_box = get_obj_bound_box_from_cam_view(inst_obj, camera, matrix)
+
+    ## Get object condition relative to camera: cut, in_front or behind
+    zs = [v.z for v in bound_box]
+    z_min, z_max = min(zs), max(zs)
+    cut_plane = camera.data.clip_start
+    if cut_plane <= z_max: in_front = True
+    if z_min <= cut_plane: behind = True
+
+    ## Get instance inside camera frame
+    for v in bound_box:
+        if 0 <= v.x <= 1 and 0 <= v.y <= 1:
+            return {'result': True, 'inside_frame': True,
+                    'in_front': in_front, 'behind': behind}
+
+    ## Check if camera frame is in bound_box 
+    ## (e.g. inst_obj surrounding cam frame)
+    bound_box_min = bound_box[0]
+    bound_box_max = bound_box[-1]
+    for frame_x in [0, 1]:
+        for frame_y in [0, 1]:
+            frame_x_is_in = bound_box_min.x <= frame_x <= bound_box_max.x
+            frame_y_is_in = bound_box_min.y <= frame_y <= bound_box_max.y
+            if frame_x_is_in and frame_y_is_in:
+                return {'result': True, 'inside_frame': False,
+                        'in_front': in_front, 'behind': behind}
+    return {'result': False, 'inside_frame': None,
+            'in_front': in_front, 'behind': behind}
+
+def is_cut(obj: bpy.types.Object, matrix: 'mathutils.Matrix', 
+        cut_verts: list[Vector], cut_normal: Vector) -> bool:
+    """ Check if an edge of obj intersect cut_verts quad plane """
+    #print('Get cut for', obj.name)
+    mesh = obj.to_mesh()
+    for edge in mesh.edges:
+        verts = edge.vertices
+        v0 = matrix @ mesh.vertices[verts[0]].co
+        v1 = matrix @ mesh.vertices[verts[1]].co
+        ## line and plane are extended to find intersection
+        intersection =  geometry.intersect_line_plane(
+                v0, v1, cut_verts[0], cut_normal)
+        if not intersection:
+            continue
+        point_on_line = geometry.intersect_point_line(intersection, v0, v1)
+        distance_from_line = point_on_line[1]
+        if not 0 <= distance_from_line <= 1: ## intersection is not on edge
+            continue
+        point_on_cut_plane = geometry.intersect_point_quad_2d(intersection, 
+                cut_verts[0], cut_verts[1], cut_verts[2], cut_verts[3])
+        if not point_on_cut_plane: ## intersection is out of quad cut plane
+            continue
+        #print('It cuts at', intersection)
+        obj.to_mesh_clear()
+        return True
+    obj.to_mesh_clear()
+    return False
 
 def point_in_quad(point: Vector, quad_vert: list[Vector]) -> bool:
     """ Check if point is inside quad (2d only) """

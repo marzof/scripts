@@ -36,7 +36,7 @@ class Instance_object:
         return super(Instance_object, cls).__new__(cls)
 
     def __init__(self, obj: 'bpy.types.Object', library: 'bpy.types.Library', 
-            is_instance: bool, parent: 'bpy.types.Object', cam_z_status: str,
+            is_instance: bool, parent: 'bpy.types.Object',
             matrix: 'mathutils.Matrix'):
         if self not in instance_objects.values():
             self.obj = obj
@@ -44,7 +44,6 @@ class Instance_object:
             self.library = library
             self.is_instance = is_instance
             self.parent = parent
-            self.cam_z_status = cam_z_status
             self.matrix = matrix.copy().freeze()
             instance_objects[(self.obj, self.library, self.matrix)] = self
 
@@ -58,7 +57,6 @@ class Instance_object:
         parent_name = None if not self.parent else self.parent.name
         repr_dict = {"object": self.name, "library": self.library, 
                 "is_instance": self.is_instance, "parent": parent_name, 
-                'cam_z_status': self.cam_z_status, 
                 #"matrix": self.matrix,
                 }
         return str(repr_dict)
