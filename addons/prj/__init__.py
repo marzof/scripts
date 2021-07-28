@@ -9,6 +9,7 @@ import os, pathlib
 from prj.drawing_context import Drawing_context, is_renderables
 from prj.drawing_maker import Drawing_maker
 from prj.drawing_subject import libraries
+from prj.drawing_style import create_drawing_styles
 from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
 import time
 
@@ -87,6 +88,7 @@ class Prj(bpy.types.Operator):
             objs = ';'.join(self.selected_objects_names + \
                     [self.selected_camera.name])
             args = self.key.split() + [objs]
+            create_drawing_styles()
             print('Set context now')
             self.draw_context = Drawing_context(args, context)
             print('Set context after', (time.time() - start_time))

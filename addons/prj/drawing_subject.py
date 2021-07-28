@@ -62,7 +62,7 @@ class Drawing_subject:
     drawing_context: 'Drawing_context'
     name: str
     bounding_rect: list[Vector]
-    overlapping_objects: list['Drawing_object']
+    overlapping_objects: list['Drawing_subject']
     matrix: 'mathutils.Matrix'
     parent: bpy.types.Object
     library: bpy.types.Library
@@ -113,6 +113,7 @@ class Drawing_subject:
         self.lineart_source_type = 'OBJECT'
         self.grease_pencil = None
 
+    ## TODO get this info from Instance_object
     def __get_condition(self) -> dict[str,bool]:
         """ Return if object is cut, in front or behind the camera"""
         world_obj_bbox = [self.matrix @ Vector(v) for v in self.obj.bound_box]
@@ -148,6 +149,7 @@ class Drawing_subject:
         self.grease_pencil = gp
     
     def get_bounding_rect(self) -> None:
+        ## TODO use bounding box data of instance to reduce calc time
         bounding_rect = frame_obj_bound_rect(self.obj, self.drawing_camera.obj)
         verts = [Vector((bounding_rect['x_min'], bounding_rect['y_min'])),
                 Vector((bounding_rect['x_max'], bounding_rect['y_min'])),

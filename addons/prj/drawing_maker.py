@@ -28,7 +28,7 @@ import os
 import prj
 from prj.utils import make_active, create_lineart
 from prj.drawing_subject import Drawing_subject
-from prj.drawing_context import STYLES
+from prj.drawing_style import drawing_styles
 
 
 class Drawing_maker:
@@ -78,11 +78,11 @@ class Drawing_maker:
                 cutter.change_solver('FAST')
 
         styles_to_process = [s for s in styles if 
-                    getattr(subject, STYLES[s]['condition'])]
+                    getattr(subject, drawing_styles[s].condition)]
         for draw_style in styles_to_process:
             print('draw', subject.name, 'in style', draw_style)
             remove = draw_style != 'c'
-            file_suffix = STYLES[draw_style]['name']
+            file_suffix = drawing_styles[draw_style].name
             lineart_gp = create_lineart(source=self.subject, style=draw_style,
                     scene=self.drawing_context.working_scene)
             ## In order to update lineart visibility set a frame (twice)

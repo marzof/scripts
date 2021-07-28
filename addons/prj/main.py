@@ -33,6 +33,7 @@ from prj.svg_handling import filter_subjects_for_svg, add_subjects_as_use
 from prj.drawing_context import Drawing_context, is_renderables
 from prj.drawing_maker import Drawing_maker
 from prj.drawing_subject import libraries
+from prj.drawing_style import create_drawing_styles
 import time
 
 drawings: list['Svg_drawing'] = []
@@ -52,6 +53,7 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
 
     for subject in draw_context.subjects:
         subject.get_bounding_rect()
+    ## TODO windowsills are not opaque: why?
     for subject in draw_context.subjects:
         subject.get_overlap_subjects(draw_context.subjects)
 
@@ -135,6 +137,7 @@ def main() -> None:
     start_time = time.time()
     context = bpy.context
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
+    create_drawing_styles()
     draw_context = Drawing_context(args, context)
     draw_maker = Drawing_maker(draw_context)
     draw_subjects(draw_context, draw_maker)

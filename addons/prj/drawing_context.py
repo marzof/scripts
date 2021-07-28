@@ -33,31 +33,25 @@ from prj.drawing_camera import Drawing_camera, SCANNING_STEP
 from prj.checked_sample import matrix_to_tuple
 from prj.instance_object import Instance_object
 from prj.cutter import Cutter
+from prj.drawing_style import drawing_styles
 from prj.utils import is_cut, is_framed
 import time
 
 UNIT_FACTORS = {'m': 1, 'cm': 100, 'mm': 1000}
 DENSE_SCANNING_STEPS = .001
-STYLES = {
-        'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 0,
-            'chaining_threshold': 0, 'condition': 'is_in_front', 'instances': [],
-            'bigger_instances': []},
-        'c': {'name': 'cut', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_cut', 'instances': [],
-            'bigger_instances': []},
-        'h': {'name': 'hid', 'occlusion_start': 1, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_in_front', 'instances': [],
-            'bigger_instances': []},
-        'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_behind', 'instances': [],
-            'bigger_instances': []},
-        }
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
         in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
 
 start_time = time.time()
 
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
+is_visible = lambda obj: not obj.hide_render and not obj.hide_viewport
+
+def is_in_visible_collection(obj: bpy.types.Object) -> bool:
+    for collection in obj.users_collection:
+        if not collection.hide_render and not collection.hide_viewport:
+            return True
+        return False
 
 def get_framed_instances(camera: bpy.types.Object) -> \
         tuple[list[Instance_object]]:
@@ -70,7 +64,9 @@ def get_framed_instances(camera: bpy.types.Object) -> \
     behind_instances = []
     for obj_inst in depsgraph.object_instances:
         is_in_frame = is_framed(obj_inst, camera, depsgraph)
-        if not is_in_frame['result']:
+        if not is_in_frame['result'] or not is_visible(obj_inst.object): # or \
+                ## TODO ignore objects whose users_collection are not visible too
+                #not is_in_visible_collection(obj_inst.object):
             continue
         ## Create the Instance_object
         obj = obj_inst.object.original
@@ -141,7 +137,7 @@ class Drawing_context:
                 self.frame_size * 10)
         self.svg_factor = self.frame_size/self.RENDER_RESOLUTION_X * \
                 self.RESOLUTION_FACTOR
-        self.svg_styles = [STYLES[d_style]['name'] for d_style in 
+        self.svg_styles = [drawing_styles[d_style].name for d_style in 
                 self.style]
 
     def get_instances_to_draw_all(self, instances: list[Instance_object]) -> \
@@ -187,27 +183,27 @@ class Drawing_context:
         bigger_instances = instances_dict['bigger']
         for instance in framed_instances:
             if instance in instances_dict['in_front']:
-                STYLES['p']['instances'].append(instance)
-                STYLES['h']['instances'].append(instance)
+                drawing_styles['p'].add_instance(instance)
+                drawing_styles['h'].add_instance(instance)
             if instance in instances_dict['behind']:
-                STYLES['b']['instances'].append(instance)
+                drawing_styles['b'].add_instance(instance)
             if instance in instances_dict['in_front'] and \
                     instances_dict['behind']:
-                STYLES['c']['instances'].append(instance)
+                drawing_styles['c'].add_instance(instance)
         for instance in bigger_instances:
             if instance in instances_dict['in_front']:
-                STYLES['p']['bigger_instances'].append(instance)
-                STYLES['h']['bigger_instances'].append(instance)
+                drawing_styles['p'].add_bigger_instance(instance)
+                drawing_styles['h'].add_bigger_instance(instance)
             if instance in instances_dict['behind']:
-                STYLES['b']['bigger_instances'].append(instance)
+                drawing_styles['b'].add_bigger_instance(instance)
             if instance in instances_dict['in_front'] and \
                     instances_dict['behind']:
-                STYLES['c']['bigger_instances'].append(instance)
+                drawing_styles['c'].add_bigger_instance(instance)
 
         ## Get instance to draw by scanning
         instances = []
         for style in self.style:
-            instances += STYLES[style]['instances']
+            instances += drawing_styles[style].instances
         instances = list(set(instances))
         if not selected_objects or self.draw_all:
             instances_to_draw = self.get_instances_to_draw_all(instances)
@@ -217,14 +213,15 @@ class Drawing_context:
         ## Add visible bigger objects
         instances = []
         for style in self.style:
-            instances += STYLES[style]['bigger_instances']
+            instances += drawing_styles[style].bigger_instances
         instances = list(set(instances))
         instances_to_draw += [instance for instance in instances 
                 if instance in draw_cam.get_visible_objects()]
 
         ## Add possible not intercepted cut objects
         skipped_cut_instances = [instance for instance in 
-                STYLES['c']['instances'] if instance not in instances_to_draw]
+                drawing_styles['c'].instances if instance not in 
+                instances_to_draw]
         cut_verts = draw_cam.frame
         cut_normal = draw_cam.direction
         for inst in skipped_cut_instances:
@@ -276,7 +273,7 @@ class Drawing_context:
                 self.set_scan_resolution(raw_resolution)
                 options_idx.append(arg_idx + 1)
                 continue
-            self.style += [l for l in arg if l in STYLES]
+            self.style += [l for l in arg if l in drawing_styles]
 
         if not self.style: 
             self.style = self.DEFAULT_STYLES

@@ -6,6 +6,7 @@ from mathutils import Matrix, Vector, geometry
 from bpy_extras.object_utils import world_to_camera_view
 import prj.drawing_context
 from prj.drawing_camera import get_obj_bound_box_from_cam_view
+from prj.drawing_style import drawing_styles
 import time
 
 GREASE_PENCIL_PREFIX = 'prj_'
@@ -110,10 +111,9 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
     """ Add a line art modifier to gp from source of the source_type 
     with style """
 
-    STYLES = prj.drawing_context.STYLES
-    gp_layer = gp.data.layers.new(STYLES[style]['name'])
+    gp_layer = gp.data.layers.new(drawing_styles[style].name)
     gp_layer.frames.new(1)
-    gp_mat_name = GREASE_PENCIL_MAT + '_' + STYLES[style]['name']
+    gp_mat_name = GREASE_PENCIL_MAT + '_' + drawing_styles[style].name
     if gp_mat_name not in bpy.data.materials:
         gp_mat = bpy.data.materials.new(gp_mat_name)
     else:
@@ -123,17 +123,17 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
     gp.data.materials.append(gp_mat)
 
     ## Create and setup lineart modifier
-    gp_mod_name = GREASE_PENCIL_MOD + '_' + STYLES[style]['name']
+    gp_mod_name = GREASE_PENCIL_MOD + '_' + drawing_styles[style].name
     gp.grease_pencil_modifiers.new(gp_mod_name, 'GP_LINEART')
     gp_mod = gp.grease_pencil_modifiers[gp_mod_name]
     gp_mod.target_layer = gp_layer.info
     gp_mod.target_material = gp_mat
-    gp_mod.chaining_image_threshold = STYLES[style]['chaining_threshold']
+    gp_mod.chaining_image_threshold = drawing_styles[style].chaining_threshold
     gp_mod.use_multiple_levels = True
     gp_mod.use_remove_doubles = True
     gp_mod.use_clip_plane_boundaries = False
-    gp_mod.level_start = STYLES[style]['occlusion_start']
-    gp_mod.level_end = STYLES[style]['occlusion_end']
+    gp_mod.level_start = drawing_styles[style].occlusion_start
+    gp_mod.level_end = drawing_styles[style].occlusion_end
     gp_mod.source_type = source_type
     if source_type == 'OBJECT':
         gp_mod.source_object = source

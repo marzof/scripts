@@ -65,6 +65,8 @@ class Checked_sample(Instance_object):
         if not instance_objects or not self.obj:
             return None
         instance_data = (self.obj, self.library, self.matrix.copy().freeze())
+        if instance_data not in instance_objects:
+            return None
         instance_obj = instance_objects[instance_data]
         ## If called from another file set self.instance_object and return it
         if __file__ != inspect.stack()[1].filename:
