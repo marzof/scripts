@@ -62,6 +62,9 @@ def get_framed_instances(camera: bpy.types.Object) -> \
     bigger_instances = []
     in_front_instances = []
     behind_instances = []
+    ## TODO handle big out-of-frame objects too like Railing for PLAN_A105-6 cam:
+    ##      try with an adaptive grid step that defines the object silhouette 
+    ##      area to scan
     for obj_inst in depsgraph.object_instances:
         is_in_frame = is_framed(obj_inst, camera, depsgraph)
         if not is_in_frame['result'] or not is_visible(obj_inst.object): # or \
@@ -231,7 +234,11 @@ class Drawing_context:
 
         subjects = []
         for instance in instances_to_draw:
-            subjects.append(Drawing_subject(instance, self))
+            new_subject = Drawing_subject(instance, self)
+            new_subject.get_bounding_rect()
+            subjects.append(new_subject)
+        for subject in subjects:
+            subject.get_overlap_subjects(subjects)
 
         return subjects
 

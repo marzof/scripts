@@ -53,6 +53,7 @@ def make_linked_object_real(obj: bpy.types.Object,
         new_mesh = bpy.data.meshes.new_from_object(eval_obj)
         new_obj = bpy.data.objects.new(new_obj_name, new_mesh)
 
+    new_obj.data.materials.clear()
     scene.collection.objects.link(new_obj)
     new_obj.matrix_world = obj_matrix
     return new_obj
@@ -75,8 +76,6 @@ class Drawing_subject:
     def __init__(self, instance_obj: 'Instance_object', 
             draw_context: 'Drawing_context', cutter: bool = False):
         print('Create subject for', instance_obj.name)
-    #    print('\tof', instance_obj.parent, 'from', instance_obj.library)
-    #    print('\tin', instance_obj.obj)
         self.instance_obj = instance_obj
         self.obj = instance_obj.obj
         self.name = instance_obj.name
@@ -97,7 +96,15 @@ class Drawing_subject:
             self.obj = make_linked_object_real(self.obj, self.matrix, 
                     working_scene, self.parent)
         elif self.obj.name not in working_scene.objects:
+            ## Move a no-materiales duplicate to working_scene and 
+            ## leave the original in current scene
+            ## (materials could bother lineart)
+            duplicate = self.obj.copy()
+            duplicate.data = duplicate.data.copy()
+            duplicate.data.materials.clear()
+            self.obj = duplicate
             working_scene.collection.objects.link(self.obj)
+
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
 

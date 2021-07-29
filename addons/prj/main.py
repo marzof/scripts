@@ -51,18 +51,12 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
 
     bpy.context.window.scene = draw_context.working_scene
 
-    for subject in draw_context.subjects:
-        subject.get_bounding_rect()
-    ## TODO windowsills are not opaque: why?
-    for subject in draw_context.subjects:
-        subject.get_overlap_subjects(draw_context.subjects)
-
     if timing_test:
         for subject in draw_context.subjects:
             subject.obj.hide_viewport = True
     print(f'\t...completed in {(time.time() - prepare_start_time)}\n')
 
-    ## Draw every subject (while hiding not overlapping other ones)
+    ## Draw every subject (and hide not overlapping ones)
     for subject in draw_context.subjects:
         print('Drawing', subject.name)
         hidden_subjects = []
@@ -99,6 +93,7 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
 
 def rewrite_svgs(draw_context: 'Drawing_context') -> None:
     """ Get a single and organized svg for every subject """
+    ## TODO fix objects' name to the original ones
     print('Start rewriting svg')
     rewrite_svgs_start_time = time.time()
     for svg_data in svgs_data:
