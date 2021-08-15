@@ -5,7 +5,6 @@ import bpy, bmesh
 from mathutils import Matrix, Vector, geometry
 from bpy_extras.object_utils import world_to_camera_view
 import prj.drawing_context
-from prj.drawing_camera import get_obj_bound_box_from_cam_view
 from prj.drawing_style import drawing_styles
 import time
 
@@ -14,12 +13,34 @@ GREASE_PENCIL_LAYER = 'prj_lay'
 GREASE_PENCIL_MAT = 'prj_mat'
 GREASE_PENCIL_MOD = 'prj_la'
 
+def get_obj_bbox_by_cam(obj: bpy.types.Object, 
+        camera: bpy.types.Object, matrix: Matrix = None) -> list[Vector]:
+    """ Get object bounding box relative to camera frame"""
+    if not matrix:
+        matrix = obj.matrix_world
+    world_obj_bbox = [matrix @ Vector(v) for v in obj.bound_box]
+    bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
+        camera, v) for v in world_obj_bbox]
+    return bbox_from_cam_view
+
+def get_curve_matrix(curve_obj: bpy.types.Object) -> Matrix:
+    """ Assign a harmless modifier to the curve in order to update depsgraph
+        and calculate correctly its matrix.
+        After mod removal the depsgraph should be updated but is time-consuming 
+        so do it only for curves if necessary """
+    tmp_mod = curve_obj.modifiers.new("tmp", 'WELD')
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    depsgraph.update()
+    matrix = curve_obj.matrix_world.copy()
+    curve_obj.modifiers.remove(tmp_mod)
+    return matrix
+
 def is_framed(object_instance: bpy.types.DepsgraphObjectInstance, 
-        camera: bpy.types.Object, depsgraph: bpy.types.Depsgraph) -> \
-                dict[str, bool]:
+        camera: bpy.types.Object) -> dict:
     """ Check if object_instance is viewed by camera, if is in front or 
         behind camera frame. If not inside_frame then object bounding box 
-        is surrounding camera frame """
+        is surrounding camera frame. It returns a dict with result and
+        bounding box relative to camera frame """
     inst_obj = object_instance.object
     in_front = False
     behind = False
@@ -27,34 +48,29 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
     ## TODO handle better (ok for some curves: e.g. the extruded ones, 
     ##      not custom shapes)
     if inst_obj.type not in ['CURVE', 'MESH']:
-        return {'result': None, 'inside_frame': None, 
-                'in_front': in_front, 'behind': behind}
-    matrix = inst_obj.matrix_world.copy()
+        return {'result': None, 'inside_frame': None, 'in_front': in_front, 
+                'behind': behind, 'bound_box': None}
 
-    ## Assign a harmless modifier to the curve in order to update depsgraph
-    ## and calculate correctly its bounding box. Then remove the tmp modifier
-    ## (after mod removal the depsgraph should be updated but is time-consuming
-    ## so do it onky for curves if necessary)
     if inst_obj.type == 'CURVE':
-        tmp_mod = inst_obj.original.modifiers.new("tmp", 'WELD')
-        depsgraph.update()
-        matrix = inst_obj.original.matrix_world.copy()
-        inst_obj.original.modifiers.remove(tmp_mod)
+        matrix = get_curve_matrix(inst_obj.original)
+    else:
+        matrix = inst_obj.matrix_world.copy()
+    bound_box = get_obj_bbox_by_cam(inst_obj, camera, matrix)
 
-    bound_box = get_obj_bound_box_from_cam_view(inst_obj, camera, matrix)
-
-    ## Get object condition relative to camera: cut, in_front or behind
+    ## Check if object is in_front of and/or behind camera
     zs = [v.z for v in bound_box]
     z_min, z_max = min(zs), max(zs)
     cut_plane = camera.data.clip_start
-    if cut_plane <= z_max: in_front = True
-    if z_min <= cut_plane: behind = True
+    if cut_plane <= z_max: 
+        in_front = True
+    if z_min <= cut_plane: 
+        behind = True
 
     ## Get instance inside camera frame
     for v in bound_box:
         if 0 <= v.x <= 1 and 0 <= v.y <= 1:
-            return {'result': True, 'inside_frame': True,
-                    'in_front': in_front, 'behind': behind}
+            return {'result': True, 'inside_frame': True, 'in_front': in_front, 
+                    'behind': behind, 'bound_box': bound_box}
 
     ## Check if camera frame is in bound_box 
     ## (e.g. inst_obj surrounding cam frame)
@@ -64,11 +80,13 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
         for frame_y in [0, 1]:
             frame_x_is_in = bound_box_min.x <= frame_x <= bound_box_max.x
             frame_y_is_in = bound_box_min.y <= frame_y <= bound_box_max.y
-            if frame_x_is_in and frame_y_is_in:
-                return {'result': True, 'inside_frame': False,
-                        'in_front': in_front, 'behind': behind}
+            #if frame_x_is_in and frame_y_is_in:
+            if not frame_x_is_in or not frame_y_is_in:
+                continue
+            return {'result': True, 'inside_frame': False, 'in_front': in_front,
+                    'behind': behind, 'bound_box': bound_box}
     return {'result': False, 'inside_frame': None,
-            'in_front': in_front, 'behind': behind}
+            'in_front': in_front, 'behind': behind, 'bound_box': bound_box}
 
 def is_cut(obj: bpy.types.Object, matrix: 'mathutils.Matrix', 
         cut_verts: list[Vector], cut_normal: Vector) -> bool:
@@ -156,12 +174,11 @@ def create_grease_pencil(name: str, scene: bpy.types.Scene) -> bpy.types.Object:
     return obj
 
 def create_lineart(source: 'Drawing_subject', style: str, 
-        scene: bpy.types.Scene) -> bpy.types.Object:
+        scene: bpy.types.Scene, cutter: 'Cutter') -> bpy.types.Object:
     """ Create source.grease_pencil if needed and add a lineart modifier 
         with style to it """
     if style == 'c':
         source.obj.hide_viewport = True 
-        cutter = source.drawing_context.cutter
         return cutter.lineart_gp
     elif style == 'b':
         camera = source.drawing_context.drawing_camera

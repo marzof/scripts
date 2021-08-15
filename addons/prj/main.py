@@ -34,6 +34,8 @@ from prj.drawing_context import Drawing_context, is_renderables
 from prj.drawing_maker import Drawing_maker
 from prj.drawing_subject import libraries
 from prj.drawing_style import create_drawing_styles
+from prj.cutter import get_cutter
+from prj.working_scene import get_working_scene
 import time
 
 drawings: list['Svg_drawing'] = []
@@ -46,10 +48,10 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
     print('Prepare drawings')
     prepare_start_time = time.time()
 
-    cutter = draw_context.cutter
+    cutter = get_cutter(draw_context)
     cutter.obj.hide_viewport = False
 
-    bpy.context.window.scene = draw_context.working_scene
+    bpy.context.window.scene = get_working_scene()
 
     if timing_test:
         for subject in draw_context.subjects:

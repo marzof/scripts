@@ -36,7 +36,8 @@ class Instance_object:
         return super(Instance_object, cls).__new__(cls)
 
     def __init__(self, obj: 'bpy.types.Object', library: 'bpy.types.Library', 
-            is_instance: bool, parent: 'bpy.types.Object',
+            is_instance: bool, parent: 'bpy.types.Object', in_front: bool,
+            behind:bool, cam_bound_box: list['Vector'], 
             matrix: 'mathutils.Matrix'):
         if self not in instance_objects.values():
             self.obj = obj
@@ -45,6 +46,9 @@ class Instance_object:
             self.is_instance = is_instance
             self.parent = parent
             self.matrix = matrix.copy().freeze()
+            self.is_in_front = in_front
+            self.is_behind = behind
+            self.cam_bound_box = cam_bound_box
             instance_objects[(self.obj, self.library, self.matrix)] = self
 
     def is_same_content_as(self, content: 'Instance_object') -> bool:

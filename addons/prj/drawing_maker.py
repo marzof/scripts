@@ -29,6 +29,7 @@ import prj
 from prj.utils import make_active, create_lineart
 from prj.drawing_subject import Drawing_subject
 from prj.drawing_style import drawing_styles
+from prj.working_scene import get_working_scene
 
 
 class Drawing_maker:
@@ -83,8 +84,9 @@ class Drawing_maker:
             print('draw', subject.name, 'in style', draw_style)
             remove = draw_style != 'c'
             file_suffix = drawing_styles[draw_style].name
+            working_scene = get_working_scene()
             lineart_gp = create_lineart(source=self.subject, style=draw_style,
-                    scene=self.drawing_context.working_scene)
+                    scene=working_scene, cutter=cutter)
             ## In order to update lineart visibility set a frame (twice)
             bpy.context.scene.frame_set(1)
             bpy.context.scene.frame_set(1)

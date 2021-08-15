@@ -24,13 +24,22 @@
 
 import bpy
 import os
+import math
 from mathutils import Vector
 from prj.utils import point_in_quad, linked_obj_to_real
-from prj.drawing_camera import frame_obj_bound_rect
 from prj.svg_path import Svg_path
+from prj.working_scene import get_working_scene
 from bpy_extras.object_utils import world_to_camera_view
 
 libraries = []
+
+def to_hex(c: float) -> str:
+    """ Return srgb hexadecimal version of c """
+    if c < 0.0031308:
+        srgb = 0.0 if c < 0.0 else c * 12.92
+    else:
+        srgb = 1.055 * math.pow(c, 1.0 / 2.4) - 0.055
+    return hex(max(min(int(srgb * 255 + 0.5), 255), 0))
 
 def make_linked_object_real(obj: bpy.types.Object, 
         obj_matrix: 'mathutils.Matrix', scene: bpy.types.Scene, 
@@ -58,6 +67,18 @@ def make_linked_object_real(obj: bpy.types.Object,
     new_obj.matrix_world = obj_matrix
     return new_obj
 
+def frame_obj_bound_rect(cam_bound_box: list[Vector]) -> dict[str, float]:
+    """ Get the bounding rect of obj in cam view coords  """
+    bbox_xs = [v.x for v in cam_bound_box]
+    bbox_ys = [v.y for v in cam_bound_box]
+    bbox_zs = [v.z for v in cam_bound_box]
+    x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
+    y_min, y_max = max(0.0, min(bbox_ys)), min(1.0, max(bbox_ys))
+    if x_min > 1 or x_max < 0 or y_min > 1 or y_max < 0:
+        ## obj is out of frame
+        return None
+    return {'x_min': x_min, 'y_min': y_min, 'x_max': x_max, 'y_max': y_max}
+
 class Drawing_subject:
     obj: bpy.types.Object
     drawing_context: 'Drawing_context'
@@ -67,6 +88,7 @@ class Drawing_subject:
     matrix: 'mathutils.Matrix'
     parent: bpy.types.Object
     library: bpy.types.Library
+    cam_bound_box: list[Vector]
     is_in_front: bool
     is_cut: bool
     is_behind: bool
@@ -74,15 +96,15 @@ class Drawing_subject:
     svg_path: Svg_path
 
     def __init__(self, instance_obj: 'Instance_object', 
-            draw_context: 'Drawing_context', cutter: bool = False):
+            draw_context: 'Drawing_context', is_cutter: bool = False):
         print('Create subject for', instance_obj.name)
         self.instance_obj = instance_obj
-        self.obj = instance_obj.obj
         self.name = instance_obj.name
         self.matrix = instance_obj.matrix
         self.parent = instance_obj.parent
         self.is_instance = instance_obj.is_instance
         self.library = instance_obj.library
+        self.cam_bound_box = instance_obj.cam_bound_box
         if self.library and self.library not in libraries:
             libraries.append(self.library)
         self.drawing_context = draw_context
@@ -91,15 +113,15 @@ class Drawing_subject:
         self.bounding_rect = []
 
         svg_path_args = {'main': True}
-        working_scene = self.drawing_context.working_scene
-        if not cutter and self.is_instance:
-            self.obj = make_linked_object_real(self.obj, self.matrix, 
+        working_scene = get_working_scene()
+        if not is_cutter and self.is_instance:
+            self.obj = make_linked_object_real(instance_obj.obj, self.matrix, 
                     working_scene, self.parent)
-        elif self.obj.name not in working_scene.objects:
-            ## Move a no-materiales duplicate to working_scene and 
+        elif instance_obj.name not in working_scene.objects:
+            ## Move a no-materials duplicate to working_scene and 
             ## leave the original in current scene
             ## (materials could bother lineart)
-            duplicate = self.obj.copy()
+            duplicate = instance_obj.obj.copy()
             duplicate.data = duplicate.data.copy()
             duplicate.data.materials.clear()
             self.obj = duplicate
@@ -108,11 +130,10 @@ class Drawing_subject:
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
 
-        if not cutter:
-            visibility_condition = self.__get_condition()
-            self.is_in_front = visibility_condition['in_front']
-            self.is_cut = visibility_condition['cut']
-            self.is_behind = visibility_condition['behind']
+        if not is_cutter:
+            self.is_in_front = instance_obj.is_in_front
+            self.is_behind = instance_obj.is_behind
+            self.is_cut = self.is_in_front and self.is_behind
         self.collections = [coll.name for coll in self.obj.users_collection \
                 if coll is not bpy.context.scene.collection]
         self.obj_evaluated = self.obj.evaluated_get(draw_context.depsgraph)
@@ -120,19 +141,11 @@ class Drawing_subject:
         self.lineart_source_type = 'OBJECT'
         self.grease_pencil = None
 
-    ## TODO get this info from Instance_object
-    def __get_condition(self) -> dict[str,bool]:
-        """ Return if object is cut, in front or behind the camera"""
-        world_obj_bbox = [self.matrix @ Vector(v) for v in self.obj.bound_box]
-        bbox_from_cam_view = [world_to_camera_view(bpy.context.scene, 
-            self.drawing_camera.obj, v) for v in world_obj_bbox]
-        zs = [v.z for v in bbox_from_cam_view]
-        z_min, z_max = min(zs), max(zs)
-        cut_plane = self.drawing_camera.clip_start
-        return {'cut': z_min <= cut_plane <= z_max,
-                'in_front': cut_plane < z_max,
-                'behind': z_min < cut_plane
-                }
+    def set_color(self, rgba: tuple[float]) -> None:
+        r, g, b, a = rgba
+        self.obj.color = rgba
+        self.color = (int(to_hex(r),0), int(to_hex(g),0), int(to_hex(b),0),
+                int(to_hex(a),0))
 
     def set_drawing_context(self, draw_context: 'Drawing_context') -> None:
         self.drawing_context = draw_context
@@ -156,8 +169,7 @@ class Drawing_subject:
         self.grease_pencil = gp
     
     def get_bounding_rect(self) -> None:
-        ## TODO use bounding box data of instance to reduce calc time
-        bounding_rect = frame_obj_bound_rect(self.obj, self.drawing_camera.obj)
+        bounding_rect = frame_obj_bound_rect(self.cam_bound_box)
         verts = [Vector((bounding_rect['x_min'], bounding_rect['y_min'])),
                 Vector((bounding_rect['x_max'], bounding_rect['y_min'])),
                 Vector((bounding_rect['x_max'], bounding_rect['y_max'])),
@@ -167,7 +179,6 @@ class Drawing_subject:
     def add_overlapping_obj(self, subject: 'Drawing_subject') -> None:
         if subject not in self.overlapping_objects:
             self.overlapping_objects.append(subject)
-
 
     def get_overlap_subjects(self, subjects: list['Drawing_subject']) -> None:
         for subject in subjects:
@@ -179,4 +190,8 @@ class Drawing_subject:
                     subject.add_overlapping_obj(self)
                     break
 
+    def remove(self):
+        working_scene = get_working_scene()
+        working_scene.collection.objects.unlink(self.obj)
+        bpy.data.objects.remove(self.obj, do_unlink=True)
 

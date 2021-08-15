@@ -36,7 +36,8 @@ STYLES = {
 
 drawing_styles = {}
 
-def create_drawing_styles():
+def create_drawing_styles() -> None:
+    """ Populate drawing_styles dict with Drawing_style objects """
     for s in STYLES:
         drawing_styles[s] = Drawing_style(style=s, name=STYLES[s]['name'], 
                 occlusion_start=STYLES[s]['occlusion_start'],
@@ -54,13 +55,4 @@ class Drawing_style:
         self.occlusion_end = occlusion_end
         self.chaining_threshold = chaining_threshold
         self.condition = condition
-        self.instances = []
-        self.bigger_instances = []
-
-    def add_instance(self, instance: 'Instance_object') -> None:
-        self.instances.append(instance)
-
-    def add_bigger_instance(self, instance: 'Instance_object') -> None:
-        self.bigger_instances.append(instance)
-
 

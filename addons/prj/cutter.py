@@ -25,12 +25,22 @@
 import bpy
 import bmesh
 from mathutils import Vector
-from prj.utils import create_lineart
-from prj.drawing_subject import Drawing_subject
-from prj.instance_object import Instance_object
+from prj.utils import create_grease_pencil, add_line_art_mod
+from prj.utils import GREASE_PENCIL_PREFIX
+from prj.working_scene import get_working_scene
 import time
 
 CAMERA_DISTANCE = .0001
+the_cutter = None
+
+def get_cutter(drawing_context: 'Drawing_context') -> 'Cutter':
+    global the_cutter
+    if not the_cutter:
+        the_cutter = Cutter(drawing_context)
+        print('create cutter')
+        return the_cutter
+    print('cutter already created')
+    return the_cutter
 
 def mesh_by_verts(obj_name: str, verts: list[Vector], scene: bpy.types.Scene) \
         -> bpy.types.Object:
@@ -54,8 +64,6 @@ def mesh_by_verts(obj_name: str, verts: list[Vector], scene: bpy.types.Scene) \
 
 class Cutter:
     obj: bpy.types.Object
-    instance: Instance_object
-    subject: Drawing_subject
     modifier: bpy.types.BooleanModifier
     lineart_gp: bpy.types.Object
 
@@ -64,17 +72,15 @@ class Cutter:
         camera = drawing_context.drawing_camera
         cutter_verts = [v + (camera.direction*CAMERA_DISTANCE) \
                 for v in camera.frame]
-        self.obj = mesh_by_verts('cutter', cutter_verts, 
-                drawing_context.working_scene)
-        self.instance = Instance_object(obj=self.obj, library=None, 
-                    is_instance=False, parent=None,
-                    matrix=self.obj.matrix_world)
-        self.subject = Drawing_subject(self.instance, drawing_context, 
-                cutter=True)
+        working_scene = get_working_scene()
+        self.obj = mesh_by_verts('cutter', cutter_verts, working_scene)
         self.modifier = self.add_boolean_mod()
-        self.lineart_gp = create_lineart(source=self.subject, style='p', 
-                scene=self.drawing_context.working_scene)
+        
+        self.lineart_gp = create_grease_pencil(
+                GREASE_PENCIL_PREFIX + self.obj.name, scene=working_scene)
+        add_line_art_mod(self.lineart_gp, self.obj, 'OBJECT', 'p')
         self.obj.hide_viewport = True
+        self.obj.hide_render = True
 
     def add_boolean_mod(self) -> bpy.types.BooleanModifier:
         modifier = self.obj.modifiers.new('Cut', 'BOOLEAN')
@@ -90,14 +96,18 @@ class Cutter:
         if remove_lineart_gp:
             bpy.data.objects.remove(self.lineart_gp, do_unlink=True)
 
-    def set_source(self, subject: Drawing_subject) -> None:
+    def set_source(self, subject: 'Drawing_subject') -> None:
         self.modifier.object = subject.obj
         ## TODO use variable, not "cut"
         self.lineart_gp.name = f'cut_{subject.obj.name}'
         self.lineart_gp.hide_viewport = False
+        self.lineart_gp.hide_render = False
 
     def change_solver(self, solver: str) -> None:
         self.modifier.solver = solver
 
     def reset_solver(self) -> None:
         self.modifier.solver = 'EXACT'
+
+
+

@@ -266,3 +266,37 @@ def get_overall_bound_box(obj_bbox: list[Vector]):
             Vector((x_max, y_max, z_max)),
             Vector((x_max, y_max, z_min))]
     return bound_box
+
+def range_2d(area: tuple[tuple[float]], step: float) -> list[tuple[float]]:
+    """ Get a list representing a 2-dimensional array covering the area 
+        by step interval """
+    x_min, x_max = area[0][0], area[1][0] + step
+    y_min, y_max = area[0][1], area[1][1] + step
+
+    print("Get scanning range...")
+    scanning_start_time = time.time()
+    samples = [(round(x, BASE_ROUNDING), round(y, BASE_ROUNDING)) \
+            for y in np.arange(y_min, y_max, step) 
+            for x in np.arange(x_min, x_max, step)]
+    scanning_time = time.time() - scanning_start_time
+    print(f"   ...got in {scanning_time} seconds")
+    return samples
+
+def get_obj_area_samples(obj: 'bpy.types.Object', cam: 'bpy.types.Object', 
+        scanning_step: float, matrix: Matrix = None):
+    """ Return samples grid (at scanning_step interval) for obj area """
+    scan_limits = frame_obj_bound_rect(obj, cam, matrix, scanning_step)
+    area_to_scan = ((scan_limits['x_min'], scan_limits['y_min']), 
+            (scan_limits['x_max'], scan_limits['y_max']))
+    print('area to scan', area_to_scan)
+    if not area_to_scan:
+        return None
+    area_samples = range_2d(area_to_scan, scanning_step)
+    return area_samples
+
+def round_to_base(x: float, base: float, round_func, 
+        rounding: int = BASE_ROUNDING) -> float:
+    """ Use rounding function to round x to base (for instance: 
+        x = 4.77, base = 0.5, round_func = math.floor -> return 4.5 ) """
+    return round(base * round_func(x / base), rounding)
+

@@ -11,6 +11,8 @@ from prj.drawing_maker import Drawing_maker
 from prj.drawing_subject import libraries
 from prj.drawing_style import create_drawing_styles
 from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
+from prj.cutter import get_cutter
+from prj.working_scene import get_working_scene
 import time
 
 class Prj(bpy.types.Operator):
@@ -39,10 +41,12 @@ class Prj(bpy.types.Operator):
     def reset_scene(self, context: bpy.types.Context) -> set[str]:
         bpy.context.window.scene = self.initial_scene
 
-        self.draw_context.cutter.delete(remove_lineart_gp=True)
-        scene = self.draw_context.working_scene
+        cutter = get_cutter(self.draw_context)
+        cutter.delete(remove_lineart_gp=True)
+        scene = get_working_scene()
         for obj in scene.collection.all_objects:
             scene.collection.objects.unlink(obj)
+            bpy.data.objects.remove(obj, do_unlink=True)
         bpy.data.scenes.remove(scene, do_unlink=True)
         for library in libraries:
             try:
