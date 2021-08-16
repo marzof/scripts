@@ -25,9 +25,7 @@
 
 import bpy
 import os
-import math
 from mathutils import Vector, Matrix
-from bpy_extras.object_utils import world_to_camera_view
 from prj.working_scene import RENDER_BASEPATH, get_working_scene
 import time
 
@@ -49,7 +47,10 @@ class Drawing_camera:
 
     def __init__(self, camera: bpy.types.Object, 
             draw_context: 'Drawing_context'):
-        self.obj = camera
+        duplicate = camera.copy()
+        duplicate.data = duplicate.data.copy()
+        self.obj = duplicate
+        ###self.obj = camera
         self.name = camera.name
         self.drawing_context = draw_context
         working_scene = get_working_scene()

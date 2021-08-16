@@ -52,7 +52,9 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
                 'behind': behind, 'bound_box': None}
 
     if inst_obj.type == 'CURVE':
-        matrix = get_curve_matrix(inst_obj.original)
+        #matrix = get_curve_matrix(inst_obj.original)
+        matrix = get_curve_matrix(inst_obj)
+        print('check', inst_obj.name, matrix)
     else:
         matrix = inst_obj.matrix_world.copy()
     bound_box = get_obj_bbox_by_cam(inst_obj, camera, matrix)

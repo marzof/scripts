@@ -73,7 +73,7 @@ class Drawing_maker:
         ## If cutter doesn't work switch boolean modifier to FAST solver
         if self.subject.is_cut:
             depsgraph = bpy.context.evaluated_depsgraph_get()
-            depsgraph.update()
+            ###depsgraph.update()
             evaluated_cutter = cutter.obj.evaluated_get(depsgraph)
             if not list(evaluated_cutter.data.vertices):
                 cutter.change_solver('FAST')
@@ -81,7 +81,7 @@ class Drawing_maker:
         styles_to_process = [s for s in styles if 
                     getattr(subject, drawing_styles[s].condition)]
         for draw_style in styles_to_process:
-            print('draw', subject.name, 'in style', draw_style)
+            #print('draw', subject.name, 'in style', draw_style)
             remove = draw_style != 'c'
             file_suffix = drawing_styles[draw_style].name
             working_scene = get_working_scene()

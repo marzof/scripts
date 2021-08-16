@@ -35,11 +35,13 @@ class Instance_object:
                 return instance_objects[instance_data] 
         return super(Instance_object, cls).__new__(cls)
 
-    def __init__(self, obj: 'bpy.types.Object', library: 'bpy.types.Library', 
+    def __init__(self, instance: 'bpy.types.DepsgraphObjectInstance', 
+            obj: 'bpy.types.Object', library: 'bpy.types.Library', 
             is_instance: bool, parent: 'bpy.types.Object', in_front: bool,
             behind:bool, cam_bound_box: list['Vector'], 
             matrix: 'mathutils.Matrix'):
         if self not in instance_objects.values():
+            self.instance = instance
             self.obj = obj
             self.name = self.obj.name
             self.library = library

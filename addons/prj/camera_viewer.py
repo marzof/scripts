@@ -40,10 +40,10 @@ def is_in_visible_collection(obj: bpy.types.Object) -> bool:
             return True
         return False
 
-def get_framed_instances(camera: bpy.types.Object) -> list[Instance_object]:
+def get_framed_instances(camera: bpy.types.Object, 
+        depsgraph: bpy.types.Depsgraph) -> list[Instance_object]:
     """ Check for all object instances in scene and return those which are 
         inside camera frame (and camera limits) as Instance_object(s)"""
-    depsgraph = bpy.context.evaluated_depsgraph_get()
     instances = []
     for obj_inst in depsgraph.object_instances:
         is_in_frame = is_framed(obj_inst, camera)
@@ -52,7 +52,8 @@ def get_framed_instances(camera: bpy.types.Object) -> list[Instance_object]:
             # or not is_in_visible_collection(obj_inst.object):
             continue
         ## Create the Instance_object
-        instance = Instance_object(obj=obj_inst.object.original,
+        instance = Instance_object(instance=obj_inst.object,
+                obj=obj_inst.object.original,
                 library=obj_inst.object.library,
                 is_instance=obj_inst.is_instance,
                 parent=obj_inst.parent,
@@ -79,9 +80,11 @@ class Camera_viewer:
             list[Drawing_subject]:
         """ Execute rendering to acquire the subjects to draw """
         working_scene = get_working_scene()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
         
         ## Get framed instances and create temporary drawing subjects from them
-        framed_instances = get_framed_instances(self.drawing_camera.obj)
+        framed_instances = get_framed_instances(self.drawing_camera.obj, 
+                depsgraph)
         tmp_subjects = [Drawing_subject(instance, self.drawing_context) \
                 for instance in framed_instances]
 
@@ -89,6 +92,7 @@ class Camera_viewer:
         colors = get_colors_spectrum(len(tmp_subjects))
         for i, tmp_subj in enumerate(tmp_subjects):
             tmp_subj.set_color(colors[i])
+            print('color', tmp_subj.color)
 
         ## Execute render
         render_time = time.time()
@@ -105,6 +109,7 @@ class Camera_viewer:
         subjects = []
         for tmp_subj in tmp_subjects:
             if tmp_subj.color not in viewed_colors:
+                tmp_subj.obj_evaluated = tmp_subj.obj.evaluated_get(depsgraph)
                 if not is_cut(tmp_subj.obj_evaluated, tmp_subj.matrix, 
                         self.drawing_camera.frame, 
                         self.drawing_camera.direction):

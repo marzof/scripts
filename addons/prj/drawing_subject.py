@@ -98,6 +98,7 @@ class Drawing_subject:
     def __init__(self, instance_obj: 'Instance_object', 
             draw_context: 'Drawing_context', is_cutter: bool = False):
         print('Create subject for', instance_obj.name)
+        self.instance = instance_obj.instance
         self.instance_obj = instance_obj
         self.name = instance_obj.name
         self.matrix = instance_obj.matrix
@@ -118,13 +119,30 @@ class Drawing_subject:
             self.obj = make_linked_object_real(instance_obj.obj, self.matrix, 
                     working_scene, self.parent)
         elif instance_obj.name not in working_scene.objects:
-            ## Move a no-materials duplicate to working_scene and 
-            ## leave the original in current scene
-            ## (materials could bother lineart)
-            duplicate = instance_obj.obj.copy()
-            duplicate.data = duplicate.data.copy()
-            duplicate.data.materials.clear()
-            self.obj = duplicate
+            ## Move a no-materials duplicate to working_scene: materials could 
+            ## bother lineart (and originals are kept untouched)
+            if instance_obj.obj.type == 'CURVE':
+                ## If a bevel object is applied to the curve, need to restate it
+                curve_bevel_obj = instance_obj.instance.data.bevel_object
+                if curve_bevel_obj:
+                    bpy.data.objects[self.name].data.bevel_object = \
+                            bpy.data.objects[curve_bevel_obj.name]
+                    depsgraph = bpy.context.evaluated_depsgraph_get()
+                ## TODO Delete commented lines after test with curve instances
+                #mesh = bpy.data.meshes.new_from_object(instance_obj.instance)
+                #mesh_obj = bpy.data.objects.new(name=self.name, object_data=mesh)
+                #mesh_obj.matrix_world = self.matrix
+                #self.obj = mesh_obj
+            #else:
+                #duplicate = instance_obj.obj.copy()
+                #duplicate.data = duplicate.data.copy()
+                #duplicate.data.materials.clear()
+                #self.obj = duplicate
+            mesh = bpy.data.meshes.new_from_object(instance_obj.instance)
+            mesh_obj = bpy.data.objects.new(name=self.name, object_data=mesh)
+            mesh_obj.matrix_world = self.matrix
+            mesh_obj.data.materials.clear()
+            self.obj = mesh_obj
             working_scene.collection.objects.link(self.obj)
 
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
@@ -136,7 +154,6 @@ class Drawing_subject:
             self.is_cut = self.is_in_front and self.is_behind
         self.collections = [coll.name for coll in self.obj.users_collection \
                 if coll is not bpy.context.scene.collection]
-        self.obj_evaluated = self.obj.evaluated_get(draw_context.depsgraph)
         self.type = self.obj.type
         self.lineart_source_type = 'OBJECT'
         self.grease_pencil = None

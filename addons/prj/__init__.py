@@ -41,8 +41,10 @@ class Prj(bpy.types.Operator):
     def reset_scene(self, context: bpy.types.Context) -> set[str]:
         bpy.context.window.scene = self.initial_scene
 
-        cutter = get_cutter(self.draw_context)
-        cutter.delete(remove_lineart_gp=True)
+        ## TODO cutter and drawing_camera (duplicate of camera) should be 
+        ## deleted too with other scene objects -> check it
+        #cutter = get_cutter(self.draw_context)
+        #cutter.delete(remove_lineart_gp=True)
         scene = get_working_scene()
         for obj in scene.collection.all_objects:
             scene.collection.objects.unlink(obj)
@@ -98,8 +100,7 @@ class Prj(bpy.types.Operator):
             print('Set context after', (time.time() - start_time))
             self.draw_maker = Drawing_maker(self.draw_context)
             print('Set maker after', (time.time() - start_time))
-            draw_subjects(self.draw_context, self.draw_maker, 
-                    self.draw_context.timing_test)
+            draw_subjects(self.draw_context, self.draw_maker)
             self.reset_scene(context)
             self.execute(context)
             print("\n--- Completed in %s seconds ---\n\n" % 

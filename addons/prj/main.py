@@ -41,8 +41,8 @@ import time
 drawings: list['Svg_drawing'] = []
 subjects: list['Drawing_subject'] = []
 
-def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
-        timing_test: bool = False) -> None:
+def draw_subjects(draw_context: 'Drawing_context', 
+        draw_maker: 'Drawing_maker') -> None:
     """ Get exported svgs for every subject (or parts of it) for every style """
     drawing_times: dict[float, str] = {}
     print('Prepare drawings')
@@ -53,44 +53,32 @@ def draw_subjects(draw_context: 'Drawing_context', draw_maker: 'Drawing_maker',
 
     bpy.context.window.scene = get_working_scene()
 
-    if timing_test:
-        for subject in draw_context.subjects:
-            subject.obj.hide_viewport = True
-    print(f'\t...completed in {(time.time() - prepare_start_time)}\n')
-
     ## Draw every subject (and hide not overlapping ones)
+    draw_time = time.time()
     for subject in draw_context.subjects:
-        print('Drawing', subject.name)
-        hidden_subjects = []
         drawing_start_time = time.time()
+        print('Drawing', subject.name)
+
         subject.obj.hide_viewport = False
         overlapping_subjects = subject.overlapping_objects + [subject, cutter]
         for other_subj in draw_context.subjects:
             if other_subj not in overlapping_subjects:
-                hidden_subjects.append(other_subj)
                 other_subj.obj.hide_viewport = True
+                continue
+            other_subj.obj.hide_viewport = False
         draw_maker.draw(subject, draw_context.style, cutter)
+        subjects.append(subject)
+
+        ## It misses same-time drawing objects
         drawing_time = time.time() - drawing_start_time
         drawing_times[drawing_time] = subject.name
-        subjects.append(subject)
-        subject.obj.hide_viewport = timing_test
-        for other_subj in hidden_subjects:
-            other_subj.obj.hide_viewport = False
         print(f"\t...drawn in {drawing_time} seconds")
-
-    ## Restore objects visibility
-    if timing_test:
-        print('Restore objects visibility')
-        restore_start_time = time.time()
-        for subject in draw_context.subjects:
-            if not subject.library:
-                subject.obj.hide_viewport = False
-        print(f'\t...completed in {(time.time() - restore_start_time)}\n')
+    draw_time = time.time() - draw_time
 
     print('\n')
     for t in sorted(drawing_times):
         print(drawing_times[t], t)
-    print(f'Drawn objects in {sum(drawing_times.keys())} seconds\n')
+    print(f"***Drawings completed in {draw_time} seconds")
     return 
 
 def rewrite_svgs(draw_context: 'Drawing_context') -> None:
@@ -132,10 +120,9 @@ def get_svg_composition(draw_context: 'Drawing_context') -> None:
 def main() -> None:
     print('Start now')
     start_time = time.time()
-    context = bpy.context
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
     create_drawing_styles()
-    draw_context = Drawing_context(args, context)
+    draw_context = Drawing_context(args, bpy.context)
     draw_maker = Drawing_maker(draw_context)
     draw_subjects(draw_context, draw_maker)
     rewrite_svgs(draw_context)

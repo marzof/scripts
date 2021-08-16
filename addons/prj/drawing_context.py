@@ -24,7 +24,6 @@
 
 
 import bpy
-import re
 from prj.drawing_camera import Drawing_camera
 from prj.camera_viewer import Camera_viewer
 from prj.drawing_style import drawing_styles
@@ -35,50 +34,42 @@ is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
         in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
 
-start_time = time.time()
-
-
 class Drawing_context:
     args: list[str]
     draw_all: bool
-    timing_test: bool
     style: list[str]
     selected_objects: list[bpy.types.Object]
     subjects: list['Drawing_subject']
     camera: Drawing_camera 
-    depsgraph: bpy.types.Depsgraph
-    frame_size: float ## tuple[float, float] ... try?
 
     DEFAULT_STYLES: list[str] = ['p', 'c']
-    FLAGS: dict[str, str] = {'draw_all': '-a', 'timing_test': '-t'}
+    FLAGS: dict[str, str] = {'draw_all': '-a'}
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
     def __init__(self, args: list[str], context):
+        context_time = time.time()
         self.context = context
         self.args = args
         self.draw_all = False
-        self.timing_test = False
         self.style = []
-        self.depsgraph = context.evaluated_depsgraph_get()
         object_args = self.__set_flagged_options()
         selection = self.__get_objects(object_args)
         self.selected_objects = selection['objects']
         self.drawing_camera = Drawing_camera(selection['camera'], self)
-        self.frame_size = self.drawing_camera.obj.data.ortho_scale
         camera_viewer = Camera_viewer(self.drawing_camera, self)
         self.subjects = camera_viewer.get_subjects(self.selected_objects)
-        self.svg_size = format_svg_size(self.frame_size * 10, 
-                self.frame_size * 10)
-        self.svg_factor = self.frame_size/RENDER_RESOLUTION_X * \
+        frame_size = self.drawing_camera.obj.data.ortho_scale
+        self.svg_size = format_svg_size(frame_size * 10, frame_size * 10)
+        self.svg_factor = frame_size/RENDER_RESOLUTION_X * \
                 self.RESOLUTION_FACTOR
         self.svg_styles = [drawing_styles[d_style].name for d_style in 
                 self.style]
+        print('*** Drawing_context created in', time.time() - context_time)
 
     def __set_flagged_options(self) -> list[str]:
         """ Set flagged values from args and return remaining args for 
             getting objects """
         self.draw_all = self.FLAGS['draw_all'] in self.args
-        self.timing_test = self.FLAGS['timing_test'] in self.args
 
         options_idx = []
         flagged_args = [arg for arg in self.args if arg.startswith('-')]
