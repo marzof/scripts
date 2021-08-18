@@ -28,7 +28,6 @@ import numpy as np
 from PIL import Image
 from prj.utils import is_cut, is_framed
 from prj.drawing_subject import Drawing_subject
-from prj.instance_object import Instance_object
 from prj.working_scene import get_working_scene
 import time
 
@@ -40,29 +39,37 @@ def is_in_visible_collection(obj: bpy.types.Object) -> bool:
             return True
         return False
 
-def get_framed_instances(camera: bpy.types.Object, 
-        depsgraph: bpy.types.Depsgraph) -> list[Instance_object]:
+def get_framed_subjects(camera: bpy.types.Object, 
+        drawing_context: 'Drawing_context') -> list[Drawing_subject]:
     """ Check for all object instances in scene and return those which are 
         inside camera frame (and camera limits) as Instance_object(s)"""
-    instances = []
+
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    framed_subjects = []
     for obj_inst in depsgraph.object_instances:
+        print('Process', obj_inst.object.name)
+
         is_in_frame = is_framed(obj_inst, camera)
         ## TODO ignore objects whose users_collection are not visible too
         if not is_in_frame['result'] or not is_visible(obj_inst.object): 
             # or not is_in_visible_collection(obj_inst.object):
             continue
-        ## Create the Instance_object
-        instance = Instance_object(instance=obj_inst.object,
-                obj=obj_inst.object.original,
-                library=obj_inst.object.library,
-                is_instance=obj_inst.is_instance,
+        ## Create the temporary Drawing_subject
+        framed_subject = Drawing_subject(
+                eval_obj=obj_inst.object,
+                name=obj_inst.object.name,
+                mesh = bpy.data.meshes.new_from_object(obj_inst.object),
+                matrix=obj_inst.object.matrix_world.copy().freeze(),
                 parent=obj_inst.parent,
-                in_front=is_in_frame['in_front'], 
-                behind=is_in_frame['behind'], 
+                is_instance=obj_inst.is_instance,
+                library=obj_inst.object.library,
                 cam_bound_box=is_in_frame['bound_box'],
-                matrix=obj_inst.object.matrix_world.copy().freeze())
-        instances.append(instance)
-    return instances
+                is_in_front=is_in_frame['in_front'], 
+                is_behind=is_in_frame['behind'], 
+                draw_context=drawing_context, 
+                )
+        framed_subjects.append(framed_subject)
+    return framed_subjects
 
 def get_colors_spectrum(size):
     rgb_values = math.ceil(size ** (1./3))
@@ -80,19 +87,15 @@ class Camera_viewer:
             list[Drawing_subject]:
         """ Execute rendering to acquire the subjects to draw """
         working_scene = get_working_scene()
-        depsgraph = bpy.context.evaluated_depsgraph_get()
         
-        ## Get framed instances and create temporary drawing subjects from them
-        framed_instances = get_framed_instances(self.drawing_camera.obj, 
-                depsgraph)
-        tmp_subjects = [Drawing_subject(instance, self.drawing_context) \
-                for instance in framed_instances]
+        ## Get framed objects and create temporary drawing subjects from them
+        tmp_subjects = get_framed_subjects(self.drawing_camera.obj, 
+                self.drawing_context)
 
         ## Create colors and assign them to tmp_subjects
         colors = get_colors_spectrum(len(tmp_subjects))
         for i, tmp_subj in enumerate(tmp_subjects):
             tmp_subj.set_color(colors[i])
-            print('color', tmp_subj.color)
 
         ## Execute render
         render_time = time.time()
@@ -109,8 +112,7 @@ class Camera_viewer:
         subjects = []
         for tmp_subj in tmp_subjects:
             if tmp_subj.color not in viewed_colors:
-                tmp_subj.obj_evaluated = tmp_subj.obj.evaluated_get(depsgraph)
-                if not is_cut(tmp_subj.obj_evaluated, tmp_subj.matrix, 
+                if not is_cut(tmp_subj.obj, tmp_subj.matrix, 
                         self.drawing_camera.frame, 
                         self.drawing_camera.direction):
                     print(tmp_subj.name, 'is not in: SKIP IT')

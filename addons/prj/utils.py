@@ -23,18 +23,6 @@ def get_obj_bbox_by_cam(obj: bpy.types.Object,
         camera, v) for v in world_obj_bbox]
     return bbox_from_cam_view
 
-def get_curve_matrix(curve_obj: bpy.types.Object) -> Matrix:
-    """ Assign a harmless modifier to the curve in order to update depsgraph
-        and calculate correctly its matrix.
-        After mod removal the depsgraph should be updated but is time-consuming 
-        so do it only for curves if necessary """
-    tmp_mod = curve_obj.modifiers.new("tmp", 'WELD')
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    depsgraph.update()
-    matrix = curve_obj.matrix_world.copy()
-    curve_obj.modifiers.remove(tmp_mod)
-    return matrix
-
 def is_framed(object_instance: bpy.types.DepsgraphObjectInstance, 
         camera: bpy.types.Object) -> dict:
     """ Check if object_instance is viewed by camera, if is in front or 
@@ -51,12 +39,7 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
         return {'result': None, 'inside_frame': None, 'in_front': in_front, 
                 'behind': behind, 'bound_box': None}
 
-    if inst_obj.type == 'CURVE':
-        #matrix = get_curve_matrix(inst_obj.original)
-        matrix = get_curve_matrix(inst_obj)
-        print('check', inst_obj.name, matrix)
-    else:
-        matrix = inst_obj.matrix_world.copy()
+    matrix = inst_obj.matrix_world.copy()
     bound_box = get_obj_bbox_by_cam(inst_obj, camera, matrix)
 
     ## Check if object is in_front of and/or behind camera
@@ -82,7 +65,6 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
         for frame_y in [0, 1]:
             frame_x_is_in = bound_box_min.x <= frame_x <= bound_box_max.x
             frame_y_is_in = bound_box_min.y <= frame_y <= bound_box_max.y
-            #if frame_x_is_in and frame_y_is_in:
             if not frame_x_is_in or not frame_y_is_in:
                 continue
             return {'result': True, 'inside_frame': False, 'in_front': in_front,
@@ -92,9 +74,9 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
 
 def is_cut(obj: bpy.types.Object, matrix: 'mathutils.Matrix', 
         cut_verts: list[Vector], cut_normal: Vector) -> bool:
-    """ Check if an edge of obj intersect cut_verts quad plane """
-    #print('Get cut for', obj.name)
-    mesh = obj.to_mesh()
+    """ Check if an edge of (a mesh) obj intersect cut_verts quad plane """
+    print('Get cut for', obj.name)
+    mesh = obj.data
     for edge in mesh.edges:
         verts = edge.vertices
         v0 = matrix @ mesh.vertices[verts[0]].co
@@ -113,9 +95,7 @@ def is_cut(obj: bpy.types.Object, matrix: 'mathutils.Matrix',
         if not point_on_cut_plane: ## intersection is out of quad cut plane
             continue
         #print('It cuts at', intersection)
-        obj.to_mesh_clear()
         return True
-    obj.to_mesh_clear()
     return False
 
 def point_in_quad(point: Vector, quad_vert: list[Vector]) -> bool:
@@ -256,14 +236,3 @@ def make_active(obj: bpy.types.Object) -> None:
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
 
-def linked_obj_to_real(obj: bpy.types.Object, link: bool, 
-        relative: bool) -> bpy.types.Object:
-    """ Remove linked object and reload it as real object """
-    obj_name = obj.name
-    filepath = obj.library.filepath
-    ## Need removal to relink obj from library
-    bpy.data.objects.remove(obj)
-    with bpy.data.libraries.load(filepath, link=link, relative=relative) \
-            as (data_from, data_to):
-        data_to.objects.append(obj_name)
-    return data_to.objects[0]

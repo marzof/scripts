@@ -2,3 +2,4 @@
 *.orig
 **/__pycache__/
 various/
+tmp.py

@@ -26,7 +26,7 @@ import bpy
 import os
 import math
 from mathutils import Vector
-from prj.utils import point_in_quad, linked_obj_to_real
+from prj.utils import point_in_quad
 from prj.svg_path import Svg_path
 from prj.working_scene import get_working_scene
 from bpy_extras.object_utils import world_to_camera_view
@@ -40,32 +40,6 @@ def to_hex(c: float) -> str:
     else:
         srgb = 1.055 * math.pow(c, 1.0 / 2.4) - 0.055
     return hex(max(min(int(srgb * 255 + 0.5), 255), 0))
-
-def make_linked_object_real(obj: bpy.types.Object, 
-        obj_matrix: 'mathutils.Matrix', scene: bpy.types.Scene, 
-        parent: bpy.types.Object, link: bool = True, relative: bool = False) \
-                -> bpy.types.Object:
-    """ Make linked obj real and put it into scene with obj_matrix applied """
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    if not scene:
-        scene = bpy.context.scene
-    print('make real', obj)
-    obj_name = obj.name
-    if parent:
-        new_obj_name = f"{parent.name}_{obj.name}"
-
-    if obj.library:
-        new_obj = linked_obj_to_real(obj, link, relative)
-        new_obj.name = new_obj_name
-    else:
-        eval_obj = obj.evaluated_get(depsgraph)
-        new_mesh = bpy.data.meshes.new_from_object(eval_obj)
-        new_obj = bpy.data.objects.new(new_obj_name, new_mesh)
-
-    new_obj.data.materials.clear()
-    scene.collection.objects.link(new_obj)
-    new_obj.matrix_world = obj_matrix
-    return new_obj
 
 def frame_obj_bound_rect(cam_bound_box: list[Vector]) -> dict[str, float]:
     """ Get the bounding rect of obj in cam view coords  """
@@ -81,31 +55,27 @@ def frame_obj_bound_rect(cam_bound_box: list[Vector]) -> dict[str, float]:
 
 class Drawing_subject:
     obj: bpy.types.Object
-    drawing_context: 'Drawing_context'
-    name: str
     bounding_rect: list[Vector]
     overlapping_objects: list['Drawing_subject']
-    matrix: 'mathutils.Matrix'
-    parent: bpy.types.Object
-    library: bpy.types.Library
-    cam_bound_box: list[Vector]
-    is_in_front: bool
     is_cut: bool
-    is_behind: bool
     lineart: bpy.types.Object ## bpy.types.GreasePencil
     svg_path: Svg_path
 
-    def __init__(self, instance_obj: 'Instance_object', 
-            draw_context: 'Drawing_context', is_cutter: bool = False):
-        print('Create subject for', instance_obj.name)
-        self.instance = instance_obj.instance
-        self.instance_obj = instance_obj
-        self.name = instance_obj.name
-        self.matrix = instance_obj.matrix
-        self.parent = instance_obj.parent
-        self.is_instance = instance_obj.is_instance
-        self.library = instance_obj.library
-        self.cam_bound_box = instance_obj.cam_bound_box
+    def __init__(self, eval_obj: bpy.types.Object, name: str, 
+            mesh: bpy.types.Mesh, matrix: 'mathutils.Matrix', 
+            parent: bpy.types.Object, is_instance: bool, 
+            library: bpy.types.Library, cam_bound_box: list[Vector], 
+            is_in_front: bool, is_behind: bool, draw_context: 'Drawing_context', 
+            is_cutter: bool = False):
+        print('Create subject for', name)
+        self.eval_obj = eval_obj
+        self.name = name
+        self.mesh = mesh
+        self.matrix = matrix
+        self.parent = parent
+        self.is_instance = is_instance
+        self.library = library
+        self.cam_bound_box = cam_bound_box
         if self.library and self.library not in libraries:
             libraries.append(self.library)
         self.drawing_context = draw_context
@@ -115,43 +85,23 @@ class Drawing_subject:
 
         svg_path_args = {'main': True}
         working_scene = get_working_scene()
-        if not is_cutter and self.is_instance:
-            self.obj = make_linked_object_real(instance_obj.obj, self.matrix, 
-                    working_scene, self.parent)
-        elif instance_obj.name not in working_scene.objects:
+        if not is_cutter:
             ## Move a no-materials duplicate to working_scene: materials could 
             ## bother lineart (and originals are kept untouched)
-            if instance_obj.obj.type == 'CURVE':
-                ## If a bevel object is applied to the curve, need to restate it
-                curve_bevel_obj = instance_obj.instance.data.bevel_object
-                if curve_bevel_obj:
-                    bpy.data.objects[self.name].data.bevel_object = \
-                            bpy.data.objects[curve_bevel_obj.name]
-                    depsgraph = bpy.context.evaluated_depsgraph_get()
-                ## TODO Delete commented lines after test with curve instances
-                #mesh = bpy.data.meshes.new_from_object(instance_obj.instance)
-                #mesh_obj = bpy.data.objects.new(name=self.name, object_data=mesh)
-                #mesh_obj.matrix_world = self.matrix
-                #self.obj = mesh_obj
-            #else:
-                #duplicate = instance_obj.obj.copy()
-                #duplicate.data = duplicate.data.copy()
-                #duplicate.data.materials.clear()
-                #self.obj = duplicate
-            mesh = bpy.data.meshes.new_from_object(instance_obj.instance)
-            mesh_obj = bpy.data.objects.new(name=self.name, object_data=mesh)
-            mesh_obj.matrix_world = self.matrix
-            mesh_obj.data.materials.clear()
-            self.obj = mesh_obj
+            obj_name = f"{self.parent.name}_{self.name}" if self.parent \
+                    else self.name
+            self.obj = bpy.data.objects.new(name=obj_name, object_data=self.mesh)
+            self.obj.matrix_world = self.matrix
+            self.obj.data.materials.clear()
             working_scene.collection.objects.link(self.obj)
+
+            self.is_in_front = is_in_front
+            self.is_behind = is_behind
+            self.is_cut = self.is_in_front and self.is_behind
 
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
 
-        if not is_cutter:
-            self.is_in_front = instance_obj.is_in_front
-            self.is_behind = instance_obj.is_behind
-            self.is_cut = self.is_in_front and self.is_behind
         self.collections = [coll.name for coll in self.obj.users_collection \
                 if coll is not bpy.context.scene.collection]
         self.type = self.obj.type

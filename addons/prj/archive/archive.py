@@ -300,3 +300,14 @@ def round_to_base(x: float, base: float, round_func,
         x = 4.77, base = 0.5, round_func = math.floor -> return 4.5 ) """
     return round(base * round_func(x / base), rounding)
 
+def linked_obj_to_real(obj: bpy.types.Object, link: bool, 
+        relative: bool) -> bpy.types.Object:
+    """ Remove linked object and reload it as real object """
+    obj_name = obj.name
+    filepath = obj.library.filepath
+    ## Need removal to relink obj from library
+    bpy.data.objects.remove(obj)
+    with bpy.data.libraries.load(filepath, link=link, relative=relative) \
+            as (data_from, data_to):
+        data_to.objects.append(obj_name)
+    return data_to.objects[0]

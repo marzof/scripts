@@ -38,11 +38,12 @@ class Instance_object:
     def __init__(self, instance: 'bpy.types.DepsgraphObjectInstance', 
             obj: 'bpy.types.Object', library: 'bpy.types.Library', 
             is_instance: bool, parent: 'bpy.types.Object', in_front: bool,
-            behind:bool, cam_bound_box: list['Vector'], 
+            behind:bool, cam_bound_box: list['Vector'], mesh: 'bpy.types.Mesh',
             matrix: 'mathutils.Matrix'):
         if self not in instance_objects.values():
             self.instance = instance
             self.obj = obj
+            self.mesh = mesh
             self.name = self.obj.name
             self.library = library
             self.is_instance = is_instance
