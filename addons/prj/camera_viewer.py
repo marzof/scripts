@@ -80,6 +80,9 @@ def get_colors_spectrum(size: int) -> list[tuple[float]]:
     colors = [(r, g, b, 1) for r in spectrum for g in spectrum for b in spectrum]
     return colors
 
+def flatten(t):
+    return [item for sublist in t for item in sublist]
+
 class Camera_viewer:
     def __init__(self, drawing_camera: 'Drawing_camera', 
             drawing_context: 'Drawing_context'):
@@ -110,6 +113,7 @@ class Camera_viewer:
         wb_render = Image.open(working_scene.render.filepath)
         viewed_colors = set(wb_render.getdata())
         print('Get colors in', time.time() - get_color_time)
+        
 
         ## Filter subjects and get the actual list 
         ## (with bounding rect calculated)
@@ -126,8 +130,58 @@ class Camera_viewer:
             tmp_subj.get_bounding_rect()
             subjects.append(tmp_subj)
 
-        for subject in subjects:
-            subject.get_overlap_subjects(subjects)
+        ### for subject in subjects:
+        ###     subject.get_overlap_subjects(subjects)
+
+        from prj.working_scene import Working_scene
+        from prj.working_scene import RENDER_RESOLUTION_X as X
+        render_scene = Working_scene('prj_rnd', 'prj_rnd.tif').scene
+        render_scene.collection.objects.link(self.drawing_camera.obj)
+        render_scene.camera = self.drawing_camera.obj
+
+        subjects_map = {}
+
+        renders_time = time.time()
+        for subj in subjects:
+            print('Render for', subj.name, subj.color)
+            render_scene.collection.objects.link(subj.obj)
+            bpy.ops.render.render(write_still=True, scene=render_scene.name)
+            render_scene.collection.objects.unlink(subj.obj)
+
+            wb_tmp_render = Image.open(render_scene.render.filepath)
+            viewed_colors = wb_tmp_render.getdata()
+
+            bound_rect_x = subj.bounding_rect[0].x
+            bound_rect_y = subj.bounding_rect[2].y
+            bound_width = subj.bounding_rect[2].x - subj.bounding_rect[0].x
+            bound_height = subj.bounding_rect[2].y - subj.bounding_rect[0].y
+            px_from_x = math.floor(X * bound_rect_x)
+            px_from_y = X - math.ceil(X * bound_rect_y)
+            px_width = math.ceil(X * bound_width)
+            px_height = math.ceil(X * bound_height)
+            pixels = flatten([list(range(px_from_x+(X*y), 
+                px_from_x+(X*y)+px_width)) for y in range(px_from_y, 
+                    px_from_y + px_height)])
+            #print(pixels[0], pixels[-1])
+            for pixel in pixels:
+                if viewed_colors[pixel][3] == 255:
+                    if pixel not in subjects_map:
+                        subjects_map[pixel] = []
+                    subjects_map[pixel].append(subj)
+        r_t = time.time() - renders_time
+        overlaps = []
+        for pixel in subjects_map:
+            if len(subjects_map[pixel]) > 1:
+                pix_val = [subj for subj in subjects_map[pixel]]
+                if pix_val not in overlaps:
+                    overlaps.append(pix_val)
+        for overlap in overlaps:
+            for subj in overlap:
+                subj.get_overlap_subjects(overlap)
+        #print(overlaps)
+        #print(len(subjects_map))
+        print('Render subjects in', r_t)
+        #raise Exception('STOP')
 
         return subjects
 
