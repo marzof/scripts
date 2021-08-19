@@ -34,6 +34,7 @@ import time
 is_visible = lambda obj: not obj.hide_render and not obj.hide_viewport
 
 def is_in_visible_collection(obj: bpy.types.Object) -> bool:
+    ## TODO complete and use in get_framed_subjects
     for collection in obj.users_collection:
         if not collection.hide_render and not collection.hide_viewport:
             return True
@@ -42,7 +43,7 @@ def is_in_visible_collection(obj: bpy.types.Object) -> bool:
 def get_framed_subjects(camera: bpy.types.Object, 
         drawing_context: 'Drawing_context') -> list[Drawing_subject]:
     """ Check for all object instances in scene and return those which are 
-        inside camera frame (and camera limits) as Instance_object(s)"""
+        inside camera frame (and camera limits) as Drawing_subject(s)"""
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
     framed_subjects = []
@@ -71,7 +72,9 @@ def get_framed_subjects(camera: bpy.types.Object,
         framed_subjects.append(framed_subject)
     return framed_subjects
 
-def get_colors_spectrum(size):
+def get_colors_spectrum(size: int) -> list[tuple[float]]:
+    """ Create enough different colors (rgb_values to the third power) to cover 
+        size (at least) """
     rgb_values = math.ceil(size ** (1./3))
     spectrum = np.linspace(0, 1, rgb_values)
     colors = [(r, g, b, 1) for r in spectrum for g in spectrum for b in spectrum]
@@ -108,7 +111,8 @@ class Camera_viewer:
         viewed_colors = set(wb_render.getdata())
         print('Get colors in', time.time() - get_color_time)
 
-        ## Filter subjects and get the actual list
+        ## Filter subjects and get the actual list 
+        ## (with bounding rect calculated)
         subjects = []
         for tmp_subj in tmp_subjects:
             if tmp_subj.color not in viewed_colors:

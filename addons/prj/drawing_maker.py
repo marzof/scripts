@@ -27,16 +27,14 @@ import bpy
 import os
 import prj
 from prj.utils import make_active, create_lineart
-from prj.drawing_subject import Drawing_subject
 from prj.drawing_style import drawing_styles
 from prj.working_scene import get_working_scene
 
 
 class Drawing_maker:
-    drawing_context: 'Drawing_context'
     drawing_camera: 'Drawing_camera'
 
-    def __init__(self, draw_context):
+    def __init__(self, draw_context: 'Drawing_context'):
         self.drawing_context = draw_context
         self.drawing_camera = draw_context.drawing_camera
 
@@ -63,7 +61,7 @@ class Drawing_maker:
             self.subject.set_grease_pencil(None)
         return svg_path
 
-    def draw(self, subject: Drawing_subject, styles: str, cutter: 'Cutter',
+    def draw(self, subject: 'Drawing_subject', styles: str, cutter: 'Cutter',
             remove: bool = True) -> list[str]:
         """ Create a grease pencil for subject (and add a lineart modifier) for
             every draw_style. Then export the grease pencil """

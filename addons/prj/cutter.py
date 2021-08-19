@@ -24,16 +24,18 @@
 
 import bpy
 import bmesh
-from mathutils import Vector
 from prj.utils import create_grease_pencil, add_line_art_mod
 from prj.utils import GREASE_PENCIL_PREFIX
 from prj.working_scene import get_working_scene
+from prj.drawing_style import drawing_styles
 import time
 
 CAMERA_DISTANCE = .0001
+CUTTER_NAME = 'cutter'
 the_cutter = None
 
 def get_cutter(drawing_context: 'Drawing_context') -> 'Cutter':
+    """ Return the_cutter (create it if necessary) """
     global the_cutter
     if not the_cutter:
         the_cutter = Cutter(drawing_context)
@@ -42,7 +44,7 @@ def get_cutter(drawing_context: 'Drawing_context') -> 'Cutter':
     print('cutter already created')
     return the_cutter
 
-def mesh_by_verts(obj_name: str, verts: list[Vector], scene: bpy.types.Scene) \
+def mesh_by_verts(obj_name: str, verts: list['Vector'], scene: bpy.types.Scene) \
         -> bpy.types.Object:
     """ Create a mesh object from verts """
     mesh = bpy.data.meshes.new(obj_name)
@@ -69,11 +71,11 @@ class Cutter:
 
     def __init__(self, drawing_context: 'Drawing_context'):
         self.drawing_context = drawing_context
-        camera = drawing_context.drawing_camera
-        cutter_verts = [v + (camera.direction*CAMERA_DISTANCE) \
-                for v in camera.frame]
         working_scene = get_working_scene()
-        self.obj = mesh_by_verts('cutter', cutter_verts, working_scene)
+        camera = drawing_context.drawing_camera
+        cutter_verts = [v + (camera.direction * CAMERA_DISTANCE) \
+                for v in camera.frame]
+        self.obj = mesh_by_verts(CUTTER_NAME, cutter_verts, working_scene)
         self.modifier = self.add_boolean_mod()
         
         self.lineart_gp = create_grease_pencil(
@@ -83,13 +85,11 @@ class Cutter:
         self.obj.hide_render = True
 
     def add_boolean_mod(self) -> bpy.types.BooleanModifier:
+        """ Assign boolean modifier to self.obj and return it """
         modifier = self.obj.modifiers.new('Cut', 'BOOLEAN')
         modifier.operation = 'INTERSECT'
         modifier.solver = 'EXACT'
         return modifier
-
-    def link_to_scene(self) -> None:
-        bpy.context.collection.objects.link(self.obj)
 
     def delete(self, remove_lineart_gp: bool) -> None:
         bpy.data.objects.remove(self.obj, do_unlink=True)
@@ -98,8 +98,8 @@ class Cutter:
 
     def set_source(self, subject: 'Drawing_subject') -> None:
         self.modifier.object = subject.obj
-        ## TODO use variable, not "cut"
-        self.lineart_gp.name = f'cut_{subject.obj.name}'
+        prefix = drawing_styles['c'].name
+        self.lineart_gp.name = f'{prefix}_{subject.obj.name}'
         self.lineart_gp.hide_viewport = False
         self.lineart_gp.hide_render = False
 
@@ -108,6 +108,4 @@ class Cutter:
 
     def reset_solver(self) -> None:
         self.modifier.solver = 'EXACT'
-
-
 

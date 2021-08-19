@@ -46,9 +46,8 @@ class Drawing_context:
     FLAGS: dict[str, str] = {'draw_all': '-a'}
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
-    def __init__(self, args: list[str], context):
+    def __init__(self, args: list[str]):
         context_time = time.time()
-        self.context = context
         self.args = args
         self.draw_all = False
         self.style = []
@@ -58,7 +57,7 @@ class Drawing_context:
         self.drawing_camera = Drawing_camera(selection['camera'], self)
         camera_viewer = Camera_viewer(self.drawing_camera, self)
         self.subjects = camera_viewer.get_subjects(self.selected_objects)
-        frame_size = self.drawing_camera.obj.data.ortho_scale
+        frame_size = self.drawing_camera.ortho_scale
         self.svg_size = format_svg_size(frame_size * 10, frame_size * 10)
         self.svg_factor = frame_size/RENDER_RESOLUTION_X * \
                 self.RESOLUTION_FACTOR
@@ -88,7 +87,7 @@ class Drawing_context:
             tuple[list[bpy.types.Object], bpy.types.Object]:
         """ Extract the camera and renderable objects from args or selection """
         args_objs = ''.join(object_args).split(';')
-        selected_objs = self.context.selected_objects
+        selected_objs = bpy.context.selected_objects
         cam = None
         objs = []
         for ob in args_objs:

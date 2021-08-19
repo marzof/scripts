@@ -39,7 +39,6 @@ from prj.working_scene import get_working_scene
 import time
 
 drawings: list['Svg_drawing'] = []
-subjects: list['Drawing_subject'] = []
 
 def draw_subjects(draw_context: 'Drawing_context', 
         draw_maker: 'Drawing_maker') -> None:
@@ -67,7 +66,6 @@ def draw_subjects(draw_context: 'Drawing_context',
                 continue
             other_subj.obj.hide_viewport = False
         draw_maker.draw(subject, draw_context.style, cutter)
-        subjects.append(subject)
 
         ## It misses same-time drawing objects
         drawing_time = time.time() - drawing_start_time
@@ -102,10 +100,12 @@ def get_svg_composition(draw_context: 'Drawing_context') -> None:
     composition_filepath = Filepath(draw_context.drawing_camera.path + '.svg')
     if not composition_filepath.is_file() or draw_context.draw_all:
     #if False:
-        abstract_composition = prepare_composition(draw_context, subjects)
+        abstract_composition = prepare_composition(draw_context, 
+                draw_context.subjects)
     else:
         existing_composition = Svg_read(composition_filepath)
-        new_subjects = filter_subjects_for_svg(existing_composition, subjects)
+        new_subjects = filter_subjects_for_svg(existing_composition, 
+                draw_context.subjects)
         #new_subjects = subjects
         if new_subjects:
             for style in draw_context.svg_styles:
@@ -122,7 +122,7 @@ def main() -> None:
     start_time = time.time()
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
     create_drawing_styles()
-    draw_context = Drawing_context(args, bpy.context)
+    draw_context = Drawing_context(args)
     draw_maker = Drawing_maker(draw_context)
     draw_subjects(draw_context, draw_maker)
     rewrite_svgs(draw_context)

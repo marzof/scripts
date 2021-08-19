@@ -43,6 +43,7 @@ class Prj(bpy.types.Operator):
 
         ## TODO cutter and drawing_camera (duplicate of camera) should be 
         ## deleted too with other scene objects -> check it
+        ## TODO Delete newly created meshes too
         #cutter = get_cutter(self.draw_context)
         #cutter.delete(remove_lineart_gp=True)
         scene = get_working_scene()
@@ -96,7 +97,7 @@ class Prj(bpy.types.Operator):
             args = self.key.split() + [objs]
             create_drawing_styles()
             print('Set context now')
-            self.draw_context = Drawing_context(args, context)
+            self.draw_context = Drawing_context(args)
             print('Set context after', (time.time() - start_time))
             self.draw_maker = Drawing_maker(self.draw_context)
             print('Set maker after', (time.time() - start_time))

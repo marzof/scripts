@@ -50,7 +50,6 @@ class Drawing_camera:
         duplicate = camera.copy()
         duplicate.data = duplicate.data.copy()
         self.obj = duplicate
-        ###self.obj = camera
         self.name = camera.name
         self.drawing_context = draw_context
         working_scene = get_working_scene()

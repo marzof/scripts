@@ -3,3 +3,5 @@
 **/__pycache__/
 various/
 tmp.py
+addons/install_dependencies.py
+modules

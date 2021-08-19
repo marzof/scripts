@@ -24,7 +24,8 @@
 
 import bpy
 
-## TODO general data: put in main or __init__
+## TODO general data: put in main or __init__ and handle render resolution
+##      based on scale of drawing (level of detail)
 RENDER_BASEPATH = bpy.path.abspath(bpy.context.scene.render.filepath)
 RENDER_RESOLUTION_X = bpy.context.scene.render.resolution_x
 RENDER_RESOLUTION_Y = bpy.context.scene.render.resolution_y

@@ -65,8 +65,7 @@ class Drawing_subject:
             mesh: bpy.types.Mesh, matrix: 'mathutils.Matrix', 
             parent: bpy.types.Object, is_instance: bool, 
             library: bpy.types.Library, cam_bound_box: list[Vector], 
-            is_in_front: bool, is_behind: bool, draw_context: 'Drawing_context', 
-            is_cutter: bool = False):
+            is_in_front: bool, is_behind: bool, draw_context: 'Drawing_context'):
         print('Create subject for', name)
         self.eval_obj = eval_obj
         self.name = name
@@ -85,19 +84,18 @@ class Drawing_subject:
 
         svg_path_args = {'main': True}
         working_scene = get_working_scene()
-        if not is_cutter:
-            ## Move a no-materials duplicate to working_scene: materials could 
-            ## bother lineart (and originals are kept untouched)
-            obj_name = f"{self.parent.name}_{self.name}" if self.parent \
-                    else self.name
-            self.obj = bpy.data.objects.new(name=obj_name, object_data=self.mesh)
-            self.obj.matrix_world = self.matrix
-            self.obj.data.materials.clear()
-            working_scene.collection.objects.link(self.obj)
+        ## Move a no-materials duplicate to working_scene: materials could 
+        ## bother lineart (and originals are kept untouched)
+        obj_name = f"{self.parent.name}_{self.name}" if self.parent \
+                else self.name
+        self.obj = bpy.data.objects.new(name=obj_name, object_data=self.mesh)
+        self.obj.matrix_world = self.matrix
+        self.obj.data.materials.clear()
+        working_scene.collection.objects.link(self.obj)
 
-            self.is_in_front = is_in_front
-            self.is_behind = is_behind
-            self.is_cut = self.is_in_front and self.is_behind
+        self.is_in_front = is_in_front
+        self.is_behind = is_behind
+        self.is_cut = self.is_in_front and self.is_behind
 
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
@@ -109,6 +107,7 @@ class Drawing_subject:
         self.grease_pencil = None
 
     def set_color(self, rgba: tuple[float]) -> None:
+        """ Assign rgba color to object """
         r, g, b, a = rgba
         self.obj.color = rgba
         self.color = (int(to_hex(r),0), int(to_hex(g),0), int(to_hex(b),0),
@@ -136,6 +135,7 @@ class Drawing_subject:
         self.grease_pencil = gp
     
     def get_bounding_rect(self) -> None:
+        """ Get the bounding rectangle from camera view """
         bounding_rect = frame_obj_bound_rect(self.cam_bound_box)
         verts = [Vector((bounding_rect['x_min'], bounding_rect['y_min'])),
                 Vector((bounding_rect['x_max'], bounding_rect['y_min'])),
@@ -144,12 +144,17 @@ class Drawing_subject:
         self.bounding_rect = verts
 
     def add_overlapping_obj(self, subject: 'Drawing_subject') -> None:
+        """ Add subject to self.overlapping_objects """
         if subject not in self.overlapping_objects:
             self.overlapping_objects.append(subject)
 
     def get_overlap_subjects(self, subjects: list['Drawing_subject']) -> None:
+        """ Populate self.overlapping_objects with subjects that overlaps in
+            frame view and add self to those subjects too """
         for subject in subjects:
             if subject == self:
+                continue
+            if subject in self.overlapping_objects:
                 continue
             for vert in self.bounding_rect:
                 if point_in_quad(vert, subject.bounding_rect):
