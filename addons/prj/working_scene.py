@@ -47,22 +47,23 @@ class Working_scene:
     RENDER_RESOLUTION_Y: int
     scene: bpy.types.Scene
 
-    def __init__(self):
-        self.scene = bpy.data.scenes.new(name='prj')
+    def __init__(self, scene_name: str='prj', filename: str=WB_RENDER_FILENAME):
+        self.scene = bpy.data.scenes.new(name=scene_name)
         self.scene.render.resolution_x = RENDER_RESOLUTION_X
         self.scene.render.resolution_y = RENDER_RESOLUTION_Y
-        self.scene.render.filepath = RENDER_BASEPATH + WB_RENDER_FILENAME
+        self.scene.render.filepath = RENDER_BASEPATH + filename
+        #self.scene.render.filepath = RENDER_BASEPATH + WB_RENDER_FILENAME
         self.scene.render.engine = 'BLENDER_WORKBENCH'
         self.scene.display.render_aa = 'OFF'
         self.scene.display.shading.light = 'FLAT'
         self.scene.display.shading.color_type = 'OBJECT'
-        self.scene.display_settings.display_device = 'sRGB'
+        #self.scene.display_settings.display_device = 'sRGB'
+        self.scene.display_settings.display_device = 'None'
         self.scene.view_settings.view_transform = 'Standard'
+        self.scene.view_settings.look = 'None'
         ## TODO check look, exposure and gamma too
         self.scene.render.film_transparent = True
         self.scene.render.image_settings.file_format = 'TIFF'
         self.scene.render.image_settings.tiff_codec = 'NONE'
         self.scene.render.image_settings.color_mode = 'RGBA'
-        ## TODO change rendering filepath
-        #self.scene.render.filepath = '/home/mf/Documents/test.tif'
 

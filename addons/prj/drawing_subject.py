@@ -41,6 +41,8 @@ def to_hex(c: float) -> str:
         srgb = 1.055 * math.pow(c, 1.0 / 2.4) - 0.055
     return hex(max(min(int(srgb * 255 + 0.5), 255), 0))
 
+f_to_8_bit = lambda c: int(hex(int(c * 255)),0)
+
 def frame_obj_bound_rect(cam_bound_box: list[Vector]) -> dict[str, float]:
     """ Get the bounding rect of obj in cam view coords  """
     bbox_xs = [v.x for v in cam_bound_box]
@@ -106,12 +108,16 @@ class Drawing_subject:
         self.lineart_source_type = 'OBJECT'
         self.grease_pencil = None
 
+    def __repr__(self) -> str:
+        return f'Drawing_subject[{self.name}]'
+
     def set_color(self, rgba: tuple[float]) -> None:
         """ Assign rgba color to object """
         r, g, b, a = rgba
         self.obj.color = rgba
-        self.color = (int(to_hex(r),0), int(to_hex(g),0), int(to_hex(b),0),
-                int(to_hex(a),0))
+        #self.color = (int(to_hex(r),0), int(to_hex(g),0), int(to_hex(b),0),
+        #        int(to_hex(a),0))
+        self.color = (f_to_8_bit(r), f_to_8_bit(g), f_to_8_bit(b), f_to_8_bit(a))
 
     def set_drawing_context(self, draw_context: 'Drawing_context') -> None:
         self.drawing_context = draw_context
