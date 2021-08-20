@@ -26,9 +26,10 @@ import bpy
 import os
 import math
 from mathutils import Vector
-from prj.utils import point_in_quad
+from prj.utils import point_in_quad, flatten
 from prj.svg_path import Svg_path
 from prj.working_scene import get_working_scene
+from prj.working_scene import RENDER_RESOLUTION_X as X
 from bpy_extras.object_utils import world_to_camera_view
 
 libraries = []
@@ -62,6 +63,7 @@ class Drawing_subject:
     is_cut: bool
     lineart: bpy.types.Object ## bpy.types.GreasePencil
     svg_path: Svg_path
+    render_pixels: list[int]
 
     def __init__(self, eval_obj: bpy.types.Object, name: str, 
             mesh: bpy.types.Mesh, matrix: 'mathutils.Matrix', 
@@ -83,6 +85,7 @@ class Drawing_subject:
         self.drawing_camera = draw_context.drawing_camera
         self.overlapping_objects = []
         self.bounding_rect = []
+        self.render_pixels = []
 
         svg_path_args = {'main': True}
         working_scene = get_working_scene()
@@ -154,6 +157,11 @@ class Drawing_subject:
         if subject not in self.overlapping_objects:
             self.overlapping_objects.append(subject)
 
+    def add_overlapping_objs(self, subjects: list['Drawing_subject']) -> None:
+        """ Add subjects (list) to self.overlapping_objects """
+        for subj in subjects:
+            self.add_overlapping_obj(subj)
+
     def get_overlap_subjects(self, subjects: list['Drawing_subject']) -> None:
         """ Populate self.overlapping_objects with subjects that overlaps in
             frame view and add self to those subjects too """
@@ -167,6 +175,21 @@ class Drawing_subject:
                     self.overlapping_objects.append(subject)
                     subject.add_overlapping_obj(self)
                     break
+
+
+    def get_render_pixels(self) -> list[int]:
+        bound_rect_x = self.bounding_rect[0].x
+        bound_rect_y = self.bounding_rect[2].y
+        bound_width = self.bounding_rect[2].x - self.bounding_rect[0].x
+        bound_height = self.bounding_rect[2].y - self.bounding_rect[0].y
+        px_from_x = math.floor(X * bound_rect_x)
+        px_from_y = X - math.ceil(X * bound_rect_y)
+        px_width = math.ceil(X * bound_width)
+        px_height = math.ceil(X * bound_height)
+        pixels = flatten([list(range(px_from_x+(X*y), px_from_x+(X*y)+px_width))
+            for y in range(px_from_y, px_from_y + px_height)])
+        self.render_pixels = pixels
+        return pixels
 
     def remove(self):
         working_scene = get_working_scene()

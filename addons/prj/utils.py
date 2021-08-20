@@ -13,6 +13,10 @@ GREASE_PENCIL_LAYER = 'prj_lay'
 GREASE_PENCIL_MAT = 'prj_mat'
 GREASE_PENCIL_MOD = 'prj_la'
 
+def flatten(li: list) -> list:
+    """ Flatten list li from its sublists """
+    return [item for sublist in li for item in sublist]
+
 def get_obj_bbox_by_cam(obj: bpy.types.Object, 
         camera: bpy.types.Object, matrix: Matrix = None) -> list[Vector]:
     """ Get object bounding box relative to camera frame"""

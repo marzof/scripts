@@ -47,10 +47,7 @@ class Prj(bpy.types.Operator):
         #cutter = get_cutter(self.draw_context)
         #cutter.delete(remove_lineart_gp=True)
         scene = get_working_scene()
-        for obj in scene.collection.all_objects:
-            scene.collection.objects.unlink(obj)
-            bpy.data.objects.remove(obj, do_unlink=True)
-        bpy.data.scenes.remove(scene, do_unlink=True)
+        scene.remove(del_objs=True)
         for library in libraries:
             try:
                 library.reload()

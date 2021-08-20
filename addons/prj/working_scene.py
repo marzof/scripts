@@ -67,3 +67,11 @@ class Working_scene:
         self.scene.render.image_settings.tiff_codec = 'NONE'
         self.scene.render.image_settings.color_mode = 'RGBA'
 
+    def remove(self, del_objs: bool = False) -> None:
+        """ Unlink every objects in scene, delete them if necessary and remove
+            the scene """
+        for obj in self.scene.collection.all_objects:
+            self.scene.collection.objects.unlink(obj)
+            if del_objs:
+                bpy.data.objects.remove(obj, do_unlink=True)
+        bpy.data.scenes.remove(self.scene, do_unlink=True)
