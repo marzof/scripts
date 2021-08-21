@@ -6,8 +6,7 @@ bl_info = {
 
 import bpy
 import os, pathlib
-from prj.drawing_context import Drawing_context, is_renderables
-from prj.drawing_maker import Drawing_maker
+from prj.drawing_context import get_drawing_context, is_renderables
 from prj.drawing_subject import libraries
 from prj.drawing_style import create_drawing_styles
 from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
@@ -19,8 +18,7 @@ class Prj(bpy.types.Operator):
     """Set view to camera to export svg from grease pencil"""
     initial_scene: bpy.types.Scene
     initial_scene_camera: bpy.types.Object
-    draw_context: Drawing_context
-    draw_maker: Drawing_maker
+    draw_context: 'Drawing_context'
     key: str
     selected_objects_names: list[str]
     selected_camera: bpy.types.Object
@@ -94,11 +92,9 @@ class Prj(bpy.types.Operator):
             args = self.key.split() + [objs]
             create_drawing_styles()
             print('Set context now')
-            self.draw_context = Drawing_context(args)
+            self.draw_context = get_drawing_context(args)
             print('Set context after', (time.time() - start_time))
-            self.draw_maker = Drawing_maker(self.draw_context)
-            print('Set maker after', (time.time() - start_time))
-            draw_subjects(self.draw_context, self.draw_maker)
+            draw_subjects(self.draw_context)
             self.reset_scene(context)
             self.execute(context)
             print("\n--- Completed in %s seconds ---\n\n" % 

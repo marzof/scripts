@@ -27,6 +27,7 @@ import os
 import math
 from mathutils import Vector
 from prj.utils import point_in_quad, flatten
+from prj.drawing_camera import get_drawing_camera
 from prj.svg_path import Svg_path
 from prj.working_scene import get_working_scene
 from prj.working_scene import RENDER_RESOLUTION_X as X
@@ -69,7 +70,7 @@ class Drawing_subject:
             mesh: bpy.types.Mesh, matrix: 'mathutils.Matrix', 
             parent: bpy.types.Object, is_instance: bool, 
             library: bpy.types.Library, cam_bound_box: list[Vector], 
-            is_in_front: bool, is_behind: bool, draw_context: 'Drawing_context'):
+            is_in_front: bool, is_behind: bool):
         print('Create subject for', name)
         self.eval_obj = eval_obj
         self.name = name
@@ -81,8 +82,6 @@ class Drawing_subject:
         self.cam_bound_box = cam_bound_box
         if self.library and self.library not in libraries:
             libraries.append(self.library)
-        self.drawing_context = draw_context
-        self.drawing_camera = draw_context.drawing_camera
         self.overlapping_objects = []
         self.bounding_rect = []
         self.render_pixels = []
@@ -122,18 +121,13 @@ class Drawing_subject:
         #        int(to_hex(a),0))
         self.color = (f_to_8_bit(r), f_to_8_bit(g), f_to_8_bit(b), f_to_8_bit(a))
 
-    def set_drawing_context(self, draw_context: 'Drawing_context') -> None:
-        self.drawing_context = draw_context
-
-    def get_drawing_context(self) -> 'Drawing_context':
-        return self.drawing_context
-
     def get_svg_path(self, obj: bpy.types.Object = None, main: bool = False, 
             prefix: str = None, suffix: str = None) -> None:
         """ Return the svg filepath with prefix or suffix """
         if not obj:
             obj = self.obj
-        path = self.drawing_camera.path
+        drawing_camera = get_drawing_camera()
+        path = drawing_camera.path
         sep = "" if path.endswith(os.sep) else os.sep
         pfx = f"{prefix}_" if prefix else ""
         sfx = f"_{suffix}" if suffix else ""
@@ -176,8 +170,8 @@ class Drawing_subject:
                     subject.add_overlapping_obj(self)
                     break
 
-
-    def get_render_pixels(self) -> list[int]:
+    def get_area_pixels(self) -> list[int]:
+        """ Get the pixel number (int) of the subject bounding rect area """
         bound_rect_x = self.bounding_rect[0].x
         bound_rect_y = self.bounding_rect[2].y
         bound_width = self.bounding_rect[2].x - self.bounding_rect[0].x
@@ -188,8 +182,10 @@ class Drawing_subject:
         px_height = math.ceil(X * bound_height)
         pixels = flatten([list(range(px_from_x+(X*y), px_from_x+(X*y)+px_width))
             for y in range(px_from_y, px_from_y + px_height)])
-        self.render_pixels = pixels
         return pixels
+
+    def add_render_pixel(self, pixel: int) -> None:
+        self.render_pixels.append(pixel)
 
     def remove(self):
         working_scene = get_working_scene()

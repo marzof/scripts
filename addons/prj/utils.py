@@ -4,8 +4,8 @@
 import bpy, bmesh
 from mathutils import Matrix, Vector, geometry
 from bpy_extras.object_utils import world_to_camera_view
-import prj.drawing_context
 from prj.drawing_style import drawing_styles
+from prj.drawing_camera import get_drawing_camera
 import time
 
 GREASE_PENCIL_PREFIX = 'prj_'
@@ -167,7 +167,7 @@ def create_lineart(source: 'Drawing_subject', style: str,
         source.obj.hide_viewport = True 
         return cutter.lineart_gp
     elif style == 'b':
-        camera = source.drawing_context.drawing_camera
+        camera = get_drawing_camera()
         camera.reverse_cam()
 
     if not scene:

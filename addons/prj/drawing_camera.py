@@ -30,6 +30,18 @@ from prj.working_scene import RENDER_BASEPATH, get_working_scene
 import time
 
 BASE_ROUNDING: int = 6
+the_drawing_camera = None
+
+def get_drawing_camera(camera: bpy.types.Object = None, 
+        drawing_context: 'Drawing_context' = None) -> 'Drawing_camera':
+    """ Return the_drawing_camera (create it if necessary) """
+    global the_drawing_camera
+    if the_drawing_camera:
+        #print('drawing_camera already created')
+        return the_drawing_camera
+    the_drawing_camera = Drawing_camera(camera)
+    #print('create drawing_camera')
+    return the_drawing_camera
 
 class Drawing_camera:
     obj: bpy.types.Object
@@ -45,13 +57,11 @@ class Drawing_camera:
     clip_end: float
     matrix: Matrix
 
-    def __init__(self, camera: bpy.types.Object, 
-            draw_context: 'Drawing_context'):
+    def __init__(self, camera: bpy.types.Object):
         duplicate = camera.copy()
         duplicate.data = duplicate.data.copy()
         self.obj = duplicate
         self.name = camera.name
-        self.drawing_context = draw_context
         working_scene = get_working_scene()
         working_scene.collection.objects.link(self.obj)
         working_scene.camera = self.obj

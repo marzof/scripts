@@ -30,8 +30,8 @@ from prj.svg_path import svgs_data
 from prj.svgread import Svg_read
 from prj.svg_handling import prepare_composition, prepare_obj_svg
 from prj.svg_handling import filter_subjects_for_svg, add_subjects_as_use
-from prj.drawing_context import Drawing_context, is_renderables
-from prj.drawing_maker import Drawing_maker
+from prj.drawing_context import get_drawing_context, is_renderables
+from prj.drawing_maker import draw
 from prj.drawing_subject import libraries
 from prj.drawing_style import create_drawing_styles
 from prj.cutter import get_cutter
@@ -40,8 +40,7 @@ import time
 
 drawings: list['Svg_drawing'] = []
 
-def draw_subjects(draw_context: 'Drawing_context', 
-        draw_maker: 'Drawing_maker') -> None:
+def draw_subjects(draw_context: 'Drawing_context') -> None:
     """ Get exported svgs for every subject (or parts of it) for every style """
     drawing_times: dict[float, str] = {}
     print('Prepare drawings')
@@ -65,7 +64,7 @@ def draw_subjects(draw_context: 'Drawing_context',
                 other_subj.obj.hide_viewport = True
                 continue
             other_subj.obj.hide_viewport = False
-        draw_maker.draw(subject, draw_context.style, cutter)
+        draw(subject, draw_context.style, cutter)
 
         ## It misses same-time drawing objects
         drawing_time = time.time() - drawing_start_time
@@ -122,9 +121,8 @@ def main() -> None:
     start_time = time.time()
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
     create_drawing_styles()
-    draw_context = Drawing_context(args)
-    draw_maker = Drawing_maker(draw_context)
-    draw_subjects(draw_context, draw_maker)
+    draw_context = get_drawing_context(args)
+    draw_subjects(draw_context) 
     rewrite_svgs(draw_context)
     get_svg_composition(draw_context)
     print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))

@@ -24,8 +24,8 @@
 
 
 import bpy
-from prj.drawing_camera import Drawing_camera
-from prj.camera_viewer import Camera_viewer
+from prj.drawing_camera import get_drawing_camera
+from prj.subject_finder import get_subjects
 from prj.drawing_style import drawing_styles
 from prj.working_scene import RENDER_RESOLUTION_X
 import time
@@ -33,6 +33,17 @@ import time
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
         in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
 format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
+the_drawing_context = None
+
+def get_drawing_context(args: list[str]):
+    """ Return the_drawing_context (create it if necessary) """
+    global the_drawing_context
+    if the_drawing_context:
+        print('drawing_context already created')
+        return the_drawing_context
+    the_drawing_context = Drawing_context(args)
+    print('create drawing_context')
+    return the_drawing_context
 
 class Drawing_context:
     args: list[str]
@@ -40,7 +51,7 @@ class Drawing_context:
     style: list[str]
     selected_objects: list[bpy.types.Object]
     subjects: list['Drawing_subject']
-    camera: Drawing_camera 
+    drawing_camera: 'Drawing_camera'
 
     DEFAULT_STYLES: list[str] = ['p', 'c']
     FLAGS: dict[str, str] = {'draw_all': '-a'}
@@ -54,9 +65,8 @@ class Drawing_context:
         object_args = self.__set_flagged_options()
         selection = self.__get_objects(object_args)
         self.selected_objects = selection['objects']
-        self.drawing_camera = Drawing_camera(selection['camera'], self)
-        camera_viewer = Camera_viewer(self.drawing_camera, self)
-        self.subjects = camera_viewer.get_subjects(self.selected_objects)
+        self.drawing_camera = get_drawing_camera(selection['camera']) 
+        self.subjects = get_subjects(self.selected_objects)
         frame_size = self.drawing_camera.ortho_scale
         self.svg_size = format_svg_size(frame_size * 10, frame_size * 10)
         self.svg_factor = frame_size/RENDER_RESOLUTION_X * \
