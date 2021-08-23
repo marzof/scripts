@@ -27,12 +27,12 @@ import bpy
 from prj.drawing_camera import get_drawing_camera
 from prj.subject_finder import get_subjects
 from prj.drawing_style import drawing_styles
-from prj.working_scene import RENDER_RESOLUTION_X
+from prj.working_scene import get_working_scene
 import time
 
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
         in [('MESH', False), ('CURVE', False), ('EMPTY', True)]
-format_svg_size = lambda x, y: (str(x) + 'mm', str(x) + 'mm')
+format_svg_size = lambda x, y: (str(x) + 'mm', str(y) + 'mm')
 the_drawing_context = None
 
 def get_drawing_context(args: list[str]):
@@ -48,29 +48,36 @@ def get_drawing_context(args: list[str]):
 class Drawing_context:
     args: list[str]
     draw_all: bool
+    drawing_scale: float
     style: list[str]
     selected_objects: list[bpy.types.Object]
     subjects: list['Drawing_subject']
     drawing_camera: 'Drawing_camera'
 
     DEFAULT_STYLES: list[str] = ['p', 'c']
-    FLAGS: dict[str, str] = {'draw_all': '-a'}
+    FLAGS: dict[str, str] = {'draw_all': '-a', 'drawing_scale': '-s'}
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
+    RENDER_FACTOR: int = 4
 
     def __init__(self, args: list[str]):
         context_time = time.time()
         self.args = args
         self.draw_all = False
+        self.drawing_scale = None
         self.style = []
         object_args = self.__set_flagged_options()
         selection = self.__get_objects(object_args)
         self.selected_objects = selection['objects']
         self.drawing_camera = get_drawing_camera(selection['camera']) 
-        self.subjects = get_subjects(self.selected_objects)
         frame_size = self.drawing_camera.ortho_scale
-        self.svg_size = format_svg_size(frame_size * 10, frame_size * 10)
-        self.svg_factor = frame_size/RENDER_RESOLUTION_X * \
-                self.RESOLUTION_FACTOR
+        working_scene = get_working_scene()
+        render_resolution = working_scene.set_resolution(frame_size, 
+                self.drawing_scale * self.RENDER_FACTOR)
+        self.subjects = get_subjects(self.selected_objects, self.drawing_scale)
+        self.svg_size = format_svg_size(frame_size * self.drawing_scale * 1000, 
+            frame_size * self.drawing_scale * 1000)
+        self.svg_factor = frame_size * self.drawing_scale * 100 * \
+                self.RESOLUTION_FACTOR / render_resolution
         self.svg_styles = [drawing_styles[d_style].name for d_style in 
                 self.style]
         print('*** Drawing_context created in', time.time() - context_time)
@@ -85,6 +92,11 @@ class Drawing_context:
         for arg in flagged_args:
             arg_idx = self.args.index(arg)
             options_idx.append(arg_idx)
+            if arg == self.FLAGS['drawing_scale']:
+                drawing_scale = self.args[arg_idx + 1]
+                self.drawing_scale = float(drawing_scale)
+                options_idx.append(arg_idx + 1)
+                continue
             self.style += [l for l in arg if l in drawing_styles]
 
         if not self.style: 

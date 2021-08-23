@@ -23,13 +23,10 @@
 # TODO...
 
 import bpy
+import math
 
-## TODO general data: put in main or __init__ and handle render resolution
-##      based on scale of drawing (level of detail)
+## TODO general data: put in main or __init__
 RENDER_BASEPATH = bpy.path.abspath(bpy.context.scene.render.filepath)
-RENDER_RESOLUTION_X = bpy.context.scene.render.resolution_x
-RENDER_RESOLUTION_Y = bpy.context.scene.render.resolution_y
-
 WB_RENDER_FILENAME = 'prj_working_scene.tif'
 the_working_scene = None
 
@@ -37,7 +34,7 @@ def get_working_scene() -> 'Working_scene':
     global the_working_scene
     if not the_working_scene:
         working_scene = Working_scene()
-        the_working_scene = working_scene.scene
+        the_working_scene = working_scene
         return the_working_scene
     return the_working_scene
 
@@ -49,15 +46,11 @@ class Working_scene:
 
     def __init__(self, scene_name: str='prj', filename: str=WB_RENDER_FILENAME):
         self.scene = bpy.data.scenes.new(name=scene_name)
-        self.scene.render.resolution_x = RENDER_RESOLUTION_X
-        self.scene.render.resolution_y = RENDER_RESOLUTION_Y
         self.scene.render.filepath = RENDER_BASEPATH + filename
-        #self.scene.render.filepath = RENDER_BASEPATH + WB_RENDER_FILENAME
         self.scene.render.engine = 'BLENDER_WORKBENCH'
         self.scene.display.render_aa = 'OFF'
         self.scene.display.shading.light = 'FLAT'
         self.scene.display.shading.color_type = 'OBJECT'
-        #self.scene.display_settings.display_device = 'sRGB'
         self.scene.display_settings.display_device = 'None'
         self.scene.view_settings.view_transform = 'Standard'
         self.scene.view_settings.look = 'None'
@@ -67,6 +60,18 @@ class Working_scene:
         self.scene.render.image_settings.tiff_codec = 'NONE'
         self.scene.render.image_settings.color_mode = 'RGBA'
 
+    def link_object(self, obj: bpy.types.Object) -> None:
+        self.scene.collection.objects.link(obj)
+
+    def unlink_object(self, obj: bpy.types.Object) -> None:
+        self.scene.collection.objects.unlink(obj)
+
+    def set_resolution(self, cam_scale: float, drawing_scale: float) -> int:
+        resolution = int(math.ceil(cam_scale * drawing_scale * 2000))
+        self.scene.render.resolution_x = resolution
+        self.scene.render.resolution_y = resolution
+        return resolution
+        
     def remove(self, del_objs: bool = False) -> None:
         """ Unlink every objects in scene, delete them if necessary and remove
             the scene """

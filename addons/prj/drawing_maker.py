@@ -69,7 +69,7 @@ def draw(subject: 'Drawing_subject', styles: str, cutter: 'Cutter',
         #print('draw', subject.name, 'in style', draw_style)
         remove = draw_style != 'c'
         file_suffix = drawing_styles[draw_style].name
-        working_scene = get_working_scene()
+        working_scene = get_working_scene().scene
         lineart_gp = create_lineart(source=subject, style=draw_style,
                 scene=working_scene, cutter=cutter)
         ## In order to update lineart visibility set a frame (twice)

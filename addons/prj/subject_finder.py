@@ -36,6 +36,8 @@ import time
 subjects_map: dict[int, list[Drawing_subject]] = {}
 is_visible = lambda obj: not obj.hide_render and not obj.hide_viewport
 
+render_resolution = None
+
 def is_in_visible_collection(obj: bpy.types.Object) -> bool:
     ## TODO complete and use in get_framed_subjects
     for collection in obj.users_collection:
@@ -110,7 +112,7 @@ def get_render_groups(subjects: list[Drawing_subject],
             if subj not in flatten(render_groups)], render_groups)
 
 def get_raw_render() -> 'PIL.TiffImagePlugin.TiffImageFile':
-    working_scene = get_working_scene()
+    working_scene = get_working_scene().scene
     #render_time = time.time()
     bpy.ops.render.render(write_still=True, scene=working_scene.name)
     #print('Render scene in', time.time() - render_time)
@@ -168,7 +170,7 @@ def update_pixel_maps(subject: Drawing_subject,
     ## Clear overlapping objects based on bounding rect
     subject.overlapping_objects = []
     
-    subj_pixels = subject.get_area_pixels()
+    subj_pixels = subject.get_area_pixels(render_resolution)
     for pixel in subj_pixels:
         if render_pixels[pixel][3] != 255:
             continue
@@ -185,10 +187,11 @@ def set_overlaps() -> None:
         for subj in subjects_map[pixel]:
             subj.add_overlapping_objs(subjects_map[pixel])
 
-def get_subjects(selected_objects: list[bpy.types.Object]) -> \
-        list[Drawing_subject]:
+def get_subjects(selected_objects: list[bpy.types.Object], 
+        drawing_scale: float) -> list[Drawing_subject]:
     """ Execute rendering to acquire the subjects to draw """
     
+    global render_resolution
     drawing_camera:'Drawing_camera' = get_drawing_camera()
 
     ## Get framed objects and create temporary drawing subjects from them
@@ -210,12 +213,17 @@ def get_subjects(selected_objects: list[bpy.types.Object]) -> \
 
     ### Get groups of not-overlapping subjects to perfom combined renderings
     render_groups = get_render_groups(subjects)
+    #for subject in subjects:
+    #    print(subject.name)
     print('groups are', len(render_groups), '\nsubjects are', len(subjects))
+    #raise Exception('STOP')
 
     ## Execute combined renderings to map pixels to subjects
     ### Prepare scene
     render_scene = Working_scene('prj_rnd', 'prj_rnd.tif')
-    render_scene.scene.collection.objects.link(drawing_camera.obj)
+    render_resolution = render_scene.set_resolution(drawing_camera.ortho_scale, 
+            drawing_scale)
+    render_scene.link_object(drawing_camera.obj)
     render_scene.scene.camera = drawing_camera.obj
 
     renders_time = time.time()

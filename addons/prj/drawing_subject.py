@@ -30,7 +30,6 @@ from prj.utils import point_in_quad, flatten
 from prj.drawing_camera import get_drawing_camera
 from prj.svg_path import Svg_path
 from prj.working_scene import get_working_scene
-from prj.working_scene import RENDER_RESOLUTION_X as X
 from bpy_extras.object_utils import world_to_camera_view
 
 libraries = []
@@ -63,6 +62,7 @@ class Drawing_subject:
     overlapping_objects: list['Drawing_subject']
     is_cut: bool
     lineart: bpy.types.Object ## bpy.types.GreasePencil
+    working_scene: 'Working_scene'
     svg_path: Svg_path
     render_pixels: list[int]
 
@@ -87,15 +87,15 @@ class Drawing_subject:
         self.render_pixels = []
 
         svg_path_args = {'main': True}
-        working_scene = get_working_scene()
         ## Move a no-materials duplicate to working_scene: materials could 
         ## bother lineart (and originals are kept untouched)
+        self.working_scene = get_working_scene()
         obj_name = f"{self.parent.name}_{self.name}" if self.parent \
                 else self.name
         self.obj = bpy.data.objects.new(name=obj_name, object_data=self.mesh)
         self.obj.matrix_world = self.matrix
         self.obj.data.materials.clear()
-        working_scene.collection.objects.link(self.obj)
+        self.working_scene.link_object(self.obj)
 
         self.is_in_front = is_in_front
         self.is_behind = is_behind
@@ -170,17 +170,18 @@ class Drawing_subject:
                     subject.add_overlapping_obj(self)
                     break
 
-    def get_area_pixels(self) -> list[int]:
+    def get_area_pixels(self, resolution) -> list[int]:
         """ Get the pixel number (int) of the subject bounding rect area """
         bound_rect_x = self.bounding_rect[0].x
         bound_rect_y = self.bounding_rect[2].y
         bound_width = self.bounding_rect[2].x - self.bounding_rect[0].x
         bound_height = self.bounding_rect[2].y - self.bounding_rect[0].y
-        px_from_x = math.floor(X * bound_rect_x)
-        px_from_y = X - math.ceil(X * bound_rect_y)
-        px_width = math.ceil(X * bound_width)
-        px_height = math.ceil(X * bound_height)
-        pixels = flatten([list(range(px_from_x+(X*y), px_from_x+(X*y)+px_width))
+        px_from_x = math.floor(resolution * bound_rect_x)
+        px_from_y = resolution - math.ceil(resolution * bound_rect_y)
+        px_width = math.ceil(resolution * bound_width)
+        px_height = math.ceil(resolution * bound_height)
+        pixels = flatten([list(range(px_from_x+(resolution*y), 
+            px_from_x+(resolution*y)+px_width))
             for y in range(px_from_y, px_from_y + px_height)])
         return pixels
 
@@ -188,7 +189,6 @@ class Drawing_subject:
         self.render_pixels.append(pixel)
 
     def remove(self):
-        working_scene = get_working_scene()
-        working_scene.collection.objects.unlink(self.obj)
+        self.working_scene.unlink_object(self.obj)
         bpy.data.objects.remove(self.obj, do_unlink=True)
 

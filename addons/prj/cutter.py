@@ -71,7 +71,7 @@ class Cutter:
 
     def __init__(self, drawing_context: 'Drawing_context'):
         self.drawing_context = drawing_context
-        working_scene = get_working_scene()
+        working_scene = get_working_scene().scene
         camera = drawing_context.drawing_camera
         cutter_verts = [v + (camera.direction * CAMERA_DISTANCE) \
                 for v in camera.frame]

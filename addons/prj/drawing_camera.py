@@ -32,8 +32,7 @@ import time
 BASE_ROUNDING: int = 6
 the_drawing_camera = None
 
-def get_drawing_camera(camera: bpy.types.Object = None, 
-        drawing_context: 'Drawing_context' = None) -> 'Drawing_camera':
+def get_drawing_camera(camera: bpy.types.Object = None) -> 'Drawing_camera':
     """ Return the_drawing_camera (create it if necessary) """
     global the_drawing_camera
     if the_drawing_camera:
@@ -63,8 +62,8 @@ class Drawing_camera:
         self.obj = duplicate
         self.name = camera.name
         working_scene = get_working_scene()
-        working_scene.collection.objects.link(self.obj)
-        working_scene.camera = self.obj
+        working_scene.link_object(self.obj)
+        working_scene.scene.camera = self.obj
         self.path = self.get_path()
         self.direction = camera.matrix_world.to_quaternion() @ \
                 Vector((0.0, 0.0, -1.0))

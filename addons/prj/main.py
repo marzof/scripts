@@ -49,7 +49,7 @@ def draw_subjects(draw_context: 'Drawing_context') -> None:
     cutter = get_cutter(draw_context)
     cutter.obj.hide_viewport = False
 
-    bpy.context.window.scene = get_working_scene()
+    bpy.context.window.scene = get_working_scene().scene
 
     ## Draw every subject (and hide not overlapping ones)
     draw_time = time.time()
@@ -97,6 +97,7 @@ def get_svg_composition(draw_context: 'Drawing_context') -> None:
     print('Start composition')
     composition_start_time = time.time()
     composition_filepath = Filepath(draw_context.drawing_camera.path + '.svg')
+    ## TODO try to set cm as display units of svg 
     if not composition_filepath.is_file() or draw_context.draw_all:
     #if False:
         abstract_composition = prepare_composition(draw_context, 
