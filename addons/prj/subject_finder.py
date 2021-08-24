@@ -60,14 +60,17 @@ def get_framed_subjects(camera: bpy.types.Object) -> list[Drawing_subject]:
             # or not is_in_visible_collection(obj_inst.object):
             continue
         ## Create the temporary Drawing_subject
+        inst_name=obj_inst.object.name
+        inst_library=obj_inst.object.library
+        lib_path = inst_library.filepath if inst_library else inst_library
         framed_subject = Drawing_subject(
-                eval_obj=obj_inst.object,
-                name=obj_inst.object.name,
+                eval_obj=bpy.data.objects[inst_name, lib_path],
+                name=inst_name,
                 mesh = bpy.data.meshes.new_from_object(obj_inst.object),
                 matrix=obj_inst.object.matrix_world.copy().freeze(),
                 parent=obj_inst.parent,
                 is_instance=obj_inst.is_instance,
-                library=obj_inst.object.library,
+                library=inst_library,
                 cam_bound_box=is_in_frame['bound_box'],
                 is_in_front=is_in_frame['in_front'], 
                 is_behind=is_in_frame['behind'], 
@@ -190,7 +193,7 @@ def set_overlaps() -> None:
 def get_subjects(selected_objects: list[bpy.types.Object], 
         drawing_scale: float) -> list[Drawing_subject]:
     """ Execute rendering to acquire the subjects to draw """
-    
+
     global render_resolution
     drawing_camera:'Drawing_camera' = get_drawing_camera()
 
@@ -208,15 +211,28 @@ def get_subjects(selected_objects: list[bpy.types.Object],
     subjects = get_viewed_subjects(raw_render, tmp_subjects, drawing_camera)
     
     ## Define overlapping subjects (based on bounding rectangle)
+    selected_subjects = []
+    draw_all = len(selected_objects) == 0
     for subject in subjects:
-        subject.get_overlap_subjects(subjects)
+        print('Subj', subject.obj)
+        subject_is_selected = subject.eval_obj.original in selected_objects
+        parent_is_selected = subject.parent \
+                and subject.parent.original in selected_objects
+        if subject_is_selected or parent_is_selected or draw_all:
+            selected_subjects.append(subject)
+            subject.get_overlap_subjects(subjects)
+    for sel_subj in selected_subjects:
+        for over_subj in sel_subj.overlapping_objects:
+            if over_subj in selected_subjects:
+                continue
+            selected_subjects.append(over_subj)
+    ## TODO add objects which are changed based on info on svg
+    ##      Handle as well selection for hide and back
 
     ### Get groups of not-overlapping subjects to perfom combined renderings
-    render_groups = get_render_groups(subjects)
-    #for subject in subjects:
-    #    print(subject.name)
-    print('groups are', len(render_groups), '\nsubjects are', len(subjects))
-    #raise Exception('STOP')
+    render_groups = get_render_groups(selected_subjects)
+    print('groups are', len(render_groups), '\nsubjects are', 
+            len(selected_subjects))
 
     ## Execute combined renderings to map pixels to subjects
     ### Prepare scene
@@ -237,5 +253,5 @@ def get_subjects(selected_objects: list[bpy.types.Object],
     print('Subjects detection in:', time.time() - renders_time)
     render_scene.remove()
 
-    return subjects
+    return selected_subjects
 

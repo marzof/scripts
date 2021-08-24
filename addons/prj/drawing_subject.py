@@ -65,6 +65,10 @@ class Drawing_subject:
     working_scene: 'Working_scene'
     svg_path: Svg_path
     render_pixels: list[int]
+    pixels_range: list[tuple[int]]  ## Exery tuple define the start and the end
+                                    ## (end included!) of pixels's render lines 
+
+    FULL_NAME_SEP: str = '_-_'
 
     def __init__(self, eval_obj: bpy.types.Object, name: str, 
             mesh: bpy.types.Mesh, matrix: 'mathutils.Matrix', 
@@ -77,6 +81,8 @@ class Drawing_subject:
         self.mesh = mesh
         self.matrix = matrix
         self.parent = parent
+        self.full_name = f"{self.parent.name}{self.FULL_NAME_SEP}{self.name}" \
+                if self.parent else name
         self.is_instance = is_instance
         self.library = library
         self.cam_bound_box = cam_bound_box
@@ -85,13 +91,14 @@ class Drawing_subject:
         self.overlapping_objects = []
         self.bounding_rect = []
         self.render_pixels = []
+        self.pixels_range = []
+        self.render_resolution = []
 
         svg_path_args = {'main': True}
         ## Move a no-materials duplicate to working_scene: materials could 
         ## bother lineart (and originals are kept untouched)
         self.working_scene = get_working_scene()
-        obj_name = f"{self.parent.name}_{self.name}" if self.parent \
-                else self.name
+        obj_name = self.full_name
         self.obj = bpy.data.objects.new(name=obj_name, object_data=self.mesh)
         self.obj.matrix_world = self.matrix
         self.obj.data.materials.clear()
@@ -121,17 +128,15 @@ class Drawing_subject:
         #        int(to_hex(a),0))
         self.color = (f_to_8_bit(r), f_to_8_bit(g), f_to_8_bit(b), f_to_8_bit(a))
 
-    def get_svg_path(self, obj: bpy.types.Object = None, main: bool = False, 
+    def get_svg_path(self, main: bool = False, 
             prefix: str = None, suffix: str = None) -> None:
         """ Return the svg filepath with prefix or suffix """
-        if not obj:
-            obj = self.obj
         drawing_camera = get_drawing_camera()
         path = drawing_camera.path
         sep = "" if path.endswith(os.sep) else os.sep
         pfx = f"{prefix}_" if prefix else ""
         sfx = f"_{suffix}" if suffix else ""
-        svg_path = f"{path}{sep}{pfx}{obj.name}{sfx}.svg"
+        svg_path = f"{path}{sep}{pfx}{self.full_name}{sfx}.svg"
         return svg_path
 
     def set_grease_pencil(self, gp: bpy.types.Object) -> None:
@@ -148,7 +153,7 @@ class Drawing_subject:
 
     def add_overlapping_obj(self, subject: 'Drawing_subject') -> None:
         """ Add subject to self.overlapping_objects """
-        if subject not in self.overlapping_objects:
+        if subject != self and subject not in self.overlapping_objects:
             self.overlapping_objects.append(subject)
 
     def add_overlapping_objs(self, subjects: list['Drawing_subject']) -> None:
@@ -170,8 +175,9 @@ class Drawing_subject:
                     subject.add_overlapping_obj(self)
                     break
 
-    def get_area_pixels(self, resolution) -> list[int]:
+    def get_area_pixels(self, resolution: int) -> list[int]:
         """ Get the pixel number (int) of the subject bounding rect area """
+        self.render_resolution = resolution
         bound_rect_x = self.bounding_rect[0].x
         bound_rect_y = self.bounding_rect[2].y
         bound_width = self.bounding_rect[2].x - self.bounding_rect[0].x
@@ -186,7 +192,16 @@ class Drawing_subject:
         return pixels
 
     def add_render_pixel(self, pixel: int) -> None:
+        """ Collect all the pixels where the subject actually appears 
+            Pixels are stored individually and in range """
         self.render_pixels.append(pixel)
+
+        if len(self.render_pixels) == 1:
+            self.pixels_range = [(pixel,)]
+        elif (pixel-1) == self.pixels_range[-1][-1]:
+            self.pixels_range[-1] = (self.pixels_range[-1][0], pixel)
+        else:
+            self.pixels_range.append((pixel,))
 
     def remove(self):
         self.working_scene.unlink_object(self.obj)

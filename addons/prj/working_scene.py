@@ -26,8 +26,9 @@ import bpy
 import math
 
 ## TODO general data: put in main or __init__
-RENDER_BASEPATH = bpy.path.abspath(bpy.context.scene.render.filepath)
 WB_RENDER_FILENAME = 'prj_working_scene.tif'
+get_render_basepath = lambda: bpy.path.abspath(bpy.context.scene.render.filepath)
+
 the_working_scene = None
 
 def get_working_scene() -> 'Working_scene':
@@ -46,7 +47,7 @@ class Working_scene:
 
     def __init__(self, scene_name: str='prj', filename: str=WB_RENDER_FILENAME):
         self.scene = bpy.data.scenes.new(name=scene_name)
-        self.scene.render.filepath = RENDER_BASEPATH + filename
+        self.scene.render.filepath = get_render_basepath() + filename
         self.scene.render.engine = 'BLENDER_WORKBENCH'
         self.scene.display.render_aa = 'OFF'
         self.scene.display.shading.light = 'FLAT'

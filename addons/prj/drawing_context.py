@@ -35,7 +35,7 @@ is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
 format_svg_size = lambda x, y: (str(x) + 'mm', str(y) + 'mm')
 the_drawing_context = None
 
-def get_drawing_context(args: list[str]):
+def get_drawing_context(args: list[str] = None):
     """ Return the_drawing_context (create it if necessary) """
     global the_drawing_context
     if the_drawing_context:
@@ -115,12 +115,15 @@ class Drawing_context:
         for ob in args_objs:
             if ob and bpy.data.objects[ob].type == 'CAMERA':
                 cam = bpy.data.objects[ob]
-            elif ob and is_renderables(bpy.data.objects[ob]):
+            elif ob and is_renderables(bpy.data.objects[ob]) \
+                    and not self.draw_all:
                 objs.append(bpy.data.objects[ob])
         got_objs = bool(objs)
         for ob in selected_objs:
             if not cam and ob.type == 'CAMERA':
                 cam = ob
-            if not got_objs and is_renderables(ob):
+            if not got_objs and is_renderables(ob) and not self.draw_all:
                 objs.append(ob)
+        if len(objs) == 0:
+            self.draw_all = True
         return {'objects': objs, 'camera': cam}

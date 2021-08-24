@@ -23,7 +23,7 @@
 # TODO...
 
 import bpy
-import sys
+import sys, os
 import prj
 from pathlib import Path as Filepath
 from prj.svg_path import svgs_data
@@ -40,11 +40,12 @@ import time
 
 drawings: list['Svg_drawing'] = []
 
-def draw_subjects(draw_context: 'Drawing_context') -> None:
+def draw_subjects() -> None:
     """ Get exported svgs for every subject (or parts of it) for every style """
     drawing_times: dict[float, str] = {}
     print('Prepare drawings')
     prepare_start_time = time.time()
+    draw_context = get_drawing_context()
 
     cutter = get_cutter(draw_context)
     cutter.obj.hide_viewport = False
@@ -78,23 +79,46 @@ def draw_subjects(draw_context: 'Drawing_context') -> None:
     print(f"***Drawings completed in {draw_time} seconds")
     return 
 
-def rewrite_svgs(draw_context: 'Drawing_context') -> None:
+def rewrite_svgs() -> None:
     """ Get a single and organized svg for every subject """
-    ## TODO fix objects' name to the original ones
     print('Start rewriting svg')
+    draw_context = get_drawing_context()
     rewrite_svgs_start_time = time.time()
     for svg_data in svgs_data:
         drawing_data = svgs_data[svg_data]
         abstract_subj_svg = prepare_obj_svg(draw_context, drawing_data)
         subj_svg = abstract_subj_svg.to_real(drawing_data.path)
+        with open(svg_data, "a") as svg_file:
+            append_subject_data(svg_file, drawing_data)
         drawings.append(drawing_data.path)
     print(f'\t...completed in {(time.time() - rewrite_svgs_start_time)}\n')
 
-def get_svg_composition(draw_context: 'Drawing_context') -> None:
+def append_subject_data(svg_file: 'io.TextIOWrapper', 
+        drawing_data: 'Svg_path') -> None:
+    """ Append data about subject in svg_file """
+    svg_file.write("<!--" + os.linesep)
+    for subject in drawing_data.objects:
+        svg_file.write(f'Subject: {subject.name}')
+        svg_file.write(os.linesep)
+        svg_file.write(f'Resolution: {subject.render_resolution}')
+        svg_file.write(os.linesep)
+        for over_subj in subject.overlapping_objects:
+            over_subj_lib = over_subj.library.filepath if \
+                    over_subj.library else over_subj.library
+            svg_file.write(f'Overlaps with: ({over_subj.name}, {over_subj_lib})')
+            svg_file.write(os.linesep)
+        svg_file.write(f'Pixel:')
+        svg_file.write(os.linesep)
+        for pixel in subject.pixels_range:
+            svg_file.write(f'{pixel}{os.linesep}')
+    svg_file.write("-->")
+
+def get_svg_composition() -> None:
     """ Collect every subject svg in a single composed svg 
         or add new subject to existing composed svg """
     ## TODO check why a lot of defs elements are created
     print('Start composition')
+    draw_context = get_drawing_context()
     composition_start_time = time.time()
     composition_filepath = Filepath(draw_context.drawing_camera.path + '.svg')
     ## TODO try to set cm as display units of svg 
@@ -123,9 +147,9 @@ def main() -> None:
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
     create_drawing_styles()
     draw_context = get_drawing_context(args)
-    draw_subjects(draw_context) 
-    rewrite_svgs(draw_context)
-    get_svg_composition(draw_context)
+    draw_subjects() 
+    rewrite_svgs()
+    get_svg_composition()
     print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
 
 if __name__ == "__main__":

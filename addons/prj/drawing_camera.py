@@ -26,7 +26,7 @@
 import bpy
 import os
 from mathutils import Vector, Matrix
-from prj.working_scene import RENDER_BASEPATH, get_working_scene
+from prj.working_scene import get_render_basepath, get_working_scene
 import time
 
 BASE_ROUNDING: int = 6
@@ -83,7 +83,7 @@ class Drawing_camera:
     
     def get_path(self) -> str:
         """ Return folder path named after camera (create it if needed) """
-        cam_path = os.path.join(RENDER_BASEPATH, self.name)
+        cam_path = os.path.join(get_render_basepath(), self.name)
         try:
             os.mkdir(cam_path)
         except OSError:

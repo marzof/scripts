@@ -46,6 +46,7 @@ class Prj(bpy.types.Operator):
         #cutter.delete(remove_lineart_gp=True)
         scene = get_working_scene()
         scene.remove(del_objs=True)
+        ## TODO check if collecting libraries is still useful
         for library in libraries:
             try:
                 library.reload()
