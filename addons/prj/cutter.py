@@ -24,8 +24,8 @@
 
 import bpy
 import bmesh
-from prj.utils import create_grease_pencil, add_line_art_mod
-from prj.utils import GREASE_PENCIL_PREFIX
+from prj.drawing_maker import add_line_art_mod, create_grease_pencil
+from prj.drawing_maker import GREASE_PENCIL_PREFIX
 from prj.working_scene import get_working_scene
 from prj.drawing_style import drawing_styles
 import time

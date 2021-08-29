@@ -71,9 +71,10 @@ class Drawing_context:
         self.drawing_camera = get_drawing_camera(selection['camera']) 
         frame_size = self.drawing_camera.ortho_scale
         working_scene = get_working_scene()
-        render_resolution = working_scene.set_resolution(frame_size, 
-                self.drawing_scale * self.RENDER_FACTOR)
-        self.subjects = get_subjects(self.selected_objects, self.drawing_scale)
+        render_resolution = working_scene.set_resolution(cam_scale=frame_size, 
+                drawing_scale = self.drawing_scale * self.RENDER_FACTOR)
+        self.subjects = get_subjects(self.selected_objects, self.drawing_scale,
+                self.style)
         self.svg_size = format_svg_size(frame_size * self.drawing_scale * 1000, 
             frame_size * self.drawing_scale * 1000)
         self.svg_factor = frame_size * self.drawing_scale * 100 * \

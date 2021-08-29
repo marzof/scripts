@@ -59,7 +59,7 @@ def draw_subjects() -> None:
         print('Drawing', subject.name)
 
         subject.obj.hide_viewport = False
-        overlapping_subjects = subject.overlapping_objects + [subject, cutter]
+        overlapping_subjects = subject.overlapping_subjects + [subject, cutter]
         for other_subj in draw_context.subjects:
             if other_subj not in overlapping_subjects:
                 other_subj.obj.hide_viewport = True
@@ -85,12 +85,16 @@ def rewrite_svgs() -> None:
     draw_context = get_drawing_context()
     rewrite_svgs_start_time = time.time()
     for svg_data in svgs_data:
+        drawing_start_time = time.time()
         drawing_data = svgs_data[svg_data]
-        abstract_subj_svg = prepare_obj_svg(draw_context, drawing_data)
-        subj_svg = abstract_subj_svg.to_real(drawing_data.path)
-        with open(svg_data, "a") as svg_file:
-            append_subject_data(svg_file, drawing_data)
-        drawings.append(drawing_data.path)
+        for subject in drawing_data.objects:
+            if subject not in draw_context.subjects:
+                continue
+            abstract_subj_svg = prepare_obj_svg(draw_context, drawing_data)
+            subj_svg = abstract_subj_svg.to_real(drawing_data.path)
+            with open(svg_data, "a") as svg_file:
+                append_subject_data(svg_file, drawing_data)
+            drawings.append(drawing_data.path)
     print(f'\t...completed in {(time.time() - rewrite_svgs_start_time)}\n')
 
 def append_subject_data(svg_file: 'io.TextIOWrapper', 
@@ -102,15 +106,17 @@ def append_subject_data(svg_file: 'io.TextIOWrapper',
         svg_file.write(os.linesep)
         svg_file.write(f'Resolution: {subject.render_resolution}')
         svg_file.write(os.linesep)
-        for over_subj in subject.overlapping_objects:
+        for over_subj in subject.overlapping_subjects:
             over_subj_lib = over_subj.library.filepath if \
                     over_subj.library else over_subj.library
             svg_file.write(f'Overlaps with: ({over_subj.name}, {over_subj_lib})')
             svg_file.write(os.linesep)
         svg_file.write(f'Pixel:')
         svg_file.write(os.linesep)
-        for pixel in subject.pixels_range:
-            svg_file.write(f'{pixel}{os.linesep}')
+        svg_file.write(f'(collected in ranges with first and last included)')
+        svg_file.write(os.linesep)
+        svg_file.write(f'{subject.pixels_range}')
+        svg_file.write(os.linesep)
     svg_file.write("-->")
 
 def get_svg_composition() -> None:

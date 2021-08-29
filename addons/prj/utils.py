@@ -2,16 +2,35 @@
 # -*- coding: utf-8 -*- 
 
 import bpy, bmesh
+import math
+from PIL import Image
 from mathutils import Matrix, Vector, geometry
 from bpy_extras.object_utils import world_to_camera_view
 from prj.drawing_style import drawing_styles
-from prj.drawing_camera import get_drawing_camera
 import time
 
-GREASE_PENCIL_PREFIX = 'prj_'
-GREASE_PENCIL_LAYER = 'prj_lay'
-GREASE_PENCIL_MAT = 'prj_mat'
-GREASE_PENCIL_MOD = 'prj_la'
+MIN_UNIT_FRACTION = 2 ## 1 = 1 millimeter; 2 = 1/2 millimeter; 4 = 1/4 millimeter
+
+def get_resolution(cam_scale: float = None, drawing_scale: float = None) -> int:
+    return int(math.ceil(cam_scale * drawing_scale * 1000 * MIN_UNIT_FRACTION))
+
+def get_render_data(objects: list[bpy.types.Object], 
+        scene: bpy.types.Scene) -> 'Imaging_Core':
+    """ Render the objects and get the pixels data """
+    ### Move subjects to render_scene, render them and remove from scene
+    #print('Render for', group) 
+    for obj in objects:
+        if obj not in list(scene.collection.objects):
+            scene.collection.objects.link(obj)
+    bpy.ops.render.render(write_still=True, scene=scene.name)
+    for obj in objects:
+        if obj in list(scene.collection.objects):
+            scene.collection.objects.unlink(obj)
+
+    ### Get the rendering data
+    render = Image.open(scene.render.filepath)
+    render_pixels = render.getdata()
+    return render_pixels
 
 def flatten(li: list) -> list:
     """ Flatten list li from its sublists """
@@ -109,75 +128,6 @@ def point_in_quad(point: Vector, quad_vert: list[Vector]) -> bool:
     if not intersect_point:
         return False
     return True
-
-def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object, 
-        source_type: str, style: str) -> None:
-    """ Add a line art modifier to gp from source of the source_type 
-    with style """
-
-    gp_layer = gp.data.layers.new(drawing_styles[style].name)
-    gp_layer.frames.new(1)
-    gp_mat_name = GREASE_PENCIL_MAT + '_' + drawing_styles[style].name
-    if gp_mat_name not in bpy.data.materials:
-        gp_mat = bpy.data.materials.new(gp_mat_name)
-    else:
-        gp_mat = bpy.data.materials[gp_mat_name]
-    if not gp_mat.is_grease_pencil:
-        bpy.data.materials.create_gpencil_data(gp_mat)
-    gp.data.materials.append(gp_mat)
-
-    ## Create and setup lineart modifier
-    gp_mod_name = GREASE_PENCIL_MOD + '_' + drawing_styles[style].name
-    gp.grease_pencil_modifiers.new(gp_mod_name, 'GP_LINEART')
-    gp_mod = gp.grease_pencil_modifiers[gp_mod_name]
-    gp_mod.target_layer = gp_layer.info
-    gp_mod.target_material = gp_mat
-    gp_mod.chaining_image_threshold = drawing_styles[style].chaining_threshold
-    gp_mod.use_multiple_levels = True
-    gp_mod.use_remove_doubles = True
-    gp_mod.use_clip_plane_boundaries = False
-    gp_mod.level_start = drawing_styles[style].occlusion_start
-    gp_mod.level_end = drawing_styles[style].occlusion_end
-    gp_mod.source_type = source_type
-    if source_type == 'OBJECT':
-        gp_mod.source_object = source
-    elif source_type == 'COLLECTION':
-        gp_mod.source_collection = source
-
-def create_grease_pencil(name: str, scene: bpy.types.Scene) -> bpy.types.Object:
-    """ Create a grease pencil """
-    gp = bpy.data.grease_pencils.new(name)
-
-    gp_layer = gp.layers.new(GREASE_PENCIL_LAYER)
-    gp_layer.frames.new(1)
-    
-    gp_mat = bpy.data.materials.new(GREASE_PENCIL_MAT)
-    bpy.data.materials.create_gpencil_data(gp_mat)
-    gp.materials.append(gp_mat)
-
-    obj = bpy.data.objects.new(name, gp)
-    scene.collection.objects.link(obj)
-    return obj
-
-def create_lineart(source: 'Drawing_subject', style: str, 
-        scene: bpy.types.Scene, cutter: 'Cutter') -> bpy.types.Object:
-    """ Create source.grease_pencil if needed and add a lineart modifier 
-        with style to it """
-    if style == 'c':
-        source.obj.hide_viewport = True 
-        return cutter.lineart_gp
-    elif style == 'b':
-        camera = get_drawing_camera()
-        camera.reverse_cam()
-
-    if not scene:
-        scene = bpy.context.scene
-    if not source.grease_pencil:
-        source.set_grease_pencil(create_grease_pencil(
-                GREASE_PENCIL_PREFIX + source.obj.name, scene))
-    add_line_art_mod(source.grease_pencil, source.obj, 
-            source.lineart_source_type, style)
-    return source.grease_pencil
 
 def join_coords(coords: list[tuple[float]]) -> list[list[tuple[float]]]:
     """ Join coords list (as from polyline) and put new coords lists in seqs """

@@ -24,6 +24,7 @@
 
 import bpy
 import os
+import ast
 import math
 from mathutils import Vector
 from prj.utils import point_in_quad, flatten
@@ -56,15 +57,27 @@ def frame_obj_bound_rect(cam_bound_box: list[Vector]) -> dict[str, float]:
         return None
     return {'x_min': x_min, 'y_min': y_min, 'x_max': x_max, 'y_max': y_max}
 
+def unfold_ranges(ranges: list[tuple[int]]) -> list[int]:
+    """ Flatten ranges in a single list of value """
+    result = []
+    for r in ranges:
+        if len(r) == 1:
+            result += [r[0]]
+            continue
+        result += list(range(r[0], r[1]+1))
+    return result
+
 class Drawing_subject:
     obj: bpy.types.Object
     bounding_rect: list[Vector]
-    overlapping_objects: list['Drawing_subject']
+    overlapping_subjects: list['Drawing_subject']
+    previous_pixels_subjects: list['Drawing_subject']
     is_cut: bool
     lineart: bpy.types.Object ## bpy.types.GreasePencil
     working_scene: 'Working_scene'
     svg_path: Svg_path
     render_pixels: list[int]
+    previous_render_pixels: list[int]
     pixels_range: list[tuple[int]]  ## Exery tuple define the start and the end
                                     ## (end included!) of pixels's render lines 
 
@@ -88,7 +101,8 @@ class Drawing_subject:
         self.cam_bound_box = cam_bound_box
         if self.library and self.library not in libraries:
             libraries.append(self.library)
-        self.overlapping_objects = []
+        self.overlapping_subjects = []
+        self.previous_pixels_subjects = []
         self.bounding_rect = []
         self.render_pixels = []
         self.pixels_range = []
@@ -110,6 +124,18 @@ class Drawing_subject:
 
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
+        try:
+            prev_svg = open(self.svg_path.path, 'r')
+            prev_svg_content = prev_svg.read()
+            prev_svg.close()
+            self.previous_svg = prev_svg_content
+            svg_lines = self.previous_svg.split(os.linesep)
+            prev_render_pixels = ast.literal_eval(svg_lines[-2])
+            self.previous_render_pixels = unfold_ranges(prev_render_pixels)
+        except OSError:
+            print (f"{self.svg_path.path} doesn't exists")
+            self.previous_svg = None
+            self.previous_render_pixels = None
 
         self.collections = [coll.name for coll in self.obj.users_collection \
                 if coll is not bpy.context.scene.collection]
@@ -151,28 +177,42 @@ class Drawing_subject:
                 Vector((bounding_rect['x_min'], bounding_rect['y_max']))]
         self.bounding_rect = verts
 
-    def add_overlapping_obj(self, subject: 'Drawing_subject') -> None:
-        """ Add subject to self.overlapping_objects """
-        if subject != self and subject not in self.overlapping_objects:
-            self.overlapping_objects.append(subject)
+    def add_overlapping_subj(self, subject: 'Drawing_subject') -> None:
+        """ Add subject to self.overlapping_subjects """
+        if subject != self and subject not in self.overlapping_subjects:
+            self.overlapping_subjects.append(subject)
 
-    def add_overlapping_objs(self, subjects: list['Drawing_subject']) -> None:
-        """ Add subjects (list) to self.overlapping_objects """
+    def add_overlapping_subjs(self, subjects: list['Drawing_subject']) -> None:
+        """ Add subjects (list) to self.overlapping_subjects """
         for subj in subjects:
-            self.add_overlapping_obj(subj)
+            self.add_overlapping_subj(subj)
+
+    def add_prev_pixels_subject(self, subj: 'Drawing_subject') -> None:
+        """ Add subj to self.previous_pixels_subjects """
+        if subj != self and subj not in self.previous_pixels_subjects:
+            self.previous_pixels_subjects.append(subj)
+
+    def add_prev_pixels_subjects(self, 
+            subjects: list['Drawing_subject']) -> None:
+        """ Add subjects (list) to self.previous_pixels_subjects """
+        for subj in subjects:
+            self.add_prev_pixels_subject(subj)
 
     def get_overlap_subjects(self, subjects: list['Drawing_subject']) -> None:
-        """ Populate self.overlapping_objects with subjects that overlaps in
+        """ Populate self.overlapping_subjects with subjects that overlaps in
             frame view and add self to those subjects too """
         for subject in subjects:
             if subject == self:
                 continue
-            if subject in self.overlapping_objects:
+            if subject in self.overlapping_subjects:
                 continue
             for vert in self.bounding_rect:
                 if point_in_quad(vert, subject.bounding_rect):
-                    self.overlapping_objects.append(subject)
-                    subject.add_overlapping_obj(self)
+                    self.add_overlapping_subj(subject)
+                    break
+            for vert in subject.bounding_rect:
+                if point_in_quad(vert, self.bounding_rect):
+                    self.add_overlapping_subj(subject)
                     break
 
     def get_area_pixels(self, resolution: int) -> list[int]:

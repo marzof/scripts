@@ -24,6 +24,7 @@
 
 import bpy
 import math
+from prj.utils import get_resolution
 
 ## TODO general data: put in main or __init__
 WB_RENDER_FILENAME = 'prj_working_scene.tif'
@@ -67,8 +68,13 @@ class Working_scene:
     def unlink_object(self, obj: bpy.types.Object) -> None:
         self.scene.collection.objects.unlink(obj)
 
-    def set_resolution(self, cam_scale: float, drawing_scale: float) -> int:
-        resolution = int(math.ceil(cam_scale * drawing_scale * 2000))
+    def get_resolution(self) -> int:
+        return self.scene.render.resolution_x
+
+    def set_resolution(self, cam_scale: float = None, 
+            drawing_scale: float = None, resolution: int = None) -> int:
+        if not resolution:
+            resolution = get_resolution(cam_scale, drawing_scale)
         self.scene.render.resolution_x = resolution
         self.scene.render.resolution_y = resolution
         return resolution
