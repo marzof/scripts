@@ -111,13 +111,13 @@ def export_grease_pencil(subject: 'Drawing_subject',
     """ Export grease_pencil to svg and return its path """
     make_active(grease_pencil)
 
-    svg_path = subject.get_svg_path(suffix=svg_suffix)
+    svg_path = subject.get_svg_path(suffix=svg_suffix)['abs']
     
     svg_main_path = subject.svg_path
     svg_main_path.add_object_path(subject, svg_path, svg_suffix)
 
     bpy.ops.wm.gpencil_export_svg(filepath=svg_path, 
-            selected_object_type='VISIBLE')
+            selected_object_type='VISIBLE') # use_clip_camera=True causes error
     if remove:
         bpy.data.objects.remove(grease_pencil, do_unlink=True)
         subject.set_grease_pencil(None)

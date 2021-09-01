@@ -28,7 +28,7 @@ import ast
 import math
 from mathutils import Vector
 from prj.utils import point_in_quad, flatten
-from prj.drawing_camera import get_drawing_camera
+from prj.drawing_camera import LIB_PATH, get_drawing_camera
 from prj.svg_path import Svg_path
 from prj.working_scene import get_working_scene
 from bpy_extras.object_utils import world_to_camera_view
@@ -122,8 +122,10 @@ class Drawing_subject:
         self.is_behind = is_behind
         self.is_cut = self.is_in_front and self.is_behind
 
-        self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
+        svg_paths = self.get_svg_path(**svg_path_args)
+        self.svg_path = Svg_path(path=svg_paths['abs'])
         self.svg_path.add_object(self)
+        self.svg_rel_path = svg_paths['rel']
         try:
             prev_svg = open(self.svg_path.path, 'r')
             prev_svg_content = prev_svg.read()
@@ -158,12 +160,13 @@ class Drawing_subject:
             prefix: str = None, suffix: str = None) -> None:
         """ Return the svg filepath with prefix or suffix """
         drawing_camera = get_drawing_camera()
-        path = drawing_camera.path
+        path = drawing_camera.lib_path
         sep = "" if path.endswith(os.sep) else os.sep
         pfx = f"{prefix}_" if prefix else ""
         sfx = f"_{suffix}" if suffix else ""
         svg_path = f"{path}{sep}{pfx}{self.full_name}{sfx}.svg"
-        return svg_path
+        rel_svg_path = f"{LIB_PATH}{sep}{pfx}{self.full_name}{sfx}.svg"
+        return {'abs': svg_path, 'rel': rel_svg_path}
 
     def set_grease_pencil(self, gp: bpy.types.Object) -> None:
         self.grease_pencil = gp
@@ -215,9 +218,12 @@ class Drawing_subject:
                     self.add_overlapping_subj(subject)
                     break
 
-    def get_area_pixels(self, resolution: int) -> list[int]:
-        """ Get the pixel number (int) of the subject bounding rect area """
+    def set_resolution(self, resolution: int) -> None:
         self.render_resolution = resolution
+
+    def get_area_pixels(self) -> list[int]:
+        """ Get the pixel number (int) of the subject bounding rect area """
+        resolution = self.render_resolution
         bound_rect_x = self.bounding_rect[0].x
         bound_rect_y = self.bounding_rect[2].y
         bound_width = self.bounding_rect[2].x - self.bounding_rect[0].x
@@ -231,10 +237,18 @@ class Drawing_subject:
             for y in range(px_from_y, px_from_y + px_height)])
         return pixels
 
+    def update_render_pixels(self, render_pixels: 'ImagingCore') -> None:
+        """ For the area of subject check if pixels are blank or filled 
+            and populate render_pixels """
+        area_pixels = self.get_area_pixels()
+        for pixel in area_pixels:
+            if render_pixels[pixel][3] != 255:
+                continue
+            self.render_pixels.append(pixel)
+
     def add_render_pixel(self, pixel: int) -> None:
         """ Collect all the pixels where the subject actually appears 
             Pixels are stored individually and in range """
-        self.render_pixels.append(pixel)
 
         if len(self.render_pixels) == 1:
             self.pixels_range = [(pixel,)]

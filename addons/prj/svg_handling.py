@@ -7,7 +7,7 @@ from prj.svglib import AbsSvg_drawing, AbsStyle, AbsLayer, AbsUse
 from prj.svglib import AbsPath, AbsGroup
 from prj.utils import transform_points, get_path_coords, join_coords
 
-BASE_CSS = 'base.css'
+BASE_CSS = '../base.css'
 SVG_ID = 'svg'
 ROUNDING: int = 3
 
@@ -38,6 +38,7 @@ def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
         abslayer.add_entity(absgroup)
         is_cut = abslayer.label == 'cut'
 
+        print('f', f)
         svg_read = Svg_read(f)
         abspaths = []
         all_points = []
@@ -104,7 +105,7 @@ def add_subjects_as_use(subjects: list['Drawing_subject'], style: str,
         container: 'AbsSvg_container') -> None:
     """ Create use elements for every subject and add to abs_svg"""
     for subject in subjects:
-        link = f'{subject.svg_path.path}#{subject.name}_{style}'
+        link = f'{subject.svg_rel_path}#{subject.name}_{style}'
         new_use = AbsUse(link)
         new_use.set_id(f'{subject.name}_{style}')
         new_use.set_attribute({'xlink:title': subject.name})

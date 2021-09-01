@@ -92,6 +92,23 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
                 continue
             return {'result': True, 'inside_frame': False, 'in_front': in_front,
                     'behind': behind, 'bound_box': bound_box}
+
+    ## TODO clean up following lines (quickly added)
+    ## Check if bound_box intersect camera frame
+    bound_box_edge_idxs = [(0,1),(0,3),(0,4), (1,2), (1,5), (2,3), (2,6),
+            (3,7), (4,5), (4,7), (5,6), (6,7)]
+    for edge in bound_box_edge_idxs:
+        lineA_p1 = Vector((bound_box[edge[0]].x, bound_box[edge[0]].y))
+        lineA_p2 = Vector((bound_box[edge[1]].x, bound_box[edge[1]].y))
+        for side in [((0,0),(0,1)), ((0,0),(1,0)), ((1,1),(0,1)), ((1,1),(1,0))]:
+            lineB_p1 = Vector(side[0])
+            lineB_p2 = Vector(side[1])
+            intersection = geometry.intersect_line_line_2d(lineA_p1, lineA_p2, 
+                    lineB_p1, lineB_p2)
+            if intersection:
+                return {'result': True, 'inside_frame': False, 
+                        'in_front': in_front, 'behind': behind, 
+                        'bound_box': bound_box}
     return {'result': False, 'inside_frame': None,
             'in_front': in_front, 'behind': behind, 'bound_box': bound_box}
 

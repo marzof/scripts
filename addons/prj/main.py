@@ -31,6 +31,7 @@ from prj.svgread import Svg_read
 from prj.svg_handling import prepare_composition, prepare_obj_svg
 from prj.svg_handling import filter_subjects_for_svg, add_subjects_as_use
 from prj.drawing_context import get_drawing_context, is_renderables
+from prj.drawing_camera import get_drawing_camera
 from prj.drawing_maker import draw
 from prj.drawing_subject import libraries
 from prj.drawing_style import create_drawing_styles
@@ -57,6 +58,7 @@ def draw_subjects() -> None:
     for subject in draw_context.subjects:
         drawing_start_time = time.time()
         print('Drawing', subject.name)
+        print('subj', subject)
 
         subject.obj.hide_viewport = False
         overlapping_subjects = subject.overlapping_subjects + [subject, cutter]
@@ -125,8 +127,10 @@ def get_svg_composition() -> None:
     ## TODO check why a lot of defs elements are created
     print('Start composition')
     draw_context = get_drawing_context()
+    draw_camera = get_drawing_camera()
     composition_start_time = time.time()
-    composition_filepath = Filepath(draw_context.drawing_camera.path + '.svg')
+    composition_filepath = Filepath(draw_camera.path + os.sep + \
+            draw_camera.name + '.svg')
     ## TODO try to set cm as display units of svg 
     if not composition_filepath.is_file() or draw_context.draw_all:
     #if False:

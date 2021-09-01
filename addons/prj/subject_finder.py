@@ -31,6 +31,7 @@ from prj.drawing_camera import get_drawing_camera
 from prj.working_scene import Working_scene, get_working_scene
 import time
 
+HI_RES_RENDER_FACTOR: int = 4
 is_visible = lambda obj: not obj.hide_render and not obj.hide_viewport
 
 
@@ -123,30 +124,26 @@ def get_viewed_subjects(render_pixels: 'ImagingCore',
         if subj.color not in viewed_colors:
             if not drawing_camera or not is_cut(subj.obj, subj.matrix, 
                     drawing_camera.frame, drawing_camera.direction):
-                #print(subj.name, 'is NOT VISIBLE')
+                print(subj.name, 'is NOT VISIBLE')
                 continue
-        #print(subj.name, 'is VISIBLE')
+        print(subj.name, 'is VISIBLE')
         if drawing_camera:
             subj.get_bounding_rect()
         visible_subjects.append(subj)
+        #if subj.name == 'SlabA':
+        #    raise Exception('STOP')
     return visible_subjects
 
-def update_pixel_maps(subject: Drawing_subject, render_pixels: 'ImagingCore', 
-        subjects_map: dict[int, list[Drawing_subject]], 
-        render_resolution: int) -> None:
-    """ Populate subject.render_pixels and subjects_map by subject(s) 
-        render_pixels """
-    subj_pixels = subject.get_area_pixels(render_resolution)
-    for pixel in subj_pixels:
-        if render_pixels[pixel][3] != 255:
-            continue
-        if pixel not in subjects_map:
-            subjects_map[pixel] = []
-        subject.add_render_pixel(pixel)
-        subjects_map[pixel].append(subject)
-
-def set_overlaps(subjects_map) -> None:
+def set_subjects_overlaps(visible_subjects: list[Drawing_subject]) -> None:
     """ Define overlapping subjects (based on actual pixels) """
+    subjects_map: dict[int, list[Drawing_subject]] = {}
+    for subj in visible_subjects:
+        ## Clear overlapping objects based on bounding rect
+        subj.overlapping_subjects = []
+        for pixel in subj.render_pixels:
+            if pixel not in subjects_map:
+                subjects_map[pixel] = []
+            subjects_map[pixel].append(subj)
     for pixel in subjects_map:
         if len(subjects_map[pixel]) < 2:
             continue
@@ -154,13 +151,12 @@ def set_overlaps(subjects_map) -> None:
             subj.add_overlapping_subjs(subjects_map[pixel])
 
 def get_actual_subjects(base_subjects: list[Drawing_subject], 
-        selected_objects: list[bpy.types.Object], styles: list[str],
+        selected_objects: list[bpy.types.Object], 
         render_pixels: 'ImagingCore' = None ) -> list[Drawing_subject]:
-    """ Filter base_subjects according to styles """
+    """ Filter base_subjects """
     ## no_selection (draw_all) -> subjects = all subjects (visible_subjects)
-    ## hidden | back (selection needed) -> subjects = just selected_objects
     ## proj/cut (with selection, otherwise draw_all) -> subjects = \
-    ##         selected_objects + occluded_objects + previous_pixels_objects
+    ##         selected_objects + previous_pixels_objects
     
     subjects = []
     if len(selected_objects) == 0:      ## draw_all
@@ -177,8 +173,6 @@ def get_actual_subjects(base_subjects: list[Drawing_subject],
         if not subject_is_selected and not parent_is_selected: 
             continue
         subjects.append(subj)
-        if 'h' in styles or 'b' in styles:
-            return subjects
 
         if not subj.previous_render_pixels:
             continue
@@ -194,92 +188,98 @@ def get_actual_subjects(base_subjects: list[Drawing_subject],
             if prev_pix_subj not in subjects]))
     return subjects + previous_pixels_subjects
 
-def get_subjects(selected_objects: list[bpy.types.Object], drawing_scale: float,
-        drawing_styles: list[str]) -> list[Drawing_subject]:
+def get_raw_render_data(high_resolution: int, base_render: bool):
+    """ Generate raw renderings (flat colors, no anti-alias) 
+        in order to map objects to pixels """
+    ## TODO Restructure as a loop of resolution to get data from
+    ##      Input: working_scene, list[resolution]
+    working_scene = get_working_scene()
+    base_resolution = working_scene.get_resolution()
+    if base_render:
+        ## Generate a raw_render at actual resolution
+        base_render_pixels = get_render_data([], working_scene.scene)
+    else:
+        base_render_pixels = None
+    ## Generate a raw_render at high resolution
+    working_scene.set_resolution(resolution=high_resolution)
+    hi_res_render_pixels = get_render_data([], working_scene.scene)
+    ## Reset resolution to base
+    working_scene.set_resolution(resolution=base_resolution)
+
+    return {'base_resolution': base_render_pixels, 
+            'high_resolution': hi_res_render_pixels}
+
+def get_subjects(selected_objects: list[bpy.types.Object], 
+        drawing_scale: float) -> list[Drawing_subject]:
     """ Execute rendering to acquire the subjects to draw """
-    drawing_camera:'Drawing_camera' = get_drawing_camera()
+    drawing_camera = get_drawing_camera()
     render_resolution = get_resolution(drawing_camera.ortho_scale, drawing_scale)
+    high_resolution = get_resolution(drawing_camera.ortho_scale, 
+            drawing_scale * HI_RES_RENDER_FACTOR)
 
     ## Get framed objects and create temporary drawing subjects from them
-    tmp_subjects: list[Drawing_subject] = get_framed_subjects(drawing_camera.obj)
+    framed_subjects = get_framed_subjects(drawing_camera.obj)
 
-    ## Create colors and assign them to tmp_subjects
-    colors: list[tuple[float]] = get_colors_spectrum(len(tmp_subjects))
-    for i, tmp_subj in enumerate(tmp_subjects):
-        tmp_subj.set_color(colors[i])
+    ## Create colors and assign them to framed_subjects
+    colors: list[tuple[float]] = get_colors_spectrum(len(framed_subjects))
+    for i, framed_subj in enumerate(framed_subjects):
+        framed_subj.set_color(colors[i])
 
-    ## Generate a raw_render (flat colors, no anti-alias)
-    working_scene = get_working_scene()
-    main_resolution = working_scene.get_resolution()
-    ## TODO Apply (and reset after) prj.drawing_context.RENDER_FACTOR here, 
-    ## not in drawing_context
-    ## working_scene.set_resolution(drawing_camera.ortho_scale, drawing_scale)
-    flat_render_pixels = get_render_data([], working_scene.scene)
+    render_data = get_raw_render_data(high_resolution, bool(selected_objects))
 
     ## Filter subjects by actual visibility
     visible_subjects: list[Drawing_subject] = get_viewed_subjects(
-            flat_render_pixels, tmp_subjects, drawing_camera)
+            render_data['high_resolution'], framed_subjects, drawing_camera)
 
-    base_render_pixels = None
-    if selected_objects:
-        ## Generate a raw_render at actual resolution
-        working_scene.set_resolution(drawing_camera.ortho_scale, drawing_scale)
-        base_render_pixels = get_render_data([], working_scene.scene)
-        working_scene.set_resolution(resolution=main_resolution)
-    
-    ## Filter subjects by selection and get overlapping subjects 
-    ## (based on bounding rectangle)
-    subjects: list[Drawing_subject] = get_actual_subjects(visible_subjects, 
-            selected_objects, drawing_styles, base_render_pixels)
+    ## Filter subjects by selection 
+    selected_subjects: list[Drawing_subject] = get_actual_subjects(
+            visible_subjects, selected_objects, render_data['base_resolution'])
 
     ## Remove not viewed subjects (at present and in previous version)
-    for tmp_subj in tmp_subjects:
-        if tmp_subj not in visible_subjects and tmp_subj not in subjects:
-            tmp_subj.remove()
+    for framed_subj in framed_subjects:
+        if framed_subj in visible_subjects:
+            continue
+        if framed_subj in selected_subjects:
+            continue
+        framed_subj.remove()
 
+    ## Execute combined renderings to map pixels to selected_subjects
     ### Get groups of not-overlapping subjects to perfom combined renderings
     render_groups = get_render_groups(visible_subjects)
-    print('groups are', len(render_groups), '\nsubjects are', len(subjects))
-    print('groups content is', render_groups, 
-            '\nvisible subjects are', len(visible_subjects))
+    print('groups are', len(render_groups))
+    print('selected_subjects are', len(selected_subjects))
+    print('groups content is', render_groups)
+    print('visible subjects are', len(visible_subjects))
 
-    ## Execute combined renderings to map pixels to subjects
     ### Prepare scene
-    render_scene = Working_scene('prj_rnd', 'prj_rnd.tif')
-    render_scene.set_resolution(resolution=render_resolution)
-    render_scene.link_object(drawing_camera.obj)
-    render_scene.scene.camera = drawing_camera.obj
+    render_scene = Working_scene(scene_name='prj_rnd', filename='prj_rnd.tif',
+            resolution=render_resolution, camera=drawing_camera.obj)
 
     ### Execute renderings and map pixels
     renders_time = time.time()
-    ## A dict to map pixel number (an int) to lists of overlapping subjects
-    subjects_map: dict[int, list[Drawing_subject]] = {}
     ## TODO check if it's possible to reduce renderings if not draw_all
-    ##      and avoid them if style is hidden or back (check if a dedicated
-    ##      process for styles is convenient)
     for subjects_group in render_groups:
         objs = [subj.obj for subj in subjects_group]
         render_pixels = get_render_data(objs, render_scene.scene)
         for subj in subjects_group:
-            ## Clear overlapping objects based on bounding rect
-            subj.overlapping_subjects = []
-            update_pixel_maps(subj, render_pixels, subjects_map, 
-                    render_resolution)
-    print('Render subjects in', time.time() - renders_time)
+            ## TODO use drawing_context to keep resolution
+            subj.set_resolution(render_resolution)
+            subj.update_render_pixels(render_pixels)
+    print('Render selected_subjects in', time.time() - renders_time)
 
     ## Define exact overlaps for every subject and add overlapping subjects to
     ## subjects if selection
-    set_overlaps(subjects_map)
-    ## TODO clean up here
-    if len(selected_objects) > 0 and \
-            ('c' in drawing_styles or 'p' in drawing_styles):
-        for subj in subjects:
-            for over_subj in subj.overlapping_subjects:
-                if over_subj not in subjects:
-                    subjects.append(over_subj)
+    set_subjects_overlaps(visible_subjects)
+
+    if selected_objects:
+        overlapping_subjects = [over_subj for subj in selected_subjects 
+                for over_subj in subj.overlapping_subjects \
+                        if over_subj not in selected_subjects]
+    else:
+        overlapping_subjects = []
     
     print('Subjects detection in:', time.time() - renders_time)
     render_scene.remove()
 
-    return subjects
+    return selected_subjects + overlapping_subjects
 

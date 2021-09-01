@@ -57,7 +57,6 @@ class Drawing_context:
     DEFAULT_STYLES: list[str] = ['p', 'c']
     FLAGS: dict[str, str] = {'draw_all': '-a', 'drawing_scale': '-s'}
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
-    RENDER_FACTOR: int = 4
 
     def __init__(self, args: list[str]):
         context_time = time.time()
@@ -72,9 +71,13 @@ class Drawing_context:
         frame_size = self.drawing_camera.ortho_scale
         working_scene = get_working_scene()
         render_resolution = working_scene.set_resolution(cam_scale=frame_size, 
-                drawing_scale = self.drawing_scale * self.RENDER_FACTOR)
-        self.subjects = get_subjects(self.selected_objects, self.drawing_scale,
-                self.style)
+                drawing_scale = self.drawing_scale)
+        ## TODO fix it: objects have to be verified and transformed in subjects
+        if 'h' in self.style or 'b' in self.style:
+            self.subjects = self.selected_objects
+        else:
+            self.subjects = get_subjects(self.selected_objects, 
+                    self.drawing_scale)
         self.svg_size = format_svg_size(frame_size * self.drawing_scale * 1000, 
             frame_size * self.drawing_scale * 1000)
         self.svg_factor = frame_size * self.drawing_scale * 100 * \

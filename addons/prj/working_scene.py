@@ -46,7 +46,8 @@ class Working_scene:
     RENDER_RESOLUTION_Y: int
     scene: bpy.types.Scene
 
-    def __init__(self, scene_name: str='prj', filename: str=WB_RENDER_FILENAME):
+    def __init__(self, scene_name: str='prj', filename: str=WB_RENDER_FILENAME,
+            resolution: int= None, camera: bpy.types.Object= None):
         self.scene = bpy.data.scenes.new(name=scene_name)
         self.scene.render.filepath = get_render_basepath() + filename
         self.scene.render.engine = 'BLENDER_WORKBENCH'
@@ -61,6 +62,12 @@ class Working_scene:
         self.scene.render.image_settings.file_format = 'TIFF'
         self.scene.render.image_settings.tiff_codec = 'NONE'
         self.scene.render.image_settings.color_mode = 'RGBA'
+        if resolution:
+            self.scene.render.resolution_x = resolution
+            self.scene.render.resolution_y = resolution
+        if camera:
+            self.link_object(camera)
+            self.scene.camera = camera
 
     def link_object(self, obj: bpy.types.Object) -> None:
         self.scene.collection.objects.link(obj)
