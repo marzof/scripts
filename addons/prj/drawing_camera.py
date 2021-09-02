@@ -30,7 +30,6 @@ from prj.working_scene import get_render_basepath, get_working_scene
 import time
 
 BASE_ROUNDING: int = 6
-LIB_PATH = 'lib'
 the_drawing_camera = None
 
 def get_drawing_camera(camera: bpy.types.Object = None) -> 'Drawing_camera':
@@ -65,9 +64,7 @@ class Drawing_camera:
         working_scene = get_working_scene()
         working_scene.link_object(self.obj)
         working_scene.scene.camera = self.obj
-        paths = self.get_path()
-        self.path = paths['cam']
-        self.lib_path = paths['lib']
+        self.path = self.get_path()
         self.direction = camera.matrix_world.to_quaternion() @ \
                 Vector((0.0, 0.0, -1.0))
         self.ortho_scale = camera.data.ortho_scale
@@ -87,16 +84,11 @@ class Drawing_camera:
     def get_path(self) -> str:
         """ Return folder path named after camera (create it if needed) """
         cam_path = os.path.join(get_render_basepath(), self.name)
-        lib_path = os.path.join(cam_path, LIB_PATH)
         try:
             os.mkdir(cam_path)
         except OSError:
             print (f'{cam_path} already exists. Going on')
-        try:
-            os.mkdir(lib_path)
-        except OSError:
-            print (f'{lib_path} already exists. Going on')
-        return {'cam': cam_path, 'lib': lib_path}
+        return cam_path
 
     def __get_translate_matrix(self) -> Matrix:
         """ Get matrix for move camera towards his clip_start """

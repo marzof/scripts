@@ -111,7 +111,7 @@ def export_grease_pencil(subject: 'Drawing_subject',
     """ Export grease_pencil to svg and return its path """
     make_active(grease_pencil)
 
-    svg_path = subject.get_svg_path(suffix=svg_suffix)['abs']
+    svg_path = subject.get_svg_path(suffix=svg_suffix)
     
     svg_main_path = subject.svg_path
     svg_main_path.add_object_path(subject, svg_path, svg_suffix)

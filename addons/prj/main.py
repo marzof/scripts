@@ -129,8 +129,7 @@ def get_svg_composition() -> None:
     draw_context = get_drawing_context()
     draw_camera = get_drawing_camera()
     composition_start_time = time.time()
-    composition_filepath = Filepath(draw_camera.path + os.sep + \
-            draw_camera.name + '.svg')
+    composition_filepath = Filepath(draw_camera.path + '.svg')
     ## TODO try to set cm as display units of svg 
     if not composition_filepath.is_file() or draw_context.draw_all:
     #if False:

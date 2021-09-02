@@ -28,7 +28,7 @@ import ast
 import math
 from mathutils import Vector
 from prj.utils import point_in_quad, flatten
-from prj.drawing_camera import LIB_PATH, get_drawing_camera
+from prj.drawing_camera import get_drawing_camera
 from prj.svg_path import Svg_path
 from prj.working_scene import get_working_scene
 from bpy_extras.object_utils import world_to_camera_view
@@ -122,10 +122,8 @@ class Drawing_subject:
         self.is_behind = is_behind
         self.is_cut = self.is_in_front and self.is_behind
 
-        svg_paths = self.get_svg_path(**svg_path_args)
-        self.svg_path = Svg_path(path=svg_paths['abs'])
+        self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
-        self.svg_rel_path = svg_paths['rel']
         try:
             prev_svg = open(self.svg_path.path, 'r')
             prev_svg_content = prev_svg.read()
@@ -160,13 +158,12 @@ class Drawing_subject:
             prefix: str = None, suffix: str = None) -> None:
         """ Return the svg filepath with prefix or suffix """
         drawing_camera = get_drawing_camera()
-        path = drawing_camera.lib_path
+        path = drawing_camera.path
         sep = "" if path.endswith(os.sep) else os.sep
         pfx = f"{prefix}_" if prefix else ""
         sfx = f"_{suffix}" if suffix else ""
         svg_path = f"{path}{sep}{pfx}{self.full_name}{sfx}.svg"
-        rel_svg_path = f"{LIB_PATH}{sep}{pfx}{self.full_name}{sfx}.svg"
-        return {'abs': svg_path, 'rel': rel_svg_path}
+        return svg_path
 
     def set_grease_pencil(self, gp: bpy.types.Object) -> None:
         self.grease_pencil = gp

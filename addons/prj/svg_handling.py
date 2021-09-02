@@ -6,8 +6,9 @@ from prj.svgread import Svg_read
 from prj.svglib import AbsSvg_drawing, AbsStyle, AbsLayer, AbsUse
 from prj.svglib import AbsPath, AbsGroup
 from prj.utils import transform_points, get_path_coords, join_coords
+from prj.drawing_camera import get_drawing_camera
 
-BASE_CSS = '../base.css'
+BASE_CSS = 'base.css'
 SVG_ID = 'svg'
 ROUNDING: int = 3
 
@@ -38,7 +39,6 @@ def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
         abslayer.add_entity(absgroup)
         is_cut = abslayer.label == 'cut'
 
-        print('f', f)
         svg_read = Svg_read(f)
         abspaths = []
         all_points = []
@@ -83,11 +83,14 @@ def prepare_composition(context: 'Drawing_context',
     abssvg.add_entity(absstyle)
 
     abslayers = {}
+    absoverall_group = AbsGroup()
+    absoverall_group.set_id('all')
+    abssvg.add_entity(absoverall_group)
     for drawing_style in context.svg_styles:
         abslayer = AbsLayer(label = drawing_style)
         abslayer.set_id(drawing_style)
         abslayers[drawing_style] = abslayer
-        abssvg.add_entity(abslayer)
+        absoverall_group.add_entity(abslayer)
         add_subjects_as_use(subjects, drawing_style, abslayers[drawing_style])
     return abssvg
 
@@ -104,8 +107,10 @@ def filter_subjects_for_svg(abstract_svg: Svg_read,
 def add_subjects_as_use(subjects: list['Drawing_subject'], style: str, 
         container: 'AbsSvg_container') -> None:
     """ Create use elements for every subject and add to abs_svg"""
+    draw_camera = get_drawing_camera()
     for subject in subjects:
-        link = f'{subject.svg_rel_path}#{subject.name}_{style}'
+        link = f'{draw_camera.name}{os.sep}{subject.name}.svg'
+        link += f'#{subject.name}_{style}'
         new_use = AbsUse(link)
         new_use.set_id(f'{subject.name}_{style}')
         new_use.set_attribute({'xlink:title': subject.name})
