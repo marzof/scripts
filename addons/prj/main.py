@@ -33,7 +33,7 @@ from prj.svg_handling import filter_subjects_for_svg, add_subjects_as_use
 from prj.drawing_context import get_drawing_context, is_renderables
 from prj.drawing_camera import get_drawing_camera
 from prj.drawing_maker import draw
-from prj.drawing_subject import libraries
+from prj.drawing_subject import drawing_subjects
 from prj.drawing_style import create_drawing_styles
 from prj.cutter import get_cutter
 from prj.working_scene import get_working_scene
@@ -55,6 +55,7 @@ def draw_subjects() -> None:
 
     ## Draw every subject (and hide not overlapping ones)
     draw_time = time.time()
+    ## TODO cut objects should be always isolated
     for subject in draw_context.subjects:
         drawing_start_time = time.time()
         print('Drawing', subject.name)
@@ -62,12 +63,12 @@ def draw_subjects() -> None:
 
         subject.obj.hide_viewport = False
         overlapping_subjects = subject.overlapping_subjects + [subject, cutter]
-        for other_subj in draw_context.subjects:
+        for other_subj in drawing_subjects:
             if other_subj not in overlapping_subjects:
                 other_subj.obj.hide_viewport = True
                 continue
             other_subj.obj.hide_viewport = False
-        draw(subject, draw_context.style, cutter)
+        draw(subject, draw_context.style, cutter) 
 
         ## It misses same-time drawing objects
         drawing_time = time.time() - drawing_start_time

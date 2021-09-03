@@ -55,13 +55,15 @@ class Drawing_context:
     drawing_camera: 'Drawing_camera'
 
     DEFAULT_STYLES: list[str] = ['p', 'c']
-    FLAGS: dict[str, str] = {'draw_all': '-a', 'drawing_scale': '-s'}
+    FLAGS: dict[str, str] = {'draw_all': '-a', 'drawing_scale': '-s',
+            'draw_silhouette': 'l'}
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
     def __init__(self, args: list[str]):
         context_time = time.time()
         self.args = args
         self.draw_all = False
+        self.draw_silhouette = False
         self.drawing_scale = None
         self.style = []
         object_args = self.__set_flagged_options()
@@ -72,12 +74,10 @@ class Drawing_context:
         working_scene = get_working_scene()
         render_resolution = working_scene.set_resolution(cam_scale=frame_size, 
                 drawing_scale = self.drawing_scale)
-        ## TODO fix it: objects have to be verified and transformed in subjects
-        if 'h' in self.style or 'b' in self.style:
-            self.subjects = self.selected_objects
-        else:
-            self.subjects = get_subjects(self.selected_objects, 
-                    self.drawing_scale)
+        selected_only = 'h' in self.style or 'b' in self.style \
+                or 'x' in self.style
+        self.subjects = get_subjects(self.selected_objects, self.drawing_scale,
+                selected_only)
         self.svg_size = format_svg_size(frame_size * self.drawing_scale * 1000, 
             frame_size * self.drawing_scale * 1000)
         self.svg_factor = frame_size * self.drawing_scale * 100 * \
@@ -90,6 +90,7 @@ class Drawing_context:
         """ Set flagged values from args and return remaining args for 
             getting objects """
         self.draw_all = self.FLAGS['draw_all'] in self.args
+        self.draw_silhouette = self.FLAGS['draw_silhouette'] in self.args
 
         options_idx = []
         flagged_args = [arg for arg in self.args if arg.startswith('-')]

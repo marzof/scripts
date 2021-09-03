@@ -28,6 +28,7 @@ import os
 from prj.utils import make_active
 from prj.drawing_style import drawing_styles
 from prj.drawing_camera import get_drawing_camera
+from prj.drawing_context import get_drawing_context
 from prj.working_scene import get_working_scene
 
 GREASE_PENCIL_PREFIX = 'prj_'
@@ -39,6 +40,7 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
         source_type: str, style: str) -> None:
     """ Add a line art modifier to gp from source of the source_type 
     with style """
+    draw_context = get_drawing_context()
 
     gp_layer = gp.data.layers.new(drawing_styles[style].name)
     gp_layer.frames.new(1)
@@ -60,6 +62,7 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
     gp_mod.chaining_image_threshold = drawing_styles[style].chaining_threshold
     gp_mod.use_multiple_levels = True
     gp_mod.use_remove_doubles = True
+    gp_mod.use_crease = not draw_context.draw_silhouette
     gp_mod.use_clip_plane_boundaries = False
     gp_mod.level_start = drawing_styles[style].occlusion_start
     gp_mod.level_end = drawing_styles[style].occlusion_end

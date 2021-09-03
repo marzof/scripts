@@ -34,6 +34,7 @@ from prj.working_scene import get_working_scene
 from bpy_extras.object_utils import world_to_camera_view
 
 libraries = []
+drawing_subjects = []
 
 def to_hex(c: float) -> str:
     """ Return srgb hexadecimal version of c """
@@ -142,6 +143,7 @@ class Drawing_subject:
         self.type = self.obj.type
         self.lineart_source_type = 'OBJECT'
         self.grease_pencil = None
+        drawing_subjects.append(self)
 
     def __repr__(self) -> str:
         return f'Drawing_subject[{self.name}]'
@@ -255,6 +257,7 @@ class Drawing_subject:
             self.pixels_range.append((pixel,))
 
     def remove(self):
+        drawing_subjects.remove(self)
         self.working_scene.unlink_object(self.obj)
         bpy.data.objects.remove(self.obj, do_unlink=True)
 

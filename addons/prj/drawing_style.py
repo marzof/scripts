@@ -31,7 +31,9 @@ STYLES = {
         'h': {'name': 'hid', 'occlusion_start': 1, 'occlusion_end': 128,
             'chaining_threshold': 0, 'condition': 'is_in_front'},
         'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_behind'}
+            'chaining_threshold': 0, 'condition': 'is_behind'},
+        'x': {'name': 'xray', 'occlusion_start': 0, 'occlusion_end': 0,
+            'chaining_threshold': 0, 'condition': 'is_in_front'},
         }
 
 drawing_styles = {}

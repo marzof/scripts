@@ -130,8 +130,6 @@ def get_viewed_subjects(render_pixels: 'ImagingCore',
         if drawing_camera:
             subj.get_bounding_rect()
         visible_subjects.append(subj)
-        #if subj.name == 'SlabA':
-        #    raise Exception('STOP')
     return visible_subjects
 
 def set_subjects_overlaps(visible_subjects: list[Drawing_subject]) -> None:
@@ -150,6 +148,16 @@ def set_subjects_overlaps(visible_subjects: list[Drawing_subject]) -> None:
         for subj in subjects_map[pixel]:
             subj.add_overlapping_subjs(subjects_map[pixel])
 
+def get_selected_subjects(subjects: list[Drawing_subject],
+        selected_objects: list[bpy.types.Object]) -> list [Drawing_subject]:
+    """ Filter subjects based on selected_objects """
+    subject_is_selected = lambda subj: subj.eval_obj.original in selected_objects
+    parent_is_selected = lambda subj: subj.parent \
+                and subj.parent.original in selected_objects
+    selected_subjects = [subj for subj in subjects \
+            if subject_is_selected(subj) or parent_is_selected(subj)] 
+    return selected_subjects
+
 def get_actual_subjects(base_subjects: list[Drawing_subject], 
         selected_objects: list[bpy.types.Object], 
         render_pixels: 'ImagingCore' = None ) -> list[Drawing_subject]:
@@ -164,14 +172,10 @@ def get_actual_subjects(base_subjects: list[Drawing_subject],
             subjects.append(subj)
             subj.get_overlap_subjects(base_subjects)
         return subjects
-
-    for subj in base_subjects:
+    
+    selected_subjects = get_selected_subjects(base_subjects, selected_objects)
+    for subj in selected_subjects:
         subj.get_overlap_subjects(base_subjects)
-        subject_is_selected = subj.eval_obj.original in selected_objects
-        parent_is_selected = subj.parent \
-                and subj.parent.original in selected_objects
-        if not subject_is_selected and not parent_is_selected: 
-            continue
         subjects.append(subj)
 
         if not subj.previous_render_pixels:
@@ -209,16 +213,19 @@ def get_raw_render_data(high_resolution: int, base_render: bool):
     return {'base_resolution': base_render_pixels, 
             'high_resolution': hi_res_render_pixels}
 
-def get_subjects(selected_objects: list[bpy.types.Object], 
-        drawing_scale: float) -> list[Drawing_subject]:
+def get_subjects(selected_objects: list[bpy.types.Object], drawing_scale: float,
+        selection_only: bool= False) -> list[Drawing_subject]:
     """ Execute rendering to acquire the subjects to draw """
     drawing_camera = get_drawing_camera()
     render_resolution = get_resolution(drawing_camera.ortho_scale, drawing_scale)
     high_resolution = get_resolution(drawing_camera.ortho_scale, 
             drawing_scale * HI_RES_RENDER_FACTOR)
 
+    ## TODO check back drawings
     ## Get framed objects and create temporary drawing subjects from them
     framed_subjects = get_framed_subjects(drawing_camera.obj)
+    if selection_only:
+        return get_selected_subjects(framed_subjects, selected_objects)
 
     ## Create colors and assign them to framed_subjects
     colors: list[tuple[float]] = get_colors_spectrum(len(framed_subjects))
