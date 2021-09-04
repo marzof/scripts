@@ -51,11 +51,12 @@ def draw_subjects() -> None:
     cutter = get_cutter(draw_context)
     cutter.obj.hide_viewport = False
 
-    bpy.context.window.scene = get_working_scene().scene
+    working_scene = get_working_scene().scene
+    bpy.context.window.scene = working_scene
 
     ## Draw every subject (and hide not overlapping ones)
     draw_time = time.time()
-    ## TODO cut objects should be always isolated
+
     for subject in draw_context.subjects:
         drawing_start_time = time.time()
         print('Drawing', subject.name)
@@ -68,7 +69,7 @@ def draw_subjects() -> None:
                 other_subj.obj.hide_viewport = True
                 continue
             other_subj.obj.hide_viewport = False
-        draw(subject, draw_context.style, cutter) 
+        draw(subject, draw_context.style, cutter, working_scene) 
 
         ## It misses same-time drawing objects
         drawing_time = time.time() - drawing_start_time

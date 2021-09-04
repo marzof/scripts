@@ -74,12 +74,12 @@ def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
 
     return abssvg
 
-def prepare_composition(context: 'Drawing_context', 
+def prepare_composition(draw_context: 'Drawing_context', 
         subjects: list['Drawing_subject']) -> AbsSvg_drawing:
     """ Create an abstract version of composition svg """
 
     css = f"@import url({BASE_CSS});"
-    abssvg = AbsSvg_drawing(context.svg_size)
+    abssvg = AbsSvg_drawing(draw_context.svg_size)
     absstyle = AbsStyle(content = css) 
     abssvg.add_entity(absstyle)
 
@@ -93,8 +93,9 @@ def prepare_composition(context: 'Drawing_context',
         abslayer.set_id(drawing_style)
         abslayers[drawing_style] = abslayer
         absoverall_group.add_entity(abslayer)
-        ## TODO add actual styled links (not every objects has all styles)
-        add_subjects_as_use(subjects, drawing_style, abslayers[drawing_style])
+    for d_style in draw_context.style:
+        style_name = drawing_styles[d_style].name
+        add_subjects_as_use(subjects, d_style, abslayers[style_name])
     return abssvg
 
 def filter_subjects_for_svg(abstract_svg: Svg_read, 
@@ -112,10 +113,13 @@ def add_subjects_as_use(subjects: list['Drawing_subject'], style: str,
     """ Create use elements for every subject and add to abs_svg"""
     draw_camera = get_drawing_camera()
     for subject in subjects:
-        link = f'{draw_camera.name}{os.sep}{subject.name}.svg'
-        link += f'#{subject.name}_{style}'
+        if not getattr(subject, drawing_styles[style].condition):
+            continue
+        style_name = drawing_styles[style].name
+        link = f'{draw_camera.name}{os.sep}{subject.full_name}.svg'
+        link += f'#{subject.name}_{style_name}'
         new_use = AbsUse(link)
-        new_use.set_id(f'{subject.name}_{style}')
+        new_use.set_id(f'{subject.name}_{style_name}')
         new_use.set_attribute({'xlink:title': subject.name})
         for collection in subject.collections:
             new_use.add_class(collection)

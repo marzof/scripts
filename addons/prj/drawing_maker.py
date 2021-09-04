@@ -88,12 +88,11 @@ def create_grease_pencil(name: str, scene: bpy.types.Scene) -> bpy.types.Object:
     scene.collection.objects.link(obj)
     return obj
 
-def create_lineart(source: 'Drawing_subject', style: str, 
+def get_lineart(source: 'Drawing_subject', style: str, 
         scene: bpy.types.Scene, cutter: 'Cutter') -> bpy.types.Object:
     """ Create source.grease_pencil if needed and add a lineart modifier 
         with style to it """
     if style == 'c':
-        source.obj.hide_viewport = True 
         return cutter.lineart_gp
     elif style == 'b':
         camera = get_drawing_camera()
@@ -127,7 +126,7 @@ def export_grease_pencil(subject: 'Drawing_subject',
     return svg_path
 
 def draw(subject: 'Drawing_subject', styles: str, cutter: 'Cutter',
-        remove: bool = True) -> list[str]:
+        scene: bpy.types.Scene, remove: bool = True) -> list[str]:
     """ Create a grease pencil for subject (and add a lineart modifier) for
         every draw_style. Then export the grease pencil """
     cutter.set_source(subject)
@@ -136,7 +135,6 @@ def draw(subject: 'Drawing_subject', styles: str, cutter: 'Cutter',
     ## If cutter doesn't work switch boolean modifier to FAST solver
     if subject.is_cut:
         depsgraph = bpy.context.evaluated_depsgraph_get()
-        ###depsgraph.update()
         evaluated_cutter = cutter.obj.evaluated_get(depsgraph)
         if not list(evaluated_cutter.data.vertices):
             cutter.change_solver('FAST')
@@ -145,17 +143,25 @@ def draw(subject: 'Drawing_subject', styles: str, cutter: 'Cutter',
                 getattr(subject, drawing_styles[s].condition)]
     for draw_style in styles_to_process:
         #print('draw', subject.name, 'in style', draw_style)
-        remove = draw_style != 'c'
+        draw_cut = draw_style == 'c'
+        if draw_cut:
+            subject.obj.hide_viewport = True 
+            for over_subj in subject.overlapping_subjects:
+                over_subj.obj.hide_viewport = True 
         file_suffix = drawing_styles[draw_style].name
-        working_scene = get_working_scene().scene
-        lineart_gp = create_lineart(source=subject, style=draw_style,
-                scene=working_scene, cutter=cutter)
+        lineart_gp = get_lineart(source=subject, style=draw_style,
+                scene=scene, cutter=cutter)
         ## In order to update lineart visibility set a frame (twice)
         bpy.context.scene.frame_set(1)
         bpy.context.scene.frame_set(1)
-        svg_path = export_grease_pencil(subject, lineart_gp, remove, file_suffix)
+        svg_path = export_grease_pencil(subject, lineart_gp, not draw_cut, 
+                file_suffix)
         drawing_camera.restore_cam()
-        subject.obj.hide_viewport = False 
+        #subject.obj.hide_viewport = False 
+        ## TODO if cut is at the end can avoid following lines
+        if draw_cut:
+            subject.obj.hide_viewport = False 
+            for over_subj in subject.overlapping_subjects:
+                over_subj.obj.hide_viewport = False 
 
     cutter.reset_solver()
-        
