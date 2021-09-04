@@ -107,7 +107,7 @@ class Drawing_subject:
         self.bounding_rect = []
         self.render_pixels = []
         self.pixels_range = []
-        self.render_resolution = []
+        self.render_resolution = None
 
         svg_path_args = {'main': True}
         ## Move a no-materials duplicate to working_scene: materials could 

@@ -40,6 +40,7 @@ def get_working_scene() -> 'Working_scene':
         return the_working_scene
     return the_working_scene
 
+## TODO Rename in Drawing_scene
 class Working_scene:
     RENDER_BASEPATH: str
     RENDER_RESOLUTION_X: int

@@ -192,34 +192,24 @@ def get_actual_subjects(base_subjects: list[Drawing_subject],
             if prev_pix_subj not in subjects]))
     return subjects + previous_pixels_subjects
 
-def get_raw_render_data(high_resolution: int, base_render: bool):
-    """ Generate raw renderings (flat colors, no anti-alias) 
-        in order to map objects to pixels """
-    ## TODO Restructure as a loop of resolution to get data from
-    ##      Input: working_scene, list[resolution]
-    working_scene = get_working_scene()
-    base_resolution = working_scene.get_resolution()
-    if base_render:
-        ## Generate a raw_render at actual resolution
-        base_render_pixels = get_render_data([], working_scene.scene)
-    else:
-        base_render_pixels = None
-    ## Generate a raw_render at high resolution
-    working_scene.set_resolution(resolution=high_resolution)
-    hi_res_render_pixels = get_render_data([], working_scene.scene)
-    ## Reset resolution to base
-    working_scene.set_resolution(resolution=base_resolution)
+def get_raw_render_data(working_scene: Working_scene, 
+        resolution: int = None) -> 'Imaging_Core':
+    """ Generate raw rendering (flat colors, no anti-alias) at resolution
+        in order to get a map of pixels. Reset resolution at initial value 
+        after rendering """
+    if resolution:
+        base_resolution = working_scene.get_resolution()
+        working_scene.set_resolution(resolution=resolution)
+    render_pixels = get_render_data([], working_scene.scene)
+    if resolution:
+        working_scene.set_resolution(resolution=base_resolution)
+    return render_pixels 
 
-    return {'base_resolution': base_render_pixels, 
-            'high_resolution': hi_res_render_pixels}
-
-def get_subjects(selected_objects: list[bpy.types.Object], drawing_scale: float,
+def get_subjects(selected_objects: list[bpy.types.Object], render_resolution: int,
         selection_only: bool= False) -> list[Drawing_subject]:
     """ Execute rendering to acquire the subjects to draw """
     drawing_camera = get_drawing_camera()
-    render_resolution = get_resolution(drawing_camera.ortho_scale, drawing_scale)
-    high_resolution = get_resolution(drawing_camera.ortho_scale, 
-            drawing_scale * HI_RES_RENDER_FACTOR)
+    working_scene = get_working_scene()
 
     ## TODO check back drawings
     ## Get framed objects and create temporary drawing subjects from them
@@ -232,15 +222,17 @@ def get_subjects(selected_objects: list[bpy.types.Object], drawing_scale: float,
     for i, framed_subj in enumerate(framed_subjects):
         framed_subj.set_color(colors[i])
 
-    render_data = get_raw_render_data(high_resolution, bool(selected_objects))
+    base_res_render_data = get_raw_render_data(working_scene)
+    hi_res_render_data = get_raw_render_data(working_scene, 
+            render_resolution * HI_RES_RENDER_FACTOR)
 
     ## Filter subjects by actual visibility
     visible_subjects: list[Drawing_subject] = get_viewed_subjects(
-            render_data['high_resolution'], framed_subjects, drawing_camera)
+            hi_res_render_data, framed_subjects, drawing_camera)
 
     ## Filter subjects by selection 
     selected_subjects: list[Drawing_subject] = get_actual_subjects(
-            visible_subjects, selected_objects, render_data['base_resolution'])
+            visible_subjects, selected_objects, base_res_render_data)
 
     ## Remove not viewed subjects (at present and in previous version)
     for framed_subj in framed_subjects:
@@ -253,10 +245,6 @@ def get_subjects(selected_objects: list[bpy.types.Object], drawing_scale: float,
     ## Execute combined renderings to map pixels to selected_subjects
     ### Get groups of not-overlapping subjects to perfom combined renderings
     render_groups = get_render_groups(visible_subjects)
-    print('groups are', len(render_groups))
-    print('selected_subjects are', len(selected_subjects))
-    print('groups content is', render_groups)
-    print('visible subjects are', len(visible_subjects))
 
     ### Prepare scene
     render_scene = Working_scene(scene_name='prj_rnd', filename='prj_rnd.tif',
@@ -264,12 +252,12 @@ def get_subjects(selected_objects: list[bpy.types.Object], drawing_scale: float,
 
     ### Execute renderings and map pixels
     renders_time = time.time()
-    ## TODO check if it's possible to reduce renderings if not draw_all
+    ## TODO selection drawing is not limited to actually changed subjects:
+    ##      continue testing to fix it
     for subjects_group in render_groups:
         objs = [subj.obj for subj in subjects_group]
         render_pixels = get_render_data(objs, render_scene.scene)
         for subj in subjects_group:
-            ## TODO use drawing_context to keep resolution
             subj.set_resolution(render_resolution)
             subj.update_render_pixels(render_pixels)
     print('Render selected_subjects in', time.time() - renders_time)

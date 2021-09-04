@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*- 
 
 import bpy, bmesh
+import os
 import math
 from PIL import Image
 from mathutils import Matrix, Vector, geometry
@@ -30,6 +31,7 @@ def get_render_data(objects: list[bpy.types.Object],
     ### Get the rendering data
     render = Image.open(scene.render.filepath)
     render_pixels = render.getdata()
+    os.remove(scene.render.filepath)
     return render_pixels
 
 def flatten(li: list) -> list:
@@ -97,14 +99,22 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
     ## Check if bound_box intersect camera frame
     bound_box_edge_idxs = [(0,1),(0,3),(0,4), (1,2), (1,5), (2,3), (2,6),
             (3,7), (4,5), (4,7), (5,6), (6,7)]
+    checked_edges = []
     for edge in bound_box_edge_idxs:
-        lineA_p1 = Vector((bound_box[edge[0]].x, bound_box[edge[0]].y))
-        lineA_p2 = Vector((bound_box[edge[1]].x, bound_box[edge[1]].y))
+        edge_p1 = Vector((bound_box[edge[0]].x, bound_box[edge[0]].y))
+        edge_p2 = Vector((bound_box[edge[1]].x, bound_box[edge[1]].y))
+        checked_edges.append((edge_p1, edge_p2))
+        if edge_p1 - edge_p2 == 0:
+            continue
+        if (edge_p1, edge_p2) in checked_edges:
+            continue
+        if (edge_p2, edge_p1) in checked_edges:
+            continue
         for side in [((0,0),(0,1)), ((0,0),(1,0)), ((1,1),(0,1)), ((1,1),(1,0))]:
-            lineB_p1 = Vector(side[0])
-            lineB_p2 = Vector(side[1])
-            intersection = geometry.intersect_line_line_2d(lineA_p1, lineA_p2, 
-                    lineB_p1, lineB_p2)
+            side_p1 = Vector(side[0])
+            side_p2 = Vector(side[1])
+            intersection = geometry.intersect_line_line_2d(edge_p1, edge_p2, 
+                    side_p1, side_p2)
             if intersection:
                 return {'result': True, 'inside_frame': False, 
                         'in_front': in_front, 'behind': behind, 

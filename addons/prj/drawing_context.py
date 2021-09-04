@@ -27,7 +27,7 @@ import bpy
 from prj.drawing_camera import get_drawing_camera
 from prj.subject_finder import get_subjects
 from prj.drawing_style import drawing_styles
-from prj.working_scene import get_working_scene
+from prj.working_scene import get_resolution, get_working_scene
 import time
 
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
@@ -39,7 +39,6 @@ def get_drawing_context(args: list[str] = None):
     """ Return the_drawing_context (create it if necessary) """
     global the_drawing_context
     if the_drawing_context:
-        print('drawing_context already created')
         return the_drawing_context
     the_drawing_context = Drawing_context(args)
     print('create drawing_context')
@@ -71,17 +70,17 @@ class Drawing_context:
         self.selected_objects = selection['objects']
         self.drawing_camera = get_drawing_camera(selection['camera']) 
         frame_size = self.drawing_camera.ortho_scale
+        self.render_resolution = get_resolution(frame_size, self.drawing_scale)
         working_scene = get_working_scene()
-        render_resolution = working_scene.set_resolution(cam_scale=frame_size, 
-                drawing_scale = self.drawing_scale)
+        working_scene.set_resolution(resolution=self.render_resolution)
         self.isolated_drawing = 'h' in self.style or 'b' in self.style \
                 or 'x' in self.style
-        self.subjects = get_subjects(self.selected_objects, self.drawing_scale,
-                self.isolated_drawing)
+        self.subjects = get_subjects(self.selected_objects, 
+                self.render_resolution, self.isolated_drawing)
         self.svg_size = format_svg_size(frame_size * self.drawing_scale * 1000, 
             frame_size * self.drawing_scale * 1000)
         self.svg_factor = frame_size * self.drawing_scale * 100 * \
-                self.RESOLUTION_FACTOR / render_resolution
+                self.RESOLUTION_FACTOR / self.render_resolution
         self.svg_styles = [drawing_styles[d_style].name for d_style in 
                 self.style]
         print('*** Drawing_context created in', time.time() - context_time)
