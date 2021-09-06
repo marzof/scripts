@@ -55,7 +55,7 @@ class Drawing_context:
 
     DEFAULT_STYLES: list[str] = ['p', 'c']
     FLAGS: dict[str, str] = {'draw_all': '-a', 'drawing_scale': '-s',
-            'draw_silhouette': 'l'}
+            'draw_silhouette': '-l', 'xray_drawing': '-x'}
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
     def __init__(self, args: list[str]):
@@ -63,6 +63,7 @@ class Drawing_context:
         self.args = args
         self.draw_all = False
         self.draw_silhouette = False
+        self.xray_drawing = False
         self.drawing_scale = None
         self.style = []
         object_args = self.__set_flagged_options()
@@ -74,7 +75,7 @@ class Drawing_context:
         working_scene = get_working_scene()
         working_scene.set_resolution(resolution=self.render_resolution)
         self.isolated_drawing = 'h' in self.style or 'b' in self.style \
-                or 'x' in self.style
+                or self.xray_drawing
         self.subjects = get_subjects(self.selected_objects, 
                 self.render_resolution, self.isolated_drawing)
         self.svg_size = format_svg_size(frame_size * self.drawing_scale * 1000, 
@@ -90,6 +91,7 @@ class Drawing_context:
             getting objects """
         self.draw_all = self.FLAGS['draw_all'] in self.args
         self.draw_silhouette = self.FLAGS['draw_silhouette'] in self.args
+        self.xray_drawing = self.FLAGS['xray_drawing'] in self.args
 
         options_idx = []
         flagged_args = [arg for arg in self.args if arg.startswith('-')]

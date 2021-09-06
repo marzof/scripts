@@ -70,7 +70,7 @@ class Prj(bpy.types.Operator):
         self.key = None
         context.area.header_text_set("Type Enter to create drawing, " + \
                 "H for hiddden, B for back, ESC for exit")
-        ## TODO allow set key by UI
+        ## UI TODO allow set key by UI
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
             #self.key = '-a -t -r 80cm'
             #self.key = '-a -r 80cm'

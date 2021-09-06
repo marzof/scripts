@@ -214,8 +214,12 @@ def get_subjects(selected_objects: list[bpy.types.Object], render_resolution: in
     ## TODO check back drawings
     ## Get framed objects and create temporary drawing subjects from them
     framed_subjects = get_framed_subjects(drawing_camera.obj)
+    ## TODO subjects previously occluded by selected subjects need to be redrawn
     if selection_only:
-        return get_selected_subjects(framed_subjects, selected_objects)
+        if selected_objects:
+            return get_selected_subjects(framed_subjects, selected_objects)
+        else:
+            return framed_subjects
 
     ## Create colors and assign them to framed_subjects
     colors: list[tuple[float]] = get_colors_spectrum(len(framed_subjects))

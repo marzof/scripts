@@ -30,11 +30,8 @@ STYLES = {
             'chaining_threshold': 0, 'condition': 'is_cut'},
         'h': {'name': 'hid', 'occlusion_start': 1, 'occlusion_end': 128,
             'chaining_threshold': 0, 'condition': 'is_in_front'},
-        'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_behind'},
-        ## TODO xray is the same as prj: make it as an option?
-        'x': {'name': 'xray', 'occlusion_start': 0, 'occlusion_end': 0,
-            'chaining_threshold': 0, 'condition': 'is_in_front'},
+        #'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
+        #    'chaining_threshold': 0, 'condition': 'is_behind'},
         }
 
 drawing_styles = {}
