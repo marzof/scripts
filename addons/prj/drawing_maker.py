@@ -59,10 +59,10 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
     gp_mod = gp.grease_pencil_modifiers[gp_mod_name]
     gp_mod.target_layer = gp_layer.info
     gp_mod.target_material = gp_mat
-    gp_mod.chaining_image_threshold = drawing_styles[style].chaining_threshold
+    gp_mod.chaining_image_threshold = 0
     gp_mod.use_multiple_levels = True
     gp_mod.use_remove_doubles = True
-    gp_mod.use_crease = not draw_context.draw_silhouette
+    gp_mod.use_crease = not draw_context.draw_outline
     gp_mod.use_clip_plane_boundaries = False
     gp_mod.level_start = drawing_styles[style].occlusion_start
     gp_mod.level_end = drawing_styles[style].occlusion_end

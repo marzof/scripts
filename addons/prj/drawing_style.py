@@ -25,13 +25,11 @@
 
 STYLES = {
         'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 0,
-            'chaining_threshold': 0, 'condition': 'is_in_front'},
+            'condition': 'is_in_front'},
         'c': {'name': 'cut', 'occlusion_start': 0, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_cut'},
+            'condition': 'is_cut'},
         'h': {'name': 'hid', 'occlusion_start': 1, 'occlusion_end': 128,
-            'chaining_threshold': 0, 'condition': 'is_in_front'},
-        #'b': {'name': 'bak', 'occlusion_start': 0, 'occlusion_end': 128,
-        #    'chaining_threshold': 0, 'condition': 'is_behind'},
+            'condition': 'is_in_front'},
         }
 
 drawing_styles = {}
@@ -42,17 +40,15 @@ def create_drawing_styles() -> None:
         drawing_styles[s] = Drawing_style(style=s, name=STYLES[s]['name'], 
                 occlusion_start=STYLES[s]['occlusion_start'],
                 occlusion_end=STYLES[s]['occlusion_end'],
-                chaining_threshold=STYLES[s]['chaining_threshold'],
                 condition=STYLES[s]['condition'])
 
 class Drawing_style:
 
     def __init__(self, style: str, name: str, occlusion_start: int, 
-            occlusion_end: int, chaining_threshold: int, condition: str):
+            occlusion_end: int, condition: str):
         self.style = style
         self.name = name
         self.occlusion_start = occlusion_start
         self.occlusion_end = occlusion_end
-        self.chaining_threshold = chaining_threshold
         self.condition = condition
 

@@ -24,6 +24,7 @@
 
 import bpy
 import os
+import re
 import ast
 import math
 from mathutils import Vector
@@ -83,6 +84,7 @@ class Drawing_subject:
                                     ## (end included!) of pixels's render lines 
 
     FULL_NAME_SEP: str = '_-_'
+    SVG_DATA_RE = re.compile('(?s:.*)<!--\s(.*)\s-->', re.DOTALL)
 
     def __init__(self, eval_obj: bpy.types.Object, name: str, 
             mesh: bpy.types.Mesh, matrix: 'mathutils.Matrix', 
@@ -130,9 +132,12 @@ class Drawing_subject:
             prev_svg_content = prev_svg.read()
             prev_svg.close()
             self.previous_svg = prev_svg_content
-            svg_lines = self.previous_svg.split(os.linesep)
-            prev_render_pixels = ast.literal_eval(svg_lines[-2])
-            self.previous_render_pixels = unfold_ranges(prev_render_pixels)
+            subject_data_search = re.search(self.SVG_DATA_RE, prev_svg_content)
+            subject_data = re.search(self.SVG_DATA_RE, prev_svg_content)
+            subject_data_raw = subject_data_search.groups(1)[0]
+            subject_data = ast.literal_eval(subject_data_raw)
+            self.previous_render_pixels = unfold_ranges(
+                    subject_data['render_pixels'])
         except OSError:
             print (f"{self.svg_path.path} doesn't exists")
             self.previous_svg = None
@@ -244,6 +249,7 @@ class Drawing_subject:
             if render_pixels[pixel][3] != 255:
                 continue
             self.render_pixels.append(pixel)
+            self.add_render_pixel(pixel)
 
     def add_render_pixel(self, pixel: int) -> None:
         """ Collect all the pixels where the subject actually appears 

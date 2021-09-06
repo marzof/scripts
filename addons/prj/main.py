@@ -36,6 +36,7 @@ from prj.drawing_maker import draw
 from prj.drawing_subject import drawing_subjects
 from prj.drawing_style import create_drawing_styles
 from prj.cutter import get_cutter
+from prj.utils import flatten
 from prj.working_scene import get_working_scene
 import time
 
@@ -56,25 +57,31 @@ def draw_subjects() -> None:
 
     ## Draw every subject (and hide not overlapping ones)
     draw_time = time.time()
+    subjects_to_draw = draw_context.subjects
 
-    for subject in draw_context.subjects:
-        drawing_start_time = time.time()
-        print('Drawing', subject.name)
-        print('subj', subject)
+    for subject_type in subjects_to_draw:
+        ## TODO Make a dedicate loop for selected_subjects and another for other
+        ##      subjects (overlapping and previous_pixels)
+        ##      for 'selected_subjects' -> consider options ('x', 'o', 'w', 'b')
+        ##      for != 'selected_subjects' -> draw 'p' and 'c'
+        for subject in subjects_to_draw[subject_type]:
+            drawing_start_time = time.time()
+            print('Drawing', subject.name)
+            print('subj', subject)
 
-        subject.obj.hide_viewport = False
-        overlapping_subjects = subject.overlapping_subjects + [subject, cutter]
-        for other_subj in drawing_subjects:
-            if other_subj not in overlapping_subjects:
-                other_subj.obj.hide_viewport = True
-                continue
-            other_subj.obj.hide_viewport = False
-        draw(subject, draw_context.style, cutter, working_scene) 
+            subject.obj.hide_viewport = False
+            overlapping_subjects = subject.overlapping_subjects+[subject, cutter]
+            for other_subj in drawing_subjects:
+                if other_subj not in overlapping_subjects:
+                    other_subj.obj.hide_viewport = True
+                    continue
+                other_subj.obj.hide_viewport = False
+            draw(subject, draw_context.style, cutter, working_scene) 
 
-        ## It misses same-time drawing objects
-        drawing_time = time.time() - drawing_start_time
-        drawing_times[drawing_time] = subject.name
-        print(f"\t...drawn in {drawing_time} seconds")
+            ## It misses same-time drawing objects
+            drawing_time = time.time() - drawing_start_time
+            drawing_times[drawing_time] = subject.name
+            print(f"\t...drawn in {drawing_time} seconds")
     draw_time = time.time() - draw_time
 
     print('\n')
@@ -83,7 +90,7 @@ def draw_subjects() -> None:
     print(f"***Drawings completed in {draw_time} seconds")
     return 
 
-def rewrite_svgs() -> None:
+def rewrite_svgs(subjects: list['Drawing_subject']) -> None:
     """ Get a single and organized svg for every subject """
     print('Start rewriting svg')
     draw_context = get_drawing_context()
@@ -92,7 +99,7 @@ def rewrite_svgs() -> None:
         drawing_start_time = time.time()
         drawing_data = svgs_data[svg_data]
         for subject in drawing_data.objects:
-            if subject not in draw_context.subjects:
+            if subject not in subjects:
                 continue
             abstract_subj_svg = prepare_obj_svg(draw_context, drawing_data)
             subj_svg = abstract_subj_svg.to_real(drawing_data.path)
@@ -106,24 +113,28 @@ def append_subject_data(svg_file: 'io.TextIOWrapper',
     """ Append data about subject in svg_file """
     svg_file.write("<!--" + os.linesep)
     for subject in drawing_data.objects:
-        svg_file.write(f'Subject: {subject.name}')
+        svg_file.write(f'{{')
+        svg_file.write(f'"subject": "{subject.name}",')
         svg_file.write(os.linesep)
-        svg_file.write(f'Resolution: {subject.render_resolution}')
+        svg_file.write(f'"resolution": {subject.render_resolution},')
         svg_file.write(os.linesep)
+        svg_file.write('"overlaps": [')
         for over_subj in subject.overlapping_subjects:
-            over_subj_lib = over_subj.library.filepath if \
-                    over_subj.library else over_subj.library
-            svg_file.write(f'Overlaps with: ({over_subj.name}, {over_subj_lib})')
-            svg_file.write(os.linesep)
-        svg_file.write(f'Pixel:')
+            lib = '"' + over_subj.library.filepath + '"' if over_subj.library \
+                    else None
+            svg_file.write(f'("{over_subj.name}", {lib}),')
+        svg_file.write('],')
         svg_file.write(os.linesep)
-        svg_file.write(f'(collected in ranges with first and last included)')
-        svg_file.write(os.linesep)
-        svg_file.write(f'{subject.pixels_range}')
+        ### TODO add subject style/options and put all in form of dict 
+        ###      (readable by ast) in order to allow styled redrawing
+
+        ## pixel are collected in ranges with first and last included
+        svg_file.write(f'"render_pixels": {subject.pixels_range},')
+        svg_file.write(f'}}')
         svg_file.write(os.linesep)
     svg_file.write("-->")
 
-def get_svg_composition() -> None:
+def get_svg_composition(subjects: list['Drawing_subject']) -> None:
     """ Collect every subject svg in a single composed svg 
         or add new subject to existing composed svg """
     ## TODO check why a lot of defs elements are created
@@ -135,13 +146,10 @@ def get_svg_composition() -> None:
     ## TODO try to set cm as display units of svg 
     if not composition_filepath.is_file() or draw_context.draw_all:
     #if False:
-        abstract_composition = prepare_composition(draw_context, 
-                draw_context.subjects)
+        abstract_composition = prepare_composition(draw_context, subjects)
     else:
         existing_composition = Svg_read(composition_filepath)
-        new_subjects = filter_subjects_for_svg(existing_composition, 
-                draw_context.subjects)
-        #new_subjects = subjects
+        new_subjects = filter_subjects_for_svg(existing_composition, subjects)
         if new_subjects:
             for style in draw_context.svg_styles:
                 container = existing_composition.get_svg_elements('g', 
@@ -158,9 +166,10 @@ def main() -> None:
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
     create_drawing_styles()
     draw_context = get_drawing_context(args)
+    all_subjects = flatten(draw_context.subjects.values())
     draw_subjects() 
-    rewrite_svgs()
-    get_svg_composition()
+    rewrite_svgs(all_subjects)
+    get_svg_composition(all_subjects)
     print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
 
 if __name__ == "__main__":
