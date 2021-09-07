@@ -26,7 +26,8 @@ def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
     abssvg.add_entity(absstyle)
 
     abslayers = {}
-    for drawing_style in context.svg_styles:
+    for d_style in drawing_styles:
+        drawing_style = drawing_styles[d_style].name
         abslayer = AbsLayer(label = drawing_style)
         abslayers[drawing_style] = abslayer
         abssvg.add_entity(abslayer)
@@ -93,7 +94,6 @@ def prepare_composition(draw_context: 'Drawing_context',
         abslayer.set_id(drawing_style)
         abslayers[drawing_style] = abslayer
         absoverall_group.add_entity(abslayer)
-    for d_style in draw_context.style:
         style_name = drawing_styles[d_style].name
         add_subjects_as_use(subjects, d_style, abslayers[style_name])
     return abssvg
@@ -103,23 +103,27 @@ def filter_subjects_for_svg(abstract_svg: Svg_read,
     """ Check if subjects are in the abstrace_svg 
         and return the ones which are not there """
     use_objects = abstract_svg.get_svg_elements('use')
-    use_subj_names = list(set([use.attributes['xlink:title'] \
-            for use in use_objects]))
-    new_subjects = [subj for subj in subjects if subj.name not in use_subj_names]
+    use_ids = list(set([use.attributes['id'] for use in use_objects]))
+    subjects_ids = {get_use_id(subject, style): subject for subject in subjects \
+            for style in subject.styles}
+    new_subjects = [subjects_ids[subj] for subj in subjects_ids \
+            if subj not in use_ids]
     return new_subjects
+
+def get_use_id(subject, style):
+    return f'{subject.name}_{drawing_styles[style].name}'
 
 def add_subjects_as_use(subjects: list['Drawing_subject'], style: str, 
         container: 'AbsSvg_container') -> None:
     """ Create use elements for every subject and add to abs_svg"""
     draw_camera = get_drawing_camera()
     for subject in subjects:
-        if not getattr(subject, drawing_styles[style].condition):
+        if style not in subject.styles:
             continue
-        style_name = drawing_styles[style].name
-        link = f'{draw_camera.name}{os.sep}{subject.full_name}.svg'
-        link += f'#{subject.name}_{style_name}'
+        use_id = get_use_id(subject, style)
+        link = f'{draw_camera.name}{os.sep}{subject.full_name}.svg#{use_id}'
         new_use = AbsUse(link)
-        new_use.set_id(f'{subject.name}_{style_name}')
+        new_use.set_id(use_id)
         new_use.set_attribute({'xlink:title': subject.name})
         for collection in subject.collections:
             new_use.add_class(collection)

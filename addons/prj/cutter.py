@@ -34,7 +34,7 @@ CAMERA_DISTANCE = .0001
 CUTTER_NAME = 'cutter'
 the_cutter = None
 
-def get_cutter(drawing_context: 'Drawing_context') -> 'Cutter':
+def get_cutter(drawing_context: 'Drawing_context' = None) -> 'Cutter':
     """ Return the_cutter (create it if necessary) """
     global the_cutter
     if not the_cutter:
@@ -80,7 +80,7 @@ class Cutter:
         
         self.lineart_gp = create_grease_pencil(
                 GREASE_PENCIL_PREFIX + self.obj.name, scene=working_scene)
-        add_line_art_mod(self.lineart_gp, self.obj, 'OBJECT', 'p')
+        add_line_art_mod(self.lineart_gp, self.obj, 'OBJECT', 'p', False)
         self.obj.hide_viewport = True
         self.obj.hide_render = True
 

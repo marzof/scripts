@@ -34,7 +34,7 @@ from prj.drawing_context import get_drawing_context, is_renderables
 from prj.drawing_camera import get_drawing_camera
 from prj.drawing_maker import draw
 from prj.drawing_subject import drawing_subjects
-from prj.drawing_style import create_drawing_styles
+from prj.drawing_style import create_drawing_styles, drawing_styles
 from prj.cutter import get_cutter
 from prj.utils import flatten
 from prj.working_scene import get_working_scene
@@ -42,48 +42,50 @@ import time
 
 drawings: list['Svg_drawing'] = []
 
-def draw_subjects() -> None:
+def draw_subjects(subjects: list['Drawing_subject']) -> None:
     """ Get exported svgs for every subject (or parts of it) for every style """
     drawing_times: dict[float, str] = {}
     print('Prepare drawings')
     prepare_start_time = time.time()
-    draw_context = get_drawing_context()
 
-    cutter = get_cutter(draw_context)
+    cutter = get_cutter()
     cutter.obj.hide_viewport = False
-
     working_scene = get_working_scene().scene
     bpy.context.window.scene = working_scene
+    xray_drawing = subjects[0].drawing_context.xray_drawing
 
-    ## Draw every subject (and hide not overlapping ones)
     draw_time = time.time()
-    subjects_to_draw = draw_context.subjects
+    ## Draw every subject (and hide not overlapping ones)
+    for subject in subjects:
+        drawing_start_time = time.time()
+        print('Drawing', subject.name)
 
-    for subject_type in subjects_to_draw:
-        ## TODO Make a dedicate loop for selected_subjects and another for other
-        ##      subjects (overlapping and previous_pixels)
-        ##      for 'selected_subjects' -> consider options ('x', 'o', 'w', 'b')
-        ##      for != 'selected_subjects' -> draw 'p' and 'c'
-        for subject in subjects_to_draw[subject_type]:
-            drawing_start_time = time.time()
-            print('Drawing', subject.name)
-            print('subj', subject)
+        subject.obj.hide_viewport = False
+        overlapping_subjects = subject.overlapping_subjects
+        for other_subj in drawing_subjects:
+            if other_subj == subject:
+                continue
+            if other_subj == cutter:
+                continue
+            if xray_drawing and subject.is_selected:
+                other_subj.obj.hide_viewport = True
+                continue
+            if xray_drawing and other_subj.is_selected and \
+                    other_subj in overlapping_subjects:
+                        other_subj.obj.hide_viewport = True
+                        continue
+            if other_subj not in overlapping_subjects:
+                other_subj.obj.hide_viewport = True
+                continue
+            other_subj.obj.hide_viewport = False
+        draw(subject, cutter, working_scene) 
 
-            subject.obj.hide_viewport = False
-            overlapping_subjects = subject.overlapping_subjects+[subject, cutter]
-            for other_subj in drawing_subjects:
-                if other_subj not in overlapping_subjects:
-                    other_subj.obj.hide_viewport = True
-                    continue
-                other_subj.obj.hide_viewport = False
-            draw(subject, draw_context.style, cutter, working_scene) 
+        ## It misses same-time drawing objects
+        drawing_time = time.time() - drawing_start_time
+        drawing_times[drawing_time] = subject.name
+        print(f"\t...drawn in {drawing_time} seconds")
 
-            ## It misses same-time drawing objects
-            drawing_time = time.time() - drawing_start_time
-            drawing_times[drawing_time] = subject.name
-            print(f"\t...drawn in {drawing_time} seconds")
     draw_time = time.time() - draw_time
-
     print('\n')
     for t in sorted(drawing_times):
         print(drawing_times[t], t)
@@ -151,10 +153,13 @@ def get_svg_composition(subjects: list['Drawing_subject']) -> None:
         existing_composition = Svg_read(composition_filepath)
         new_subjects = filter_subjects_for_svg(existing_composition, subjects)
         if new_subjects:
-            for style in draw_context.svg_styles:
-                container = existing_composition.get_svg_elements('g', 
-                        'inkscape:label', style)[0]
-                add_subjects_as_use(new_subjects, style, container)
+            for d_style in drawing_styles:
+                style = drawing_styles[d_style].name
+                containers = existing_composition.get_svg_elements('g', 
+                        'inkscape:label', style)
+                if not containers:
+                    continue
+                add_subjects_as_use(new_subjects, d_style, containers[0])
         abstract_composition = existing_composition.drawing
     composition = abstract_composition.to_real(composition_filepath)
     print(f'\t...completed in {(time.time() - composition_start_time)}\n')
@@ -166,8 +171,9 @@ def main() -> None:
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
     create_drawing_styles()
     draw_context = get_drawing_context(args)
+    cutter = get_cutter(draw_context)
     all_subjects = flatten(draw_context.subjects.values())
-    draw_subjects() 
+    draw_subjects(all_subjects) 
     rewrite_svgs(all_subjects)
     get_svg_composition(all_subjects)
     print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))

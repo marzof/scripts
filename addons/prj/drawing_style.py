@@ -24,12 +24,12 @@
 
 
 STYLES = {
-        'p': {'name': 'prj', 'occlusion_start': 0, 'occlusion_end': 0,
-            'condition': 'is_in_front'},
-        'c': {'name': 'cut', 'occlusion_start': 0, 'occlusion_end': 128,
-            'condition': 'is_cut'},
-        'h': {'name': 'hid', 'occlusion_start': 1, 'occlusion_end': 128,
-            'condition': 'is_in_front'},
+        'p': {'name': 'prj', 'default': True, 'occlusion_start': 0, 
+            'occlusion_end': 0,},
+        'c': {'name': 'cut', 'default': False, 'occlusion_start': 0, 
+            'occlusion_end': 128,},
+        'h': {'name': 'hid', 'default': False, 'occlusion_start': 1, 
+            'occlusion_end': 128,},
         }
 
 drawing_styles = {}
@@ -38,17 +38,17 @@ def create_drawing_styles() -> None:
     """ Populate drawing_styles dict with Drawing_style objects """
     for s in STYLES:
         drawing_styles[s] = Drawing_style(style=s, name=STYLES[s]['name'], 
+                default=STYLES[s]['default'],
                 occlusion_start=STYLES[s]['occlusion_start'],
-                occlusion_end=STYLES[s]['occlusion_end'],
-                condition=STYLES[s]['condition'])
+                occlusion_end=STYLES[s]['occlusion_end'],)
 
 class Drawing_style:
 
-    def __init__(self, style: str, name: str, occlusion_start: int, 
-            occlusion_end: int, condition: str):
+    def __init__(self, style: str, name: str, default: bool,
+            occlusion_start: int, occlusion_end: int):
         self.style = style
         self.name = name
+        self.default = default
         self.occlusion_start = occlusion_start
         self.occlusion_end = occlusion_end
-        self.condition = condition
 

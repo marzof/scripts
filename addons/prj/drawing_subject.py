@@ -30,6 +30,7 @@ import math
 from mathutils import Vector
 from prj.utils import point_in_quad, flatten
 from prj.drawing_camera import get_drawing_camera
+from prj.drawing_style import drawing_styles
 from prj.svg_path import Svg_path
 from prj.working_scene import get_working_scene
 from bpy_extras.object_utils import world_to_camera_view
@@ -87,6 +88,7 @@ class Drawing_subject:
     SVG_DATA_RE = re.compile('(?s:.*)<!--\s(.*)\s-->', re.DOTALL)
 
     def __init__(self, eval_obj: bpy.types.Object, name: str, 
+            drawing_context: 'Drawing_context',
             mesh: bpy.types.Mesh, matrix: 'mathutils.Matrix', 
             parent: bpy.types.Object, is_instance: bool, 
             library: bpy.types.Library, cam_bound_box: list[Vector], 
@@ -94,6 +96,7 @@ class Drawing_subject:
         print('Create subject for', name)
         self.eval_obj = eval_obj
         self.name = name
+        self.drawing_context = drawing_context
         self.mesh = mesh
         self.matrix = matrix
         self.parent = parent
@@ -121,9 +124,13 @@ class Drawing_subject:
         self.obj.data.materials.clear()
         self.working_scene.link_object(self.obj)
 
+        self.is_selected = False
         self.is_in_front = is_in_front
         self.is_behind = is_behind
         self.is_cut = self.is_in_front and self.is_behind
+        self.styles = [s for s in drawing_styles if drawing_styles[s].default]
+        if self.is_cut:
+            self.update_styles('c')
 
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
@@ -184,6 +191,12 @@ class Drawing_subject:
                 Vector((bounding_rect['x_min'], bounding_rect['y_max']))]
         self.bounding_rect = verts
 
+    def set_selected(self, selected: bool) -> None:
+        self.is_selected = selected
+
+    def update_styles(self, style: str):
+        self.styles.append(style)
+
     def add_overlapping_subj(self, subject: 'Drawing_subject') -> None:
         """ Add subject to self.overlapping_subjects """
         if subject != self and subject not in self.overlapping_subjects:
@@ -207,7 +220,7 @@ class Drawing_subject:
 
     def get_overlap_subjects(self, subjects: list['Drawing_subject']) -> None:
         """ Populate self.overlapping_subjects with subjects that overlaps in
-            frame view and add self to those subjects too """
+            frame view (by bounding box) and add self to those subjects too """
         for subject in subjects:
             if subject == self:
                 continue
@@ -222,12 +235,9 @@ class Drawing_subject:
                     self.add_overlapping_subj(subject)
                     break
 
-    def set_resolution(self, resolution: int) -> None:
-        self.render_resolution = resolution
-
     def get_area_pixels(self) -> list[int]:
         """ Get the pixel number (int) of the subject bounding rect area """
-        resolution = self.render_resolution
+        resolution = self.drawing_context.render_resolution
         bound_rect_x = self.bounding_rect[0].x
         bound_rect_y = self.bounding_rect[2].y
         bound_width = self.bounding_rect[2].x - self.bounding_rect[0].x

@@ -28,7 +28,6 @@ import os
 from prj.utils import make_active
 from prj.drawing_style import drawing_styles
 from prj.drawing_camera import get_drawing_camera
-from prj.drawing_context import get_drawing_context
 from prj.working_scene import get_working_scene
 
 GREASE_PENCIL_PREFIX = 'prj_'
@@ -37,10 +36,9 @@ GREASE_PENCIL_MAT = 'prj_mat'
 GREASE_PENCIL_MOD = 'prj_la'
 
 def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object, 
-        source_type: str, style: str) -> None:
+        source_type: str, style: str, use_crease: bool) -> None:
     """ Add a line art modifier to gp from source of the source_type 
     with style """
-    draw_context = get_drawing_context()
 
     gp_layer = gp.data.layers.new(drawing_styles[style].name)
     gp_layer.frames.new(1)
@@ -62,7 +60,7 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
     gp_mod.chaining_image_threshold = 0
     gp_mod.use_multiple_levels = True
     gp_mod.use_remove_doubles = True
-    gp_mod.use_crease = not draw_context.draw_outline
+    gp_mod.use_crease = use_crease
     gp_mod.use_clip_plane_boundaries = False
     gp_mod.level_start = drawing_styles[style].occlusion_start
     gp_mod.level_end = drawing_styles[style].occlusion_end
@@ -103,8 +101,9 @@ def get_lineart(source: 'Drawing_subject', style: str,
     if not source.grease_pencil:
         source.set_grease_pencil(create_grease_pencil(
                 GREASE_PENCIL_PREFIX + source.obj.name, scene))
+    outline_only = source.is_selected and source.drawing_context.draw_outline
     add_line_art_mod(source.grease_pencil, source.obj, 
-            source.lineart_source_type, style)
+            source.lineart_source_type, style, not outline_only)
     return source.grease_pencil
 
 def export_grease_pencil(subject: 'Drawing_subject', 
@@ -125,7 +124,7 @@ def export_grease_pencil(subject: 'Drawing_subject',
         subject.set_grease_pencil(None)
     return svg_path
 
-def draw(subject: 'Drawing_subject', styles: str, cutter: 'Cutter',
+def draw(subject: 'Drawing_subject', cutter: 'Cutter',
         scene: bpy.types.Scene, remove: bool = True) -> list[str]:
     """ Create a grease pencil for subject (and add a lineart modifier) for
         every draw_style. Then export the grease pencil """
@@ -139,14 +138,14 @@ def draw(subject: 'Drawing_subject', styles: str, cutter: 'Cutter',
         if not list(evaluated_cutter.data.vertices):
             cutter.change_solver('FAST')
 
-    styles_to_process = [s for s in styles if 
-                getattr(subject, drawing_styles[s].condition)]
-    for draw_style in styles_to_process:
-        #print('draw', subject.name, 'in style', draw_style)
+    for draw_style in subject.styles:
+        print('draw', subject.name, 'in style', draw_style)
         draw_cut = draw_style == 'c'
-        if draw_cut:
+        if draw_cut:   ## Hide all but cutter
             subject.obj.hide_viewport = True 
+            subjs_visibility = {}
             for over_subj in subject.overlapping_subjects:
+                subjs_visibility[over_subj] = over_subj.obj.hide_viewport
                 over_subj.obj.hide_viewport = True 
         file_suffix = drawing_styles[draw_style].name
         lineart_gp = get_lineart(source=subject, style=draw_style,
@@ -157,11 +156,9 @@ def draw(subject: 'Drawing_subject', styles: str, cutter: 'Cutter',
         svg_path = export_grease_pencil(subject, lineart_gp, not draw_cut, 
                 file_suffix)
         drawing_camera.restore_cam()
-        #subject.obj.hide_viewport = False 
-        ## TODO if cut is at the end can avoid following lines
-        if draw_cut:
-            subject.obj.hide_viewport = False 
-            for over_subj in subject.overlapping_subjects:
-                over_subj.obj.hide_viewport = False 
+        subject.obj.hide_viewport = False 
+        if draw_cut:   ## revert visibility
+            for over_subj in subjs_visibility:
+                over_subj.obj.hide_viewport = subjs_visibility[over_subj]
 
     cutter.reset_solver()

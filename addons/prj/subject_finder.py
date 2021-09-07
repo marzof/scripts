@@ -42,7 +42,8 @@ def is_in_visible_collection(obj: bpy.types.Object) -> bool:
             return True
         return False
 
-def get_framed_subjects(camera: bpy.types.Object) -> list[Drawing_subject]:
+def get_framed_subjects(camera: bpy.types.Object, 
+        drawing_context: 'Drawing_context') -> list[Drawing_subject]:
     """ Check for all object instances in scene and return those which are 
         inside camera frame (and camera limits) as Drawing_subject(s)"""
 
@@ -63,6 +64,7 @@ def get_framed_subjects(camera: bpy.types.Object) -> list[Drawing_subject]:
         framed_subject = Drawing_subject(
                 eval_obj=bpy.data.objects[inst_name, lib_path],
                 name=inst_name,
+                drawing_context=drawing_context,
                 mesh = bpy.data.meshes.new_from_object(obj_inst.object),
                 matrix=obj_inst.object.matrix_world.copy().freeze(),
                 parent=obj_inst.parent,
@@ -158,20 +160,6 @@ def filter_selected_subjects(subjects: list[Drawing_subject],
             if subject_is_selected(subj) or parent_is_selected(subj)] 
     return selected_subjects
 
-def get_selected_subjects(base_subjects: list[Drawing_subject], 
-        selected_objects: list[bpy.types.Object]) -> list[Drawing_subject]:
-    """ Filter base_subjects by selected_objects """
-    subjects = []
-    if len(selected_objects) == 0:      ## draw_all
-        actual_subjects = base_subjects
-    else: 
-        actual_subjects = filter_selected_subjects(base_subjects, selected_objects)
-
-    for subj in actual_subjects:
-        subj.get_overlap_subjects(base_subjects)
-        subjects.append(subj)
-    return subjects
-
 def get_previous_pixels_subjects(base_subjects: list[Drawing_subject], 
         selected_subjects: list[Drawing_subject], 
         render_pixels: 'ImagingCore' = None) -> list[Drawing_subject]:
@@ -205,15 +193,17 @@ def get_raw_render_data(working_scene: Working_scene,
         working_scene.set_resolution(resolution=base_resolution)
     return render_pixels 
 
-def get_subjects(selected_objects: list[bpy.types.Object], render_resolution: int,
-        selection_only: bool= False) -> list[Drawing_subject]:
+def get_subjects(selected_objects: list[bpy.types.Object], 
+        drawing_context: 'Drawing_context') -> list[Drawing_subject]:
     """ Execute rendering to acquire the subjects to draw """
     drawing_camera = get_drawing_camera()
     working_scene = get_working_scene()
+    render_resolution = drawing_context.render_resolution
+    wire_drawing = drawing_context.wire_drawing
 
     ## TODO check back drawings
     ## Get framed objects and create temporary drawing subjects from them
-    framed_subjects = get_framed_subjects(drawing_camera.obj)
+    framed_subjects = get_framed_subjects(drawing_camera.obj, drawing_context)
 
     ## Create colors and assign them to framed_subjects
     colors: list[tuple[float]] = get_colors_spectrum(len(framed_subjects))
@@ -227,20 +217,20 @@ def get_subjects(selected_objects: list[bpy.types.Object], render_resolution: in
     ## Filter subjects by actual visibility
     visible_subjects: list[Drawing_subject] = get_viewed_subjects(
             hi_res_render_data, framed_subjects, drawing_camera)
-
-    ## Filter subjects by selection 
-    selected_subjects = get_selected_subjects(visible_subjects, selected_objects)
-    ## Get subjects from previous position
-    if selected_objects:
-        previous_pixels_subjects = get_previous_pixels_subjects(visible_subjects,
-                selected_subjects, base_res_render_data)
-    else:
-        previous_pixels_subjects = []
-
     ## Remove not viewed subjects
     for framed_subj in framed_subjects:
         if framed_subj not in visible_subjects:
             framed_subj.remove()
+    for subj in visible_subjects:
+        subj.get_overlap_subjects(visible_subjects)
+        
+    ## Filter subjects by selection 
+    selected_subjects = visible_subjects if not selected_objects else \
+            filter_selected_subjects(visible_subjects, selected_objects)
+    for subj in selected_subjects: 
+        subj.set_selected(True)
+        if wire_drawing:
+            subj.update_styles('h')
 
     ## Execute combined renderings to map pixels to selected_subjects
     ### Get groups of not-overlapping subjects to perfom combined renderings
@@ -258,7 +248,6 @@ def get_subjects(selected_objects: list[bpy.types.Object], render_resolution: in
         objs = [subj.obj for subj in subjects_group]
         render_pixels = get_render_data(objs, render_scene.scene)
         for subj in subjects_group:
-            subj.set_resolution(render_resolution)
             subj.update_render_pixels(render_pixels)
     print('Render selected_subjects in', time.time() - renders_time)
 
@@ -266,18 +255,21 @@ def get_subjects(selected_objects: list[bpy.types.Object], render_resolution: in
     ## subjects if selection
     set_subjects_overlaps(visible_subjects)
 
+
     if selected_objects:
+        ## Get subjects from previous position
+        previous_pixels_subjects = get_previous_pixels_subjects(visible_subjects,
+                selected_subjects, base_res_render_data)
         overlapping_subjects = [over_subj for subj in selected_subjects 
                 for over_subj in subj.overlapping_subjects \
                         if over_subj not in selected_subjects]
     else:
+        previous_pixels_subjects = []
         overlapping_subjects = []
-    
+
     print('Subjects detection in:', time.time() - renders_time)
     render_scene.remove()
 
-    ## TODO convert return in a dict of selected_subjects, 
-    ##      previous_pixels_subjects and overlapping_subjects
     return {'selected_subjects': selected_subjects,
             'previous_pixels_subjects': previous_pixels_subjects,
             'overlapping_subjects': overlapping_subjects,

@@ -52,15 +52,13 @@ class Drawing_context:
     draw_outline: bool
     wire_drawing: bool
     drawing_scale: float
-    style: list[str]
     selected_objects: list[bpy.types.Object]
     subjects: list['Drawing_subject']
     drawing_camera: 'Drawing_camera'
 
-    DEFAULT_STYLES: list[str] = ['p', 'c']
     FLAGS: dict[str, str] = {'draw_all': '-a', 'drawing_scale': '-s',
             'draw_outline': '-o', 'xray_drawing': '-x', 'back_drawing': 'b',
-            'wire_drawing': 'w'}
+            'wire_drawing': '-w'}
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
     def __init__(self, args: list[str]):
@@ -72,7 +70,6 @@ class Drawing_context:
         self.draw_outline = False
         self.wire_drawing = False
         self.drawing_scale = None
-        self.style = self.DEFAULT_STYLES
         object_args = self.__set_flagged_options()
         selection = self.__get_objects(object_args)
         self.selected_objects = selection['objects']
@@ -81,14 +78,11 @@ class Drawing_context:
         self.render_resolution = get_resolution(frame_size, self.drawing_scale)
         working_scene = get_working_scene()
         working_scene.set_resolution(resolution=self.render_resolution)
-        self.subjects = get_subjects(self.selected_objects, 
-                self.render_resolution, self.xray_drawing)
+        self.subjects = get_subjects(self.selected_objects, self)
         self.svg_size = format_svg_size(frame_size * self.drawing_scale * 1000, 
             frame_size * self.drawing_scale * 1000)
         self.svg_factor = frame_size * self.drawing_scale * 100 * \
                 self.RESOLUTION_FACTOR / self.render_resolution
-        self.svg_styles = [drawing_styles[d_style].name for d_style in 
-                self.style]
         print('*** Drawing_context created in', time.time() - context_time)
 
     def __set_flagged_options(self) -> list[str]:
