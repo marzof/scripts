@@ -79,6 +79,7 @@ class Working_scene:
     def get_resolution(self) -> int:
         return self.scene.render.resolution_x
 
+    ## TODO handle non-square resolution too
     def set_resolution(self, cam_scale: float = None, 
             drawing_scale: float = None, resolution: int = None) -> int:
         if not resolution:

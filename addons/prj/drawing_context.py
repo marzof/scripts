@@ -58,7 +58,7 @@ class Drawing_context:
 
     FLAGS: dict[str, str] = {'draw_all': '-a', 'drawing_scale': '-s',
             'draw_outline': '-o', 'xray_drawing': '-x', 'back_drawing': 'b',
-            'wire_drawing': '-w'}
+            'wire_drawing': '-w', 'reset_options': '-r'}
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
     def __init__(self, args: list[str]):
@@ -69,6 +69,7 @@ class Drawing_context:
         self.back_drawing = False
         self.draw_outline = False
         self.wire_drawing = False
+        self.reset_option = False
         self.drawing_scale = None
         object_args = self.__set_flagged_options()
         selection = self.__get_objects(object_args)
@@ -88,6 +89,7 @@ class Drawing_context:
     def __set_flagged_options(self) -> list[str]:
         """ Set flagged values from args and return remaining args for 
             getting objects """
+        self.reset_option = self.FLAGS['reset_options'] in self.args
         self.back_drawing = self.FLAGS['back_drawing'] in self.args
         self.draw_outline = self.FLAGS['draw_outline'] in self.args
         self.draw_all = False if self.back_drawing else \

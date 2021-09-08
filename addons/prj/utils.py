@@ -12,6 +12,12 @@ import time
 
 MIN_UNIT_FRACTION = 2 ## 1 = 1 millimeter; 2 = 1/2 millimeter; 4 = 1/4 millimeter
 
+class dotdict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
 def get_resolution(cam_scale: float = None, drawing_scale: float = None) -> int:
     return int(math.ceil(cam_scale * drawing_scale * 1000 * MIN_UNIT_FRACTION))
 

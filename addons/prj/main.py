@@ -42,6 +42,27 @@ import time
 
 drawings: list['Svg_drawing'] = []
 
+def set_subjects_visibility(subject: 'Drawing_subject', 
+        cutter: 'Cutter') -> None:
+    """ Hide and show subjects depending on situation """
+    subject.obj.hide_viewport = False
+    overlapping_subjects = subject.overlapping_subjects
+    for other_subj in drawing_subjects:
+        if other_subj == subject:
+            continue
+        if other_subj == cutter:
+            continue
+        if subject.xray_drawing:
+            other_subj.obj.hide_viewport = True
+            continue
+        if other_subj.xray_drawing:
+            other_subj.obj.hide_viewport = True
+            continue
+        if other_subj not in overlapping_subjects:
+            other_subj.obj.hide_viewport = True
+            continue
+        other_subj.obj.hide_viewport = False
+
 def draw_subjects(subjects: list['Drawing_subject']) -> None:
     """ Get exported svgs for every subject (or parts of it) for every style """
     drawing_times: dict[float, str] = {}
@@ -52,7 +73,6 @@ def draw_subjects(subjects: list['Drawing_subject']) -> None:
     cutter.obj.hide_viewport = False
     working_scene = get_working_scene().scene
     bpy.context.window.scene = working_scene
-    xray_drawing = subjects[0].drawing_context.xray_drawing
 
     draw_time = time.time()
     ## Draw every subject (and hide not overlapping ones)
@@ -60,24 +80,7 @@ def draw_subjects(subjects: list['Drawing_subject']) -> None:
         drawing_start_time = time.time()
         print('Drawing', subject.name)
 
-        subject.obj.hide_viewport = False
-        overlapping_subjects = subject.overlapping_subjects
-        for other_subj in drawing_subjects:
-            if other_subj == subject:
-                continue
-            if other_subj == cutter:
-                continue
-            if xray_drawing and subject.is_selected:
-                other_subj.obj.hide_viewport = True
-                continue
-            if xray_drawing and other_subj.is_selected and \
-                    other_subj in overlapping_subjects:
-                        other_subj.obj.hide_viewport = True
-                        continue
-            if other_subj not in overlapping_subjects:
-                other_subj.obj.hide_viewport = True
-                continue
-            other_subj.obj.hide_viewport = False
+        set_subjects_visibility(subject, cutter)
         draw(subject, cutter, working_scene) 
 
         ## It misses same-time drawing objects
@@ -120,6 +123,12 @@ def append_subject_data(svg_file: 'io.TextIOWrapper',
         svg_file.write(os.linesep)
         svg_file.write(f'"resolution": {subject.render_resolution},')
         svg_file.write(os.linesep)
+        svg_file.write(f'"xray_drawing": {subject.xray_drawing},')
+        svg_file.write(os.linesep)
+        svg_file.write(f'"draw_outline": {subject.draw_outline},')
+        svg_file.write(os.linesep)
+        svg_file.write(f'"wire_drawing": {subject.wire_drawing},')
+        svg_file.write(os.linesep)
         svg_file.write('"overlaps": [')
         for over_subj in subject.overlapping_subjects:
             lib = '"' + over_subj.library.filepath + '"' if over_subj.library \
@@ -127,9 +136,6 @@ def append_subject_data(svg_file: 'io.TextIOWrapper',
             svg_file.write(f'("{over_subj.name}", {lib}),')
         svg_file.write('],')
         svg_file.write(os.linesep)
-        ### TODO add subject style/options and put all in form of dict 
-        ###      (readable by ast) in order to allow styled redrawing
-
         ## pixel are collected in ranges with first and last included
         svg_file.write(f'"render_pixels": {subject.pixels_range},')
         svg_file.write(f'}}')
@@ -152,6 +158,7 @@ def get_svg_composition(subjects: list['Drawing_subject']) -> None:
     else:
         existing_composition = Svg_read(composition_filepath)
         new_subjects = filter_subjects_for_svg(existing_composition, subjects)
+        ## TODO adding hidden drawing recreate original too (so it appears twice)
         if new_subjects:
             for d_style in drawing_styles:
                 style = drawing_styles[d_style].name
@@ -172,7 +179,7 @@ def main() -> None:
     create_drawing_styles()
     draw_context = get_drawing_context(args)
     cutter = get_cutter(draw_context)
-    all_subjects = flatten(draw_context.subjects.values())
+    all_subjects = list(set(flatten(draw_context.subjects.values())))
     draw_subjects(all_subjects) 
     rewrite_svgs(all_subjects)
     get_svg_composition(all_subjects)

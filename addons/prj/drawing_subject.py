@@ -28,7 +28,7 @@ import re
 import ast
 import math
 from mathutils import Vector
-from prj.utils import point_in_quad, flatten
+from prj.utils import point_in_quad, flatten, dotdict
 from prj.drawing_camera import get_drawing_camera
 from prj.drawing_style import drawing_styles
 from prj.svg_path import Svg_path
@@ -97,6 +97,10 @@ class Drawing_subject:
         self.eval_obj = eval_obj
         self.name = name
         self.drawing_context = drawing_context
+        self.render_resolution = drawing_context.render_resolution
+        self.xray_drawing = False
+        self.draw_outline = False
+        self.wire_drawing = False
         self.mesh = mesh
         self.matrix = matrix
         self.parent = parent
@@ -112,7 +116,6 @@ class Drawing_subject:
         self.bounding_rect = []
         self.render_pixels = []
         self.pixels_range = []
-        self.render_resolution = None
 
         svg_path_args = {'main': True}
         ## Move a no-materials duplicate to working_scene: materials could 
@@ -130,25 +133,17 @@ class Drawing_subject:
         self.is_cut = self.is_in_front and self.is_behind
         self.styles = [s for s in drawing_styles if drawing_styles[s].default]
         if self.is_cut:
-            self.update_styles('c')
+            self.styles.append('c')
 
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
-        try:
-            prev_svg = open(self.svg_path.path, 'r')
-            prev_svg_content = prev_svg.read()
-            prev_svg.close()
-            self.previous_svg = prev_svg_content
-            subject_data_search = re.search(self.SVG_DATA_RE, prev_svg_content)
-            subject_data = re.search(self.SVG_DATA_RE, prev_svg_content)
-            subject_data_raw = subject_data_search.groups(1)[0]
-            subject_data = ast.literal_eval(subject_data_raw)
-            self.previous_render_pixels = unfold_ranges(
-                    subject_data['render_pixels'])
-        except OSError:
-            print (f"{self.svg_path.path} doesn't exists")
-            self.previous_svg = None
-            self.previous_render_pixels = None
+        self.previous_data = self.__get_previous_data()
+        self.previous_render_pixels = None if not self.previous_data \
+                else unfold_ranges(self.previous_data['render_pixels'])
+        ## Update options with the previous ones
+        if self.previous_data:
+            self.update_status(selected=self.is_selected, 
+                    data=dotdict(self.previous_data))
 
         self.collections = [coll.name for coll in self.obj.users_collection \
                 if coll is not bpy.context.scene.collection]
@@ -156,6 +151,21 @@ class Drawing_subject:
         self.lineart_source_type = 'OBJECT'
         self.grease_pencil = None
         drawing_subjects.append(self)
+
+    def __get_previous_data(self):
+        """ Get data stored in last subject svg """
+        try:
+            prev_svg = open(self.svg_path.path, 'r')
+            prev_svg_content = prev_svg.read()
+            prev_svg.close()
+            subject_data_search = re.search(self.SVG_DATA_RE, prev_svg_content)
+            subject_data = re.search(self.SVG_DATA_RE, prev_svg_content)
+            subject_data_raw = subject_data_search.groups(1)[0]
+            previous_data = ast.literal_eval(subject_data_raw)
+        except OSError:
+            print (f"{self.svg_path.path} doesn't exists")
+            previous_data = None
+        return previous_data
 
     def __repr__(self) -> str:
         return f'Drawing_subject[{self.name}]'
@@ -191,11 +201,25 @@ class Drawing_subject:
                 Vector((bounding_rect['x_min'], bounding_rect['y_max']))]
         self.bounding_rect = verts
 
-    def set_selected(self, selected: bool) -> None:
+    def update_status(self, selected: bool, data, 
+            ignore_options: bool= False) -> None:
+        """ Update selection status, options and style according to data """
         self.is_selected = selected
-
-    def update_styles(self, style: str):
-        self.styles.append(style)
+        ## Reset selected subject to default status
+        if self.is_selected and self.drawing_context.reset_option:
+            self.xray_drawing = False
+            self.draw_outline = False
+            self.wire_drawing = False
+            if 'h' in self.styles:
+                self.styles.remove('h')
+            return
+        if ignore_options:
+            return
+        self.xray_drawing = data.xray_drawing
+        self.draw_outline = data.draw_outline
+        self.wire_drawing = data.wire_drawing
+        if self.wire_drawing:
+            self.styles.append('h')
 
     def add_overlapping_subj(self, subject: 'Drawing_subject') -> None:
         """ Add subject to self.overlapping_subjects """
@@ -237,7 +261,7 @@ class Drawing_subject:
 
     def get_area_pixels(self) -> list[int]:
         """ Get the pixel number (int) of the subject bounding rect area """
-        resolution = self.drawing_context.render_resolution
+        resolution = self.render_resolution
         bound_rect_x = self.bounding_rect[0].x
         bound_rect_y = self.bounding_rect[2].y
         bound_width = self.bounding_rect[2].x - self.bounding_rect[0].x
@@ -273,6 +297,7 @@ class Drawing_subject:
             self.pixels_range.append((pixel,))
 
     def remove(self):
+        """ Delete subject """
         drawing_subjects.remove(self)
         self.working_scene.unlink_object(self.obj)
         bpy.data.objects.remove(self.obj, do_unlink=True)

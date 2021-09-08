@@ -228,9 +228,10 @@ def get_subjects(selected_objects: list[bpy.types.Object],
     selected_subjects = visible_subjects if not selected_objects else \
             filter_selected_subjects(visible_subjects, selected_objects)
     for subj in selected_subjects: 
-        subj.set_selected(True)
-        if wire_drawing:
-            subj.update_styles('h')
+        subj.update_status(selected=True, data=subj.drawing_context, 
+                ignore_options=drawing_context.draw_all)
+    ## If subjects are not actually selected (draw_all)
+    ## options will not update (in order to keep previous values)
 
     ## Execute combined renderings to map pixels to selected_subjects
     ### Get groups of not-overlapping subjects to perfom combined renderings
@@ -242,8 +243,6 @@ def get_subjects(selected_objects: list[bpy.types.Object],
 
     ### Execute renderings and map pixels
     renders_time = time.time()
-    ## TODO selection drawing is not limited to actually changed subjects:
-    ##      continue testing to fix it
     for subjects_group in render_groups:
         objs = [subj.obj for subj in subjects_group]
         render_pixels = get_render_data(objs, render_scene.scene)

@@ -101,9 +101,8 @@ def get_lineart(source: 'Drawing_subject', style: str,
     if not source.grease_pencil:
         source.set_grease_pencil(create_grease_pencil(
                 GREASE_PENCIL_PREFIX + source.obj.name, scene))
-    outline_only = source.is_selected and source.drawing_context.draw_outline
     add_line_art_mod(source.grease_pencil, source.obj, 
-            source.lineart_source_type, style, not outline_only)
+            source.lineart_source_type, style, not source.draw_outline)
     return source.grease_pencil
 
 def export_grease_pencil(subject: 'Drawing_subject', 
