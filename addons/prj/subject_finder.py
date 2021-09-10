@@ -201,9 +201,19 @@ def get_subjects(selected_objects: list[bpy.types.Object],
     render_resolution = drawing_context.render_resolution
     wire_drawing = drawing_context.wire_drawing
 
-    ## TODO check back drawings
     ## Get framed objects and create temporary drawing subjects from them
     framed_subjects = get_framed_subjects(drawing_camera.obj, drawing_context)
+
+    if drawing_context.back_drawing:
+        selected_subject = filter_selected_subjects(framed_subjects, 
+                selected_objects)
+        for subj in selected_subjects: 
+            subj.update_status(selected=True, data=subj.drawing_context, 
+                    ignore_options=drawing_context.draw_all)
+        return {'selected_subjects': selected_subjects,
+                'previous_pixels_subjects': [],
+                'overlapping_subjects': [],
+                }
 
     ## Create colors and assign them to framed_subjects
     colors: list[tuple[float]] = get_colors_spectrum(len(framed_subjects))
@@ -221,6 +231,7 @@ def get_subjects(selected_objects: list[bpy.types.Object],
     for framed_subj in framed_subjects:
         if framed_subj not in visible_subjects:
             framed_subj.remove()
+    ## Calculate overlaps for every visible subject (based on bounding box)
     for subj in visible_subjects:
         subj.get_overlap_subjects(visible_subjects)
         

@@ -101,6 +101,7 @@ class Drawing_subject:
         self.xray_drawing = False
         self.draw_outline = False
         self.wire_drawing = False
+        self.back_drawing = False
         self.mesh = mesh
         self.matrix = matrix
         self.parent = parent
@@ -210,6 +211,7 @@ class Drawing_subject:
             self.xray_drawing = False
             self.draw_outline = False
             self.wire_drawing = False
+            self.back_drawing = False
             if 'h' in self.styles:
                 self.styles.remove('h')
             return
@@ -218,6 +220,7 @@ class Drawing_subject:
         self.xray_drawing = data.xray_drawing
         self.draw_outline = data.draw_outline
         self.wire_drawing = data.wire_drawing
+        self.back_drawing = data.back_drawing
         if self.wire_drawing:
             self.styles.append('h')
 

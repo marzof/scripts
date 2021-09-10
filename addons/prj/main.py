@@ -72,7 +72,7 @@ def draw_subjects(subjects: list['Drawing_subject']) -> None:
     cutter = get_cutter()
     cutter.obj.hide_viewport = False
     working_scene = get_working_scene().scene
-    bpy.context.window.scene = working_scene
+    #bpy.context.window.scene = working_scene
 
     draw_time = time.time()
     ## Draw every subject (and hide not overlapping ones)
@@ -87,6 +87,8 @@ def draw_subjects(subjects: list['Drawing_subject']) -> None:
         drawing_time = time.time() - drawing_start_time
         drawing_times[drawing_time] = subject.name
         print(f"\t...drawn in {drawing_time} seconds")
+
+    cutter.delete(False)
 
     draw_time = time.time() - draw_time
     print('\n')
@@ -128,6 +130,8 @@ def append_subject_data(svg_file: 'io.TextIOWrapper',
         svg_file.write(f'"draw_outline": {subject.draw_outline},')
         svg_file.write(os.linesep)
         svg_file.write(f'"wire_drawing": {subject.wire_drawing},')
+        svg_file.write(os.linesep)
+        svg_file.write(f'"back_drawing": {subject.back_drawing},')
         svg_file.write(os.linesep)
         svg_file.write('"overlaps": [')
         for over_subj in subject.overlapping_subjects:

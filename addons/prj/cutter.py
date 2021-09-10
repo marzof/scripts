@@ -95,6 +95,8 @@ class Cutter:
         bpy.data.objects.remove(self.obj, do_unlink=True)
         if remove_lineart_gp:
             bpy.data.objects.remove(self.lineart_gp, do_unlink=True)
+        global the_cutter
+        the_cutter = None
 
     def set_source(self, subject: 'Drawing_subject') -> None:
         self.modifier.object = subject.obj

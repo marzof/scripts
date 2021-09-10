@@ -86,14 +86,13 @@ def create_grease_pencil(name: str, scene: bpy.types.Scene) -> bpy.types.Object:
     scene.collection.objects.link(obj)
     return obj
 
-def get_lineart(source: 'Drawing_subject', style: str, 
+def get_lineart(source: 'Drawing_subject', style: str, camera: 'Drawing_camera',
         scene: bpy.types.Scene, cutter: 'Cutter') -> bpy.types.Object:
     """ Create source.grease_pencil if needed and add a lineart modifier 
         with style to it """
     if style == 'c':
         return cutter.lineart_gp
-    elif style == 'b':
-        camera = get_drawing_camera()
+    if source.back_drawing:
         camera.reverse_cam()
 
     if not scene:
@@ -148,7 +147,7 @@ def draw(subject: 'Drawing_subject', cutter: 'Cutter',
                 over_subj.obj.hide_viewport = True 
         file_suffix = drawing_styles[draw_style].name
         lineart_gp = get_lineart(source=subject, style=draw_style,
-                scene=scene, cutter=cutter)
+                camera=drawing_camera, scene=scene, cutter=cutter)
         ## In order to update lineart visibility set a frame (twice)
         bpy.context.scene.frame_set(1)
         bpy.context.scene.frame_set(1)

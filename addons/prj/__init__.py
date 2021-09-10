@@ -11,6 +11,7 @@ from prj.drawing_subject import libraries
 from prj.drawing_style import create_drawing_styles
 from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
 from prj.cutter import get_cutter
+from prj.utils import flatten
 from prj.working_scene import get_working_scene
 import time
 
@@ -39,11 +40,7 @@ class Prj(bpy.types.Operator):
     def reset_scene(self, context: bpy.types.Context) -> set[str]:
         bpy.context.window.scene = self.initial_scene
 
-        ## TODO cutter and drawing_camera (duplicate of camera) should be 
-        ## deleted too with other scene objects -> check it
         ## TODO Delete newly created meshes too
-        #cutter = get_cutter(self.draw_context)
-        #cutter.delete(remove_lineart_gp=True)
         scene = get_working_scene()
         scene.remove(del_objs=True)
         ## TODO check if collecting libraries is still useful
@@ -54,50 +51,64 @@ class Prj(bpy.types.Operator):
                 pass
 
         bpy.context.scene.camera = self.initial_scene_camera
-        bpy.ops.view3d.view_camera()
         return {'FINISHED'}
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
         return context.area.type == 'VIEW_3D'
 
-    def execute(self, context: bpy.types.Context):
-        rewrite_svgs(self.draw_context)
-        get_svg_composition(self.draw_context)
+    #def execute(self, context: bpy.types.Context):
+    def execute(self, all_subjects: list['Drawing_subject']):
+        rewrite_svgs(all_subjects)
+        get_svg_composition(all_subjects)
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) \
             -> set[str]:
-        self.key = None
+        self.keys = []
         context.area.header_text_set("Type Enter to create drawing, " + \
-                "H for hiddden, B for back, ESC for exit")
+                "A=drawing all, X=x-ray, B=back, O=outline, W=wireframe")
+                ## TODO set scale too by typing
         ## UI TODO allow set key by UI
+        ## TODO check back drawing
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
-            #self.key = '-a -t -r 80cm'
-            #self.key = '-a -r 80cm'
-            self.key = '-r 10cm'
-            #self.key = '-cp'
-        elif event.type == 'H':
-            self.key = '-h'
+            self.keys += ['-a', '-s', '.05']
+        elif event.type == 'A':
+            self.keys.append('-a')
+        elif event.type == 'X':
+            self.keys.append('-x')
         elif event.type == 'B':
-            self.key = '-b'
+            self.keys.append('-b')
+        elif event.type == 'O':
+            self.keys.append('-o')
+        elif event.type == 'W':
+            self.keys.append('-w')
         elif event.type == 'ESC':
             self.reset_scene(context)
             context.area.header_text_set(None)
             return {'CANCELLED'}
 
-        if self.key:
+        if self.keys:
             print('Start now')
             start_time = time.time()
             objs = ';'.join(self.selected_objects_names + \
                     [self.selected_camera.name])
-            args = self.key.split() + [objs]
+            print('keys', self.keys)
+            args = self.keys + [objs]
+            print('args', args)
             create_drawing_styles()
             print('Set context now')
-            self.draw_context = get_drawing_context(args)
+            draw_context = get_drawing_context(args)
             print('Set context after', (time.time() - start_time))
-            draw_subjects(self.draw_context)
+            cutter = get_cutter(draw_context)
+            all_subjects = list(set(flatten(draw_context.subjects.values())))
+            working_scene = get_working_scene().scene
+            bpy.context.window.scene = working_scene
+            bpy.ops.view3d.view_camera()
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            draw_subjects(all_subjects) 
             self.reset_scene(context)
-            self.execute(context)
+            #self.execute(context, all_subjects)
+            self.execute(all_subjects)
             print("\n--- Completed in %s seconds ---\n\n" % 
                     (time.time() - start_time))
             context.area.header_text_set(None)
@@ -116,8 +127,6 @@ class Prj(bpy.types.Operator):
 
         self.initial_scene = bpy.context.scene
         self.initial_scene_camera = bpy.context.scene.camera
-        bpy.context.scene.camera = self.selected_camera
-        bpy.ops.view3d.view_camera()
 
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
