@@ -105,7 +105,7 @@ class Prj(bpy.types.Operator):
             bpy.context.window.scene = working_scene
             bpy.ops.view3d.view_camera()
             depsgraph = bpy.context.evaluated_depsgraph_get()
-            draw_subjects(all_subjects) 
+            draw_subjects(all_subjects, working_scene) 
             self.reset_scene(context)
             #self.execute(context, all_subjects)
             self.execute(all_subjects)

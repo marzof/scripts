@@ -97,4 +97,5 @@ class Working_scene:
                 bpy.data.objects.remove(obj, do_unlink=True)
         bpy.data.scenes.remove(self.scene, do_unlink=True)
         global the_working_scene
-        the_working_scene = None
+        if self == the_working_scene:
+            the_working_scene = None

@@ -63,7 +63,8 @@ def set_subjects_visibility(subject: 'Drawing_subject',
             continue
         other_subj.obj.hide_viewport = False
 
-def draw_subjects(subjects: list['Drawing_subject']) -> None:
+def draw_subjects(subjects: list['Drawing_subject'], 
+        scene: bpy.types.Scene) -> None:
     """ Get exported svgs for every subject (or parts of it) for every style """
     drawing_times: dict[float, str] = {}
     print('Prepare drawings')
@@ -71,8 +72,6 @@ def draw_subjects(subjects: list['Drawing_subject']) -> None:
 
     cutter = get_cutter()
     cutter.obj.hide_viewport = False
-    working_scene = get_working_scene().scene
-    #bpy.context.window.scene = working_scene
 
     draw_time = time.time()
     ## Draw every subject (and hide not overlapping ones)
@@ -81,7 +80,7 @@ def draw_subjects(subjects: list['Drawing_subject']) -> None:
         print('Drawing', subject.name)
 
         set_subjects_visibility(subject, cutter)
-        draw(subject, cutter, working_scene) 
+        draw(subject, cutter, scene)
 
         ## It misses same-time drawing objects
         drawing_time = time.time() - drawing_start_time
@@ -184,7 +183,9 @@ def main() -> None:
     draw_context = get_drawing_context(args)
     cutter = get_cutter(draw_context)
     all_subjects = list(set(flatten(draw_context.subjects.values())))
-    draw_subjects(all_subjects) 
+    working_scene = get_working_scene().scene
+    bpy.context.window.scene = working_scene
+    draw_subjects(all_subjects, working_scene)
     rewrite_svgs(all_subjects)
     get_svg_composition(all_subjects)
     print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
