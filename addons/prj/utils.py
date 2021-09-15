@@ -108,13 +108,13 @@ def is_framed(object_instance: bpy.types.DepsgraphObjectInstance,
     for edge in bound_box_edge_idxs:
         edge_p1 = Vector((bound_box[edge[0]].x, bound_box[edge[0]].y))
         edge_p2 = Vector((bound_box[edge[1]].x, bound_box[edge[1]].y))
-        checked_edges.append((edge_p1, edge_p2))
         if edge_p1 - edge_p2 == 0:
             continue
         if (edge_p1, edge_p2) in checked_edges:
             continue
         if (edge_p2, edge_p1) in checked_edges:
             continue
+        checked_edges.append((edge_p1, edge_p2))
         p1 = [(0,0), (1,1)]
         p2 = [(0,1), (1,0)]
         points = [(p1s, p2s) for p1s in p1 for p2s in p2]
