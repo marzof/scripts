@@ -11,6 +11,49 @@ from prj.drawing_style import drawing_styles
 import time
 
 MIN_UNIT_FRACTION = 2 ## 1 = 1 millimeter; 2 = 1/2 millimeter; 4 = 1/4 millimeter
+f_to_8_bit = lambda c: int(hex(int(c * 255)),0)
+
+def remove_grease_pencil(gpencil_obj: bpy.types.Object) -> None:
+    for mod in gpencil_obj.grease_pencil_modifiers:
+        ## Remove material from lineart to avoid error
+        if mod.type == 'GP_LINEART':
+            mod.target_material = None
+    for material in gpencil_obj.data.materials:
+        if not material:
+            continue
+        bpy.data.materials.remove(material)
+    bpy.data.grease_pencils.remove(gpencil_obj.data)
+
+def to_hex(c: float) -> str:
+    """ Return srgb hexadecimal version of c """
+    if c < 0.0031308:
+        srgb = 0.0 if c < 0.0 else c * 12.92
+    else:
+        srgb = 1.055 * math.pow(c, 1.0 / 2.4) - 0.055
+    return hex(max(min(int(srgb * 255 + 0.5), 255), 0))
+
+
+def frame_obj_bound_rect(cam_bound_box: list[Vector]) -> dict[str, float]:
+    """ Get the bounding rect of obj in cam view coords  """
+    bbox_xs = [v.x for v in cam_bound_box]
+    bbox_ys = [v.y for v in cam_bound_box]
+    bbox_zs = [v.z for v in cam_bound_box]
+    x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
+    y_min, y_max = max(0.0, min(bbox_ys)), min(1.0, max(bbox_ys))
+    if x_min > 1 or x_max < 0 or y_min > 1 or y_max < 0:
+        ## obj is out of frame
+        return None
+    return {'x_min': x_min, 'y_min': y_min, 'x_max': x_max, 'y_max': y_max}
+
+def unfold_ranges(ranges: list[tuple[int]]) -> list[int]:
+    """ Flatten ranges in a single list of value """
+    result = []
+    for r in ranges:
+        if len(r) == 1:
+            result += [r[0]]
+            continue
+        result += list(range(r[0], r[1]+1))
+    return result
 
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
@@ -25,13 +68,12 @@ def get_render_data(objects: list[bpy.types.Object],
         scene: bpy.types.Scene) -> 'Imaging_Core':
     """ Render the objects and get the pixels data """
     ### Move subjects to render_scene, render them and remove from scene
-    #print('Render for', group) 
     for obj in objects:
         if obj not in list(scene.collection.objects):
             scene.collection.objects.link(obj)
     bpy.ops.render.render(write_still=True, scene=scene.name)
     for obj in objects:
-        if obj in list(scene.collection.objects):
+        if obj in list(scene.collection.all_objects):
             scene.collection.objects.unlink(obj)
 
     ### Get the rendering data

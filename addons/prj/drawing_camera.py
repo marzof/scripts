@@ -99,7 +99,7 @@ class Drawing_camera:
         translation = base_matrix.to_quaternion() @ (normal_vector * z_scale)
         return Matrix.Translation(translation)
 
-    def reverse_cam(self, style: str) -> None:
+    def reverse_cam(self) -> None:
         """ Inverse camera matrix for back views """
         self.obj.matrix_world = (self.__get_translate_matrix() @ \
                 self.matrix) @ self.inverse_matrix
@@ -108,4 +108,10 @@ class Drawing_camera:
         """ Restore orginal camera values """
         #self.obj.data.clip_end = self.clip_end
         self.obj.matrix_world = self.matrix
+
+    def remove(self) -> None:
+        bpy.data.cameras.remove(self.obj.data)
+        global the_drawing_camera
+        the_drawing_camera = None
+
 

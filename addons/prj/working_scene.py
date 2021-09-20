@@ -69,6 +69,11 @@ class Working_scene:
         if camera:
             self.link_object(camera)
             self.scene.camera = camera
+        self.subjects = []
+
+    def add_subject(self, subject: 'Drawing_subject') -> None:
+        self.subjects.append(subject)
+
 
     def link_object(self, obj: bpy.types.Object) -> None:
         self.scene.collection.objects.link(obj)
@@ -88,14 +93,17 @@ class Working_scene:
         self.scene.render.resolution_y = resolution
         return resolution
         
-    def remove(self, del_objs: bool = False) -> None:
+    def remove(self, del_subjs: bool = False, clear: bool = False) -> None:
         """ Unlink every objects in scene, delete them if necessary and remove
             the scene """
+        if del_subjs:
+            for subj in self.subjects:
+                subj.remove()
         for obj in self.scene.collection.all_objects:
             self.scene.collection.objects.unlink(obj)
-            if del_objs:
-                bpy.data.objects.remove(obj, do_unlink=True)
-        bpy.data.scenes.remove(self.scene, do_unlink=True)
+            if clear:
+                bpy.data.objects.remove(obj)
+        bpy.data.scenes.remove(self.scene)
         global the_working_scene
         if self == the_working_scene:
             the_working_scene = None

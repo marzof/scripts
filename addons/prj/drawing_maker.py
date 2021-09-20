@@ -43,12 +43,8 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
     gp_layer = gp.data.layers.new(drawing_styles[style].name)
     gp_layer.frames.new(1)
     gp_mat_name = GREASE_PENCIL_MAT + '_' + drawing_styles[style].name
-    if gp_mat_name not in bpy.data.materials:
-        gp_mat = bpy.data.materials.new(gp_mat_name)
-    else:
-        gp_mat = bpy.data.materials[gp_mat_name]
-    if not gp_mat.is_grease_pencil:
-        bpy.data.materials.create_gpencil_data(gp_mat)
+    gp_mat = bpy.data.materials.new(gp_mat_name)
+    bpy.data.materials.create_gpencil_data(gp_mat)
     gp.data.materials.append(gp_mat)
 
     ## Create and setup lineart modifier
@@ -92,8 +88,6 @@ def get_lineart(source: 'Drawing_subject', style: str, camera: 'Drawing_camera',
         with style to it """
     if style == 'c':
         return cutter.lineart_gp
-    if source.back_drawing:
-        camera.reverse_cam()
 
     if not scene:
         scene = bpy.context.scene
@@ -118,8 +112,7 @@ def export_grease_pencil(subject: 'Drawing_subject',
     bpy.ops.wm.gpencil_export_svg(filepath=svg_path, 
             selected_object_type='VISIBLE') # use_clip_camera=True causes error
     if remove:
-        bpy.data.objects.remove(grease_pencil, do_unlink=True)
-        subject.set_grease_pencil(None)
+        subject.remove_grease_pencil()
     return svg_path
 
 def draw(subject: 'Drawing_subject', cutter: 'Cutter',
@@ -153,7 +146,6 @@ def draw(subject: 'Drawing_subject', cutter: 'Cutter',
         bpy.context.scene.frame_set(1)
         svg_path = export_grease_pencil(subject, lineart_gp, not draw_cut, 
                 file_suffix)
-        drawing_camera.restore_cam()
         subject.obj.hide_viewport = False 
         if draw_cut:   ## revert visibility
             for over_subj in subjs_visibility:

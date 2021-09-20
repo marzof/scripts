@@ -24,6 +24,10 @@
 
 svgs_data: dict[str,'Svg_path'] = dict()
 
+def reset_svgs_data():
+    global svgs_data
+    svgs_data.clear()
+
 class Svg_path:
     objects: dict['Drawing_subject', list[dict[str, str]]]
 

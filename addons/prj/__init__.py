@@ -10,7 +10,6 @@ from prj.drawing_context import get_drawing_context, is_renderables
 from prj.drawing_subject import libraries
 from prj.drawing_style import create_drawing_styles
 from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
-from prj.cutter import get_cutter
 from prj.utils import flatten
 from prj.working_scene import get_working_scene
 import time
@@ -19,11 +18,10 @@ class Prj(bpy.types.Operator):
     """Set view to camera to export svg from grease pencil"""
     initial_scene: bpy.types.Scene
     initial_scene_camera: bpy.types.Object
-    draw_context: 'Drawing_context'
-    key: str
+    drawing_context: 'Drawing_context'
+    keys: list[str]
     selected_objects_names: list[str]
     selected_camera: bpy.types.Object
-
 
     bl_idname = "prj.modal_operator"
     bl_label = "Set 3d view as selected camera and launch prj"
@@ -37,12 +35,9 @@ class Prj(bpy.types.Operator):
             return None
         return cams[0]
 
-    def reset_scene(self, context: bpy.types.Context) -> set[str]:
+    def reset_scene(self) -> set[str]:
         bpy.context.window.scene = self.initial_scene
 
-        ## TODO Delete newly created meshes too
-        scene = get_working_scene()
-        scene.remove(del_objs=True)
         ## TODO check if collecting libraries is still useful
         for library in libraries:
             try:
@@ -57,10 +52,12 @@ class Prj(bpy.types.Operator):
     def poll(cls, context: bpy.types.Context) -> bool:
         return context.area.type == 'VIEW_3D'
 
-    #def execute(self, context: bpy.types.Context):
     def execute(self, all_subjects: list['Drawing_subject']):
         rewrite_svgs(all_subjects)
         get_svg_composition(all_subjects)
+        self.drawing_context.remove()
+        del self.drawing_context
+        self.reset_scene()
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) \
             -> set[str]:
@@ -69,21 +66,22 @@ class Prj(bpy.types.Operator):
                 "A=drawing all, X=x-ray, B=back, O=outline, W=wireframe")
                 ## TODO set scale too by typing
         ## UI TODO allow set key by UI
-        ## TODO check back drawing
         if event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
-            self.keys += ['-a', '-s', '.05']
+            #self.keys += ['-a', '-s', '.05']
+            self.keys += ['-s', '.05']
         elif event.type == 'A':
             self.keys.append('-a')
         elif event.type == 'X':
             self.keys.append('-x')
         elif event.type == 'B':
-            self.keys.append('-b')
+            #self.keys.append('-b')
+            self.keys += ['-b', '-s', '.05']
         elif event.type == 'O':
             self.keys.append('-o')
         elif event.type == 'W':
             self.keys.append('-w')
         elif event.type == 'ESC':
-            self.reset_scene(context)
+            self.reset_scene()
             context.area.header_text_set(None)
             return {'CANCELLED'}
 
@@ -97,17 +95,17 @@ class Prj(bpy.types.Operator):
             print('args', args)
             create_drawing_styles()
             print('Set context now')
-            draw_context = get_drawing_context(args)
+            self.drawing_context = get_drawing_context(args)
+            if self.drawing_context.back_drawing:
+                self.drawing_context.drawing_camera.reverse_cam()
             print('Set context after', (time.time() - start_time))
-            cutter = get_cutter(draw_context)
-            all_subjects = list(set(flatten(draw_context.subjects.values())))
+            all_subjects = list(set(
+                flatten(self.drawing_context.subjects.values())))
             working_scene = get_working_scene().scene
             bpy.context.window.scene = working_scene
             bpy.ops.view3d.view_camera()
             depsgraph = bpy.context.evaluated_depsgraph_get()
             draw_subjects(all_subjects, working_scene) 
-            self.reset_scene(context)
-            #self.execute(context, all_subjects)
             self.execute(all_subjects)
             print("\n--- Completed in %s seconds ---\n\n" % 
                     (time.time() - start_time))

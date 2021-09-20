@@ -104,6 +104,8 @@ def get_render_groups(subjects: list[Drawing_subject],
         render_groups: list= []) -> list[list[Drawing_subject]]:
     """ Create groups of not-overlapping subjects (by bounding rect) 
         and return them in a list """
+    if not subjects:
+        return render_groups
     if len(subjects) < 2:
         render_groups.append(subjects)
         return render_groups
@@ -205,7 +207,7 @@ def get_subjects(selected_objects: list[bpy.types.Object],
     framed_subjects = get_framed_subjects(drawing_camera.obj, drawing_context)
 
     if drawing_context.back_drawing:
-        selected_subject = filter_selected_subjects(framed_subjects, 
+        selected_subjects = filter_selected_subjects(framed_subjects, 
                 selected_objects)
         for subj in selected_subjects: 
             subj.update_status(selected=True, data=subj.drawing_context, 
@@ -227,10 +229,12 @@ def get_subjects(selected_objects: list[bpy.types.Object],
     ## Filter subjects by actual visibility
     visible_subjects: list[Drawing_subject] = get_viewed_subjects(
             hi_res_render_data, framed_subjects, drawing_camera)
-    ## Remove not viewed subjects
+    ## Remove not viewed subjects and add visible ones to working_scene.subjects
     for framed_subj in framed_subjects:
         if framed_subj not in visible_subjects:
             framed_subj.remove()
+        else:
+            working_scene.add_subject(framed_subj)
     ## Calculate overlaps for every visible subject (based on bounding box)
     for subj in visible_subjects:
         subj.get_overlap_subjects(visible_subjects)
@@ -246,7 +250,7 @@ def get_subjects(selected_objects: list[bpy.types.Object],
 
     ## Execute combined renderings to map pixels to selected_subjects
     ### Get groups of not-overlapping subjects to perfom combined renderings
-    render_groups = get_render_groups(visible_subjects)
+    render_groups = get_render_groups(visible_subjects, [])
 
     ### Prepare scene
     render_scene = Working_scene(scene_name='prj_rnd', filename='prj_rnd.tif',

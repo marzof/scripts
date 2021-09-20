@@ -28,6 +28,7 @@ from prj.drawing_maker import add_line_art_mod, create_grease_pencil
 from prj.drawing_maker import GREASE_PENCIL_PREFIX
 from prj.working_scene import get_working_scene
 from prj.drawing_style import drawing_styles
+from prj.utils import remove_grease_pencil
 import time
 
 CAMERA_DISTANCE = .0001
@@ -71,15 +72,17 @@ class Cutter:
 
     def __init__(self, drawing_context: 'Drawing_context'):
         self.drawing_context = drawing_context
-        working_scene = get_working_scene().scene
+        self.working_scene = get_working_scene()
         camera = drawing_context.drawing_camera
         cutter_verts = [v + (camera.direction * CAMERA_DISTANCE) \
                 for v in camera.frame]
-        self.obj = mesh_by_verts(CUTTER_NAME, cutter_verts, working_scene)
+        self.obj = mesh_by_verts(CUTTER_NAME, cutter_verts, 
+                self.working_scene.scene)
         self.modifier = self.add_boolean_mod()
         
-        self.lineart_gp = create_grease_pencil(
-                GREASE_PENCIL_PREFIX + self.obj.name, scene=working_scene)
+        lineart_gp_name = GREASE_PENCIL_PREFIX + self.obj.name
+        self.lineart_gp = create_grease_pencil(lineart_gp_name, 
+                scene=self.working_scene.scene)
         add_line_art_mod(self.lineart_gp, self.obj, 'OBJECT', 'p', False)
         self.obj.hide_viewport = True
         self.obj.hide_render = True
@@ -91,10 +94,11 @@ class Cutter:
         modifier.solver = 'EXACT'
         return modifier
 
-    def delete(self, remove_lineart_gp: bool) -> None:
-        bpy.data.objects.remove(self.obj, do_unlink=True)
-        if remove_lineart_gp:
-            bpy.data.objects.remove(self.lineart_gp, do_unlink=True)
+    def remove(self) -> None:
+        self.working_scene.unlink_object(self.obj)
+        bpy.data.meshes.remove(self.obj.data)
+        remove_grease_pencil(self.lineart_gp)
+        self.lineart_gp = None
         global the_cutter
         the_cutter = None
 

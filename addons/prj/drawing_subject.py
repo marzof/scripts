@@ -28,7 +28,8 @@ import re
 import ast
 import math
 from mathutils import Vector
-from prj.utils import point_in_quad, flatten, dotdict
+from prj.utils import point_in_quad, flatten, dotdict, to_hex, f_to_8_bit
+from prj.utils import frame_obj_bound_rect, unfold_ranges, remove_grease_pencil
 from prj.drawing_camera import get_drawing_camera
 from prj.drawing_style import drawing_styles
 from prj.svg_path import Svg_path
@@ -38,45 +39,20 @@ from bpy_extras.object_utils import world_to_camera_view
 libraries = []
 drawing_subjects = []
 
-def to_hex(c: float) -> str:
-    """ Return srgb hexadecimal version of c """
-    if c < 0.0031308:
-        srgb = 0.0 if c < 0.0 else c * 12.92
-    else:
-        srgb = 1.055 * math.pow(c, 1.0 / 2.4) - 0.055
-    return hex(max(min(int(srgb * 255 + 0.5), 255), 0))
+def get_subjects_list():
+    return drawing_subjects
 
-f_to_8_bit = lambda c: int(hex(int(c * 255)),0)
-
-def frame_obj_bound_rect(cam_bound_box: list[Vector]) -> dict[str, float]:
-    """ Get the bounding rect of obj in cam view coords  """
-    bbox_xs = [v.x for v in cam_bound_box]
-    bbox_ys = [v.y for v in cam_bound_box]
-    bbox_zs = [v.z for v in cam_bound_box]
-    x_min, x_max = max(0.0, min(bbox_xs)), min(1.0, max(bbox_xs))
-    y_min, y_max = max(0.0, min(bbox_ys)), min(1.0, max(bbox_ys))
-    if x_min > 1 or x_max < 0 or y_min > 1 or y_max < 0:
-        ## obj is out of frame
-        return None
-    return {'x_min': x_min, 'y_min': y_min, 'x_max': x_max, 'y_max': y_max}
-
-def unfold_ranges(ranges: list[tuple[int]]) -> list[int]:
-    """ Flatten ranges in a single list of value """
-    result = []
-    for r in ranges:
-        if len(r) == 1:
-            result += [r[0]]
-            continue
-        result += list(range(r[0], r[1]+1))
-    return result
-
+def reset_subjects_list():
+    global drawing_subjects
+    drawing_subjects.clear()
+    
 class Drawing_subject:
     obj: bpy.types.Object
     bounding_rect: list[Vector]
     overlapping_subjects: list['Drawing_subject']
     previous_pixels_subjects: list['Drawing_subject']
     is_cut: bool
-    lineart: bpy.types.Object ## bpy.types.GreasePencil
+    grease_pencil: bpy.types.Object ## bpy.types.GreasePencil
     working_scene: 'Working_scene'
     svg_path: Svg_path
     render_pixels: list[int]
@@ -122,8 +98,8 @@ class Drawing_subject:
         ## Move a no-materials duplicate to working_scene: materials could 
         ## bother lineart (and originals are kept untouched)
         self.working_scene = get_working_scene()
-        obj_name = self.full_name
-        self.obj = bpy.data.objects.new(name=obj_name, object_data=self.mesh)
+        self.obj = bpy.data.objects.new(name=self.full_name, 
+                object_data=self.mesh)
         self.obj.matrix_world = self.matrix
         self.obj.data.materials.clear()
         self.working_scene.link_object(self.obj)
@@ -299,9 +275,17 @@ class Drawing_subject:
         else:
             self.pixels_range.append((pixel,))
 
+    def remove_grease_pencil(self) -> None:
+        if self.grease_pencil:
+            remove_grease_pencil(self.grease_pencil)
+            self.set_grease_pencil(None)
+
     def remove(self):
         """ Delete subject """
-        drawing_subjects.remove(self)
+        if self in drawing_subjects:
+            drawing_subjects.remove(self)
         self.working_scene.unlink_object(self.obj)
-        bpy.data.objects.remove(self.obj, do_unlink=True)
+        bpy.data.meshes.remove(self.obj.data)
+        self.remove_grease_pencil()
+        self.set_grease_pencil(None)
 

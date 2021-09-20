@@ -33,7 +33,7 @@ from prj.svg_handling import filter_subjects_for_svg, add_subjects_as_use
 from prj.drawing_context import get_drawing_context, is_renderables
 from prj.drawing_camera import get_drawing_camera
 from prj.drawing_maker import draw
-from prj.drawing_subject import drawing_subjects
+from prj.drawing_subject import get_subjects_list
 from prj.drawing_style import create_drawing_styles, drawing_styles
 from prj.cutter import get_cutter
 from prj.utils import flatten
@@ -47,6 +47,7 @@ def set_subjects_visibility(subject: 'Drawing_subject',
     """ Hide and show subjects depending on situation """
     subject.obj.hide_viewport = False
     overlapping_subjects = subject.overlapping_subjects
+    drawing_subjects = get_subjects_list()
     for other_subj in drawing_subjects:
         if other_subj == subject:
             continue
@@ -86,8 +87,6 @@ def draw_subjects(subjects: list['Drawing_subject'],
         drawing_time = time.time() - drawing_start_time
         drawing_times[drawing_time] = subject.name
         print(f"\t...drawn in {drawing_time} seconds")
-
-    cutter.delete(False)
 
     draw_time = time.time() - draw_time
     print('\n')
@@ -181,13 +180,15 @@ def main() -> None:
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
     create_drawing_styles()
     draw_context = get_drawing_context(args)
-    cutter = get_cutter(draw_context)
+    if draw_context.back_drawing:
+        draw_context.drawing_camera.reverse_cam()
     all_subjects = list(set(flatten(draw_context.subjects.values())))
     working_scene = get_working_scene().scene
     bpy.context.window.scene = working_scene
     draw_subjects(all_subjects, working_scene)
     rewrite_svgs(all_subjects)
     get_svg_composition(all_subjects)
+    draw_context.remove()
     print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
 
 if __name__ == "__main__":

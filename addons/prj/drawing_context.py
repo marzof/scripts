@@ -27,7 +27,10 @@ import bpy
 from prj.drawing_camera import get_drawing_camera
 from prj.subject_finder import get_subjects
 from prj.drawing_style import drawing_styles
+from prj.drawing_subject import reset_subjects_list
 from prj.working_scene import get_resolution, get_working_scene
+from prj.svg_path import reset_svgs_data
+from prj.cutter import get_cutter
 import time
 
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
@@ -54,10 +57,11 @@ class Drawing_context:
     drawing_scale: float
     selected_objects: list[bpy.types.Object]
     subjects: list['Drawing_subject']
+    cutter: 'Cutter'
     drawing_camera: 'Drawing_camera'
 
     FLAGS: dict[str, str] = {'draw_all': '-a', 'drawing_scale': '-s',
-            'draw_outline': '-o', 'xray_drawing': '-x', 'back_drawing': 'b',
+            'draw_outline': '-o', 'xray_drawing': '-x', 'back_drawing': '-b',
             'wire_drawing': '-w', 'reset_options': '-r'}
     RESOLUTION_FACTOR: float = 96.0 / 2.54 ## resolution / inch
 
@@ -77,9 +81,10 @@ class Drawing_context:
         self.drawing_camera = get_drawing_camera(selection['camera']) 
         frame_size = self.drawing_camera.ortho_scale
         self.render_resolution = get_resolution(frame_size, self.drawing_scale)
-        working_scene = get_working_scene()
-        working_scene.set_resolution(resolution=self.render_resolution)
+        self.working_scene = get_working_scene()
+        self.working_scene.set_resolution(resolution=self.render_resolution)
         self.subjects = get_subjects(self.selected_objects, self)
+        self.cutter = get_cutter(self)
         self.svg_size = format_svg_size(frame_size * self.drawing_scale * 1000, 
             frame_size * self.drawing_scale * 1000)
         self.svg_factor = frame_size * self.drawing_scale * 100 * \
@@ -133,3 +138,12 @@ class Drawing_context:
         if len(objs) == 0:
             self.draw_all = True
         return {'objects': objs, 'camera': cam}
+    
+    def remove(self) -> None:
+        global the_drawing_context
+        the_drawing_context = None
+        self.drawing_camera.remove()
+        self.cutter.remove()
+        reset_svgs_data()
+        reset_subjects_list()
+        self.working_scene.remove(del_subjs=True, clear=True)
