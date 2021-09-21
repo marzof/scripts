@@ -356,12 +356,12 @@ def svg2dxf(svg):
             "'dxf_s:-polyaslines -dumplayernames -mm' {} {}".format(eps, dxf)
 
     ## Run with Inkscape 0.92
-    subprocess.run(['inkscape', '-f', svg, '-C', '-E', eps])
+    #subprocess.run(['inkscape', '-f', svg, '-C', '-E', eps])
+    ## Run with Inkscape 1.0
+    subprocess.run(['inkscape', svg, '-C', '-o', eps])
+
     if os.path.exists(svg):
         os.remove(svg)
-
-    ## Run with Inkscape 1.0
-    ## subprocess.run(['inkscape', svg, '-C', '-o', eps])
 
     subprocess.run(eps2dxf, shell=True) 
     if os.path.exists(eps):
