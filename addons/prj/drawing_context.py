@@ -31,6 +31,7 @@ from prj.drawing_subject import reset_subjects_list
 from prj.working_scene import get_resolution, get_working_scene
 from prj.svg_path import reset_svgs_data
 from prj.cutter import get_cutter
+from prj.utils import get_scene_tree
 import time
 
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
@@ -59,6 +60,8 @@ class Drawing_context:
     subjects: list['Drawing_subject']
     cutter: 'Cutter'
     drawing_camera: 'Drawing_camera'
+    scene_tree: dict[tuple[int], bpy.types.Collection]
+            # or dict[tuple[int], bpy.types.Object]
 
     FLAGS: dict[str, str] = {'draw_all': '-a', 'drawing_scale': '-s',
             'draw_outline': '-o', 'xray_drawing': '-x', 'back_drawing': '-b',
@@ -83,6 +86,7 @@ class Drawing_context:
         self.render_resolution = get_resolution(frame_size, self.drawing_scale)
         self.working_scene = get_working_scene()
         self.working_scene.set_resolution(resolution=self.render_resolution)
+        self.scene_tree = get_scene_tree(bpy.context.scene.collection)
         self.subjects = get_subjects(self.selected_objects, self)
         self.cutter = get_cutter(self)
         self.svg_size = format_svg_size(frame_size * self.drawing_scale * 1000, 

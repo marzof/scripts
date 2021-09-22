@@ -64,11 +64,8 @@ def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
         for abspath in abspaths:
             abspath.add_class(layer_label)
             for collection in obj.collections:
-                abspath.add_class(collection)
+                abspath.add_class(collection.name)
             absgroup.add_entity(abspath)
-
-    #if 'cut' in context.svg_styles:
-    #    clip_cut(layers['prj'], layers['cut'])
 
     for f in files:
         os.remove(f)
@@ -100,7 +97,7 @@ def prepare_composition(draw_context: 'Drawing_context',
 
 def filter_subjects_for_svg(abstract_svg: Svg_read, 
         subjects: list['Drawing_subjects']) -> list['Drawing_subjects']:
-    """ Check if subjects are in the abstrace_svg 
+    """ Check if subjects are in the abstract_svg 
         and return the ones which are not there """
     use_objects = abstract_svg.get_svg_elements('use')
     use_ids = list(set([use.attributes['id'] for use in use_objects]))
@@ -126,5 +123,5 @@ def add_subjects_as_use(subjects: list['Drawing_subject'], style: str,
         new_use.set_id(use_id)
         new_use.set_attribute({'xlink:title': subject.name})
         for collection in subject.collections:
-            new_use.add_class(collection)
+            new_use.add_class(collection.name)
         container.add_entity(new_use)

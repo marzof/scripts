@@ -8,31 +8,23 @@ from svgwrite.extensions import Inkscape
 
 POLYLINE_TAG: str = 'polyline'
 PL_TAG = '{http://www.w3.org/2000/svg}polyline'
-#SVG_ATTRIBUTES = {'prj': {}, 'cut': {}, 'hid': {}, 'bak': {}}
-        ## Set by style
-        #'prj': {'stroke': '#000000', 'stroke-opacity': '1',
-        #    'stroke-linecap': 'round', 'stroke-width': '.1', 
-        #    'style': 'fill: none'},
-        #'cut': {'stroke': '#000000', 'stroke-opacity': '1',
-        #    'stroke-linecap': 'round', 'stroke-width': '.35', 
-        #    'style': 'fill: #f00'},
-        #'hid': {'stroke': '#808080', 'stroke-opacity': '1',
-        #    'stroke-linecap': 'round', 'stroke-width': '.1', 
-        #    'stroke-dasharray': (0.8, 0.4), 'style': 'fill: none'}, }
 
 # # # # CLASSES # # # #
 
 class AbsSvg_entity: 
     attributes: dict[str,str]
+    attributes: list[str]
 
     def __init__(self):
         self.attributes = {}
+        self.entity_classes = []
 
     def set_attribute(self, dic: dict[str, str]) -> None:
         self.attributes.update(dic)
 
     def add_class(self, entity_class: str) -> None:
-        self.set_attribute({'class': entity_class})
+        self.entity_classes.append(entity_class)
+        self.set_attribute({'class': ' '.join(self.entity_classes)})
 
     def set_id(self, entity_id: str) -> None:
         self.set_attribute({'id': entity_id})

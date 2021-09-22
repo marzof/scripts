@@ -56,7 +56,7 @@ class Svg_read:
         self.drawing = self.tree[(0,)]
 
     def _get_tree(self, element: ET.Element, position: tuple[int] = (0,)) -> None:
-        """ Populate element tree of abstract version of entities """
+        """ Populate element tree with abstract version of entities """
         abs_svg = self.get_abs_svg_class(element)
         self.tree.update({position: abs_svg})
         if len(position) > 1:

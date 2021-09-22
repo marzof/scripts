@@ -7,7 +7,6 @@ bl_info = {
 import bpy
 import os, pathlib
 from prj.drawing_context import get_drawing_context, is_renderables
-from prj.drawing_subject import libraries
 from prj.drawing_style import create_drawing_styles
 from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
 from prj.utils import flatten
@@ -37,14 +36,6 @@ class Prj(bpy.types.Operator):
 
     def reset_scene(self) -> set[str]:
         bpy.context.window.scene = self.initial_scene
-
-        ## TODO check if collecting libraries is still useful
-        for library in libraries:
-            try:
-                library.reload()
-            except ReferenceError:
-                pass
-
         bpy.context.scene.camera = self.initial_scene_camera
         return {'FINISHED'}
 

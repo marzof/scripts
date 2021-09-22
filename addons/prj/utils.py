@@ -12,6 +12,18 @@ import time
 
 MIN_UNIT_FRACTION = 2 ## 1 = 1 millimeter; 2 = 1/2 millimeter; 4 = 1/4 millimeter
 f_to_8_bit = lambda c: int(hex(int(c * 255)),0)
+    
+def get_scene_tree(collection: bpy.types.Collection, scene_tree: dict = {},
+        position: tuple[int] = (0,)) -> dict[tuple[int], bpy.types.Collection]:
+    """ Populate scene_tree by scene collections and objects """
+    scene_tree.update({position: collection})
+    i = 0
+    for child in collection.children:
+        get_scene_tree(child, scene_tree, position + (i,))
+        i += 1
+    for j, obj in enumerate(collection.objects, start=i):
+        scene_tree.update({position + (j,): obj})
+    return scene_tree
 
 def remove_grease_pencil(gpencil_obj: bpy.types.Object) -> None:
     for mod in gpencil_obj.grease_pencil_modifiers:

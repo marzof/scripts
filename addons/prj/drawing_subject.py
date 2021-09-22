@@ -36,7 +36,6 @@ from prj.svg_path import Svg_path
 from prj.working_scene import get_working_scene
 from bpy_extras.object_utils import world_to_camera_view
 
-libraries = []
 drawing_subjects = []
 
 def get_subjects_list():
@@ -68,7 +67,8 @@ class Drawing_subject:
             mesh: bpy.types.Mesh, matrix: 'mathutils.Matrix', 
             parent: bpy.types.Object, is_instance: bool, 
             library: bpy.types.Library, cam_bound_box: list[Vector], 
-            is_in_front: bool, is_behind: bool):
+            is_in_front: bool, is_behind: bool, 
+            collections: dict[bpy.types.Collection, str]):
         print('Create subject for', name)
         self.eval_obj = eval_obj
         self.name = name
@@ -86,8 +86,6 @@ class Drawing_subject:
         self.is_instance = is_instance
         self.library = library
         self.cam_bound_box = cam_bound_box
-        if self.library and self.library not in libraries:
-            libraries.append(self.library)
         self.overlapping_subjects = []
         self.previous_pixels_subjects = []
         self.bounding_rect = []
@@ -122,8 +120,7 @@ class Drawing_subject:
             self.update_status(selected=self.is_selected, 
                     data=dotdict(self.previous_data))
 
-        self.collections = [coll.name for coll in self.obj.users_collection \
-                if coll is not bpy.context.scene.collection]
+        self.collections = collections
         self.type = self.obj.type
         self.lineart_source_type = 'OBJECT'
         self.grease_pencil = None

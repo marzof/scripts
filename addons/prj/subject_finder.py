@@ -32,15 +32,36 @@ from prj.working_scene import Working_scene, get_working_scene
 import time
 
 HI_RES_RENDER_FACTOR: int = 4
-is_visible = lambda obj: not obj.hide_render and not obj.hide_viewport
+checked_objs = []
+is_visible = lambda obj: not obj.hide_render and not obj.hide_viewport \
+        and not obj.hide_get()
 
-
-def is_in_visible_collection(obj: bpy.types.Object) -> bool:
-    ## TODO complete and use in get_framed_subjects
-    for collection in obj.users_collection:
-        if not collection.hide_render and not collection.hide_viewport:
-            return True
-        return False
+def get_object_collections(obj: bpy.types.Object, scene_tree: dict[tuple[int], 
+    bpy.types.Collection]) -> dict[bpy.types.Collection, str]:
+    """ Get the collections obj belongs to (based on scene_tree)"""
+    global checked_objs
+    obj_inst_collections = {}
+    tmp_collections = []
+    positions = 0
+    for position in scene_tree:
+        if scene_tree[position] != obj:
+            continue
+        checked_objs.append(obj)
+        positions += 1
+        ## For obj in position like (0, 0, 2, 1, 0, 1) get collections at 
+        ##      position: (0,0), (0,0,2), (0,0,2,1), (0,0,2,1,0)
+        for i in range(2, len(position)):
+            collection = scene_tree[position[:i]]
+            tmp_collections.append(scene_tree[position[:i]])
+    ## If a collection is STRONG when it is hidden its objects are hidden too
+    ## If the collection is WEAK then its objects remain visible even when 
+    ##      the collection is hidden
+    for coll in tmp_collections:
+        if tmp_collections.count(coll) < positions:
+            obj_inst_collections[coll] = 'WEAK'
+        else:
+            obj_inst_collections[coll] = 'STRONG'
+    return obj_inst_collections
 
 def get_framed_subjects(camera: bpy.types.Object, 
         drawing_context: 'Drawing_context') -> list[Drawing_subject]:
@@ -49,18 +70,39 @@ def get_framed_subjects(camera: bpy.types.Object,
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
     framed_subjects = []
+    scene_tree = drawing_context.scene_tree
+
     for obj_inst in depsgraph.object_instances:
         print('Process', obj_inst.object.name)
 
         is_in_frame = is_framed(obj_inst, camera)
-        ## TODO ignore objects whose users_collection are not visible too
-        if not is_in_frame['result'] or not is_visible(obj_inst.object): 
-            # or not is_in_visible_collection(obj_inst.object):
+        if not is_in_frame['result']:
             continue
+
         ## Create the temporary Drawing_subject
         inst_name=obj_inst.object.name
         inst_library=obj_inst.object.library
         lib_path = inst_library.filepath if inst_library else inst_library
+        eval_obj = bpy.data.objects[inst_name, lib_path]
+        if eval_obj not in scene_tree.values():
+            tree_obj = bpy.data.objects[obj_inst.parent.name]
+            if tree_obj in checked_objs:
+                continue
+        else:
+            tree_obj = eval_obj
+
+        if not is_visible(tree_obj):
+            continue
+
+        obj_inst_collections = get_object_collections(tree_obj, scene_tree)
+        #print(obj_inst.object.name, obj_inst_collections)
+        collections_hide_status = [(coll.hide_render or coll.hide_viewport) \
+                for coll in obj_inst_collections \
+                if obj_inst_collections[coll] == 'STRONG']
+        ## If any (STRONG) obj_inst collection is hidden then ignore the obj_inst
+        if any(collections_hide_status):
+            continue
+
         framed_subject = Drawing_subject(
                 eval_obj=bpy.data.objects[inst_name, lib_path],
                 name=inst_name,
@@ -73,8 +115,10 @@ def get_framed_subjects(camera: bpy.types.Object,
                 cam_bound_box=is_in_frame['bound_box'],
                 is_in_front=is_in_frame['in_front'], 
                 is_behind=is_in_frame['behind'], 
+                collections=obj_inst_collections,
                 )
         framed_subjects.append(framed_subject)
+
     return framed_subjects
 
 def get_colors_spectrum(size: int) -> list[tuple[float]]:
