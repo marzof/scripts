@@ -42,16 +42,16 @@ def get_working_scene() -> 'Working_scene':
 
 ## TODO Rename in Drawing_scene
 class Working_scene:
-    RENDER_BASEPATH: str
-    RENDER_RESOLUTION_X: int
-    RENDER_RESOLUTION_Y: int
+    DEFAULT_RESOLUTION_PERCENTAGE: int = 100
     scene: bpy.types.Scene
 
     def __init__(self, scene_name: str='prj', filename: str=WB_RENDER_FILENAME,
-            resolution: int= None, camera: bpy.types.Object= None):
+            resolution: list[int] = None, camera: bpy.types.Object= None):
         self.scene = bpy.data.scenes.new(name=scene_name)
         self.scene.render.filepath = get_render_basepath() + filename
         self.scene.render.engine = 'BLENDER_WORKBENCH'
+        self.scene.render.resolution_percentage = \
+                self.DEFAULT_RESOLUTION_PERCENTAGE
         self.scene.display.render_aa = 'OFF'
         self.scene.display.shading.light = 'FLAT'
         self.scene.display.shading.color_type = 'OBJECT'
@@ -64,8 +64,8 @@ class Working_scene:
         self.scene.render.image_settings.tiff_codec = 'NONE'
         self.scene.render.image_settings.color_mode = 'RGBA'
         if resolution:
-            self.scene.render.resolution_x = resolution
-            self.scene.render.resolution_y = resolution
+            self.scene.render.resolution_x = resolution[0]
+            self.scene.render.resolution_y = resolution[1]
         if camera:
             self.link_object(camera)
             self.scene.camera = camera
@@ -81,16 +81,22 @@ class Working_scene:
     def unlink_object(self, obj: bpy.types.Object) -> None:
         self.scene.collection.objects.unlink(obj)
 
-    def get_resolution(self) -> int:
-        return self.scene.render.resolution_x
+    def get_resolution_percentage(self) -> int:
+        return self.scene.render.resolution_percentage
 
-    ## TODO handle non-square resolution too
+    def set_resolution_percentage(self, percentage: int) -> None:
+        self.scene.render.resolution_percentage = int(percentage)
+
+    def get_resolution(self) -> list[int]:
+        return [self.scene.render.resolution_x, self.scene.render.resolution_y]
+
     def set_resolution(self, cam_scale: float = None, 
-            drawing_scale: float = None, resolution: int = None) -> int:
+            drawing_scale: float = None, 
+            resolution: list[int] = None) -> list[int]:
         if not resolution:
             resolution = get_resolution(cam_scale, drawing_scale)
-        self.scene.render.resolution_x = resolution
-        self.scene.render.resolution_y = resolution
+        self.scene.render.resolution_x = resolution[0]
+        self.scene.render.resolution_y = resolution[1]
         return resolution
         
     def remove(self, del_subjs: bool = False, clear: bool = False) -> None:

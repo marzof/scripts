@@ -242,12 +242,12 @@ class Drawing_subject:
         bound_rect_y = self.bounding_rect[2].y
         bound_width = self.bounding_rect[2].x - self.bounding_rect[0].x
         bound_height = self.bounding_rect[2].y - self.bounding_rect[0].y
-        px_from_x = math.floor(resolution * bound_rect_x)
-        px_from_y = resolution - math.ceil(resolution * bound_rect_y)
-        px_width = math.ceil(resolution * bound_width)
-        px_height = math.ceil(resolution * bound_height)
-        pixels = flatten([list(range(px_from_x+(resolution*y), 
-            px_from_x+(resolution*y)+px_width))
+        px_from_x = math.floor(resolution[0] * bound_rect_x)
+        px_from_y = resolution[1] - math.ceil(resolution[1] * bound_rect_y)
+        px_width = math.ceil(resolution[0] * bound_width)
+        px_height = math.ceil(resolution[1] * bound_height)
+        pixels = flatten([list(range(px_from_x+(resolution[0]*y), 
+            px_from_x+(resolution[0]*y)+px_width))
             for y in range(px_from_y, px_from_y + px_height)])
         return pixels
 

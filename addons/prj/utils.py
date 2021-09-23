@@ -73,8 +73,19 @@ class dotdict(dict):
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
-def get_resolution(cam_scale: float = None, drawing_scale: float = None) -> int:
-    return int(math.ceil(cam_scale * drawing_scale * 1000 * MIN_UNIT_FRACTION))
+def get_resolution(cam_scale: float = None, 
+        drawing_scale: float = None) -> list[int]:
+    base_resolution = int(math.ceil(cam_scale * drawing_scale * 1000 * \
+            MIN_UNIT_FRACTION))
+    frame_ratio = bpy.context.scene.render.resolution_x / \
+            bpy.context.scene.render.resolution_y
+    if frame_ratio > 1:
+        size_x = base_resolution
+        size_y = int(base_resolution / frame_ratio)
+    else:
+        size_x = int(base_resolution * frame_ratio)
+        size_y = base_resolution
+    return [size_x, size_y]
 
 def get_render_data(objects: list[bpy.types.Object], 
         scene: bpy.types.Scene) -> 'Imaging_Core':

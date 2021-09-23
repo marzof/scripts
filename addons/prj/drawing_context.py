@@ -28,10 +28,10 @@ from prj.drawing_camera import get_drawing_camera
 from prj.subject_finder import get_subjects
 from prj.drawing_style import drawing_styles
 from prj.drawing_subject import reset_subjects_list
-from prj.working_scene import get_resolution, get_working_scene
+from prj.working_scene import get_working_scene
 from prj.svg_path import reset_svgs_data
 from prj.cutter import get_cutter
-from prj.utils import get_scene_tree
+from prj.utils import get_scene_tree, get_resolution, MIN_UNIT_FRACTION
 import time
 
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
@@ -89,10 +89,11 @@ class Drawing_context:
         self.scene_tree = get_scene_tree(bpy.context.scene.collection)
         self.subjects = get_subjects(self.selected_objects, self)
         self.cutter = get_cutter(self)
-        self.svg_size = format_svg_size(frame_size * self.drawing_scale * 1000, 
-            frame_size * self.drawing_scale * 1000)
+        self.svg_size = format_svg_size(
+                self.render_resolution[0] / MIN_UNIT_FRACTION,
+                self.render_resolution[1] / MIN_UNIT_FRACTION)
         self.svg_factor = frame_size * self.drawing_scale * 100 * \
-                self.RESOLUTION_FACTOR / self.render_resolution
+                self.RESOLUTION_FACTOR / max(self.render_resolution)
         print('*** Drawing_context created in', time.time() - context_time)
 
     def __set_flagged_options(self) -> list[str]:

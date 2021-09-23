@@ -226,19 +226,6 @@ def get_previous_pixels_subjects(base_subjects: list[Drawing_subject],
             if prev_pix_subj not in selected_subjects]))
     return previous_pixels_subjects
 
-def get_raw_render_data(working_scene: Working_scene, 
-        resolution: int = None) -> 'Imaging_Core':
-    """ Generate raw rendering (flat colors, no anti-alias) at resolution
-        in order to get a map of pixels. Reset resolution at initial value 
-        after rendering """
-    if resolution:
-        base_resolution = working_scene.get_resolution()
-        working_scene.set_resolution(resolution=resolution)
-    render_pixels = get_render_data([], working_scene.scene)
-    if resolution:
-        working_scene.set_resolution(resolution=base_resolution)
-    return render_pixels 
-
 def get_subjects(selected_objects: list[bpy.types.Object], 
         drawing_context: 'Drawing_context') -> list[Drawing_subject]:
     """ Execute rendering to acquire the subjects to draw """
@@ -266,9 +253,12 @@ def get_subjects(selected_objects: list[bpy.types.Object],
     for i, framed_subj in enumerate(framed_subjects):
         framed_subj.set_color(colors[i])
 
-    base_res_render_data = get_raw_render_data(working_scene)
-    hi_res_render_data = get_raw_render_data(working_scene, 
-            render_resolution * HI_RES_RENDER_FACTOR)
+    base_res_render_data = get_render_data([], working_scene.scene)
+    working_scene.set_resolution_percentage(
+            HI_RES_RENDER_FACTOR * working_scene.DEFAULT_RESOLUTION_PERCENTAGE)
+    hi_res_render_data = get_render_data([], working_scene.scene)
+    working_scene.set_resolution_percentage(
+            working_scene.DEFAULT_RESOLUTION_PERCENTAGE)
 
     ## Filter subjects by actual visibility
     visible_subjects: list[Drawing_subject] = get_viewed_subjects(
