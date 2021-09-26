@@ -177,19 +177,28 @@ def get_svg_composition(subjects: list['Drawing_subject']) -> None:
 def main() -> None:
     print('Start now')
     start_time = time.time()
+
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
+    print('args', args)
+
     create_drawing_styles()
     draw_context = get_drawing_context(args)
+    if not draw_context:
+        print('\n--- Process completed ---\n\n')
+        return
     if draw_context.back_drawing:
-        draw_context.drawing_camera.reverse_cam()
+        print('Back drawings are only possible by user interface')
+        print('\n--- Process completed ---\n\n')
+        return
     all_subjects = list(set(flatten(draw_context.subjects.values())))
     working_scene = get_working_scene().scene
     bpy.context.window.scene = working_scene
     draw_subjects(all_subjects, working_scene)
+
     rewrite_svgs(all_subjects)
     get_svg_composition(all_subjects)
     draw_context.remove()
-    print("\n--- Completed in %s seconds ---\n\n" % (time.time() - start_time))
+    print(f"\n--- Completed in {time.time() - start_time} seconds ---\n\n")
 
 if __name__ == "__main__":
     main()

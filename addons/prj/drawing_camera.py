@@ -79,8 +79,6 @@ class Drawing_camera:
         self.frame_y_vector = self.frame[0] - self.frame[1]
         self.frame_z_start = -camera.data.clip_start
 
-        self.inverse_matrix = Matrix().Scale(-1, 4, (.0,.0,1.0))
-    
     def get_path(self) -> str:
         """ Return folder path named after camera (create it if needed) """
         cam_path = os.path.join(get_render_basepath(), self.name)
@@ -89,25 +87,6 @@ class Drawing_camera:
         except OSError:
             print (f'{cam_path} already exists. Going on')
         return cam_path
-
-    def __get_translate_matrix(self) -> Matrix:
-        """ Get matrix for move camera towards his clip_start """
-        normal_vector = Vector((0.0, 0.0, -2 * self.clip_start))
-        z_scale = round(self.matrix.to_scale().z, BASE_ROUNDING)
-        opposite_matrix = Matrix().Scale(z_scale, 4, (.0,.0,1.0))
-        base_matrix = self.matrix @ opposite_matrix
-        translation = base_matrix.to_quaternion() @ (normal_vector * z_scale)
-        return Matrix.Translation(translation)
-
-    def reverse_cam(self) -> None:
-        """ Inverse camera matrix for back views """
-        self.obj.matrix_world = (self.__get_translate_matrix() @ \
-                self.matrix) @ self.inverse_matrix
-
-    def restore_cam(self) -> None:
-        """ Restore orginal camera values """
-        #self.obj.data.clip_end = self.clip_end
-        self.obj.matrix_world = self.matrix
 
     def remove(self) -> None:
         bpy.data.cameras.remove(self.obj.data)

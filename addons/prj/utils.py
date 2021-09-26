@@ -10,9 +10,24 @@ from bpy_extras.object_utils import world_to_camera_view
 from prj.drawing_style import drawing_styles
 import time
 
+BASE_ROUNDING: int = 6
 MIN_UNIT_FRACTION = 2 ## 1 = 1 millimeter; 2 = 1/2 millimeter; 4 = 1/4 millimeter
 f_to_8_bit = lambda c: int(hex(int(c * 255)),0)
     
+def reverse_camera(camera: bpy.types.Camera) -> None:
+    """ Inverse camera matrix for back views """
+    camera.matrix_world = (get_translate_matrix(camera) @ camera.matrix_world) \
+            @  Matrix().Scale(-1, 4, (.0,.0,1.0))
+
+def get_translate_matrix(camera) -> Matrix:
+    """ Get matrix for move camera towards his clip_start """
+    normal_vector = Vector((0.0, 0.0, -2 * camera.data.clip_start))
+    z_scale = round(camera.matrix_world.to_scale().z, BASE_ROUNDING)
+    opposite_matrix = Matrix().Scale(z_scale, 4, (.0,.0,1.0))
+    base_matrix = camera.matrix_world @ opposite_matrix
+    translation = base_matrix.to_quaternion() @ (normal_vector * z_scale)
+    return Matrix.Translation(translation)
+
 def get_scene_tree(collection: bpy.types.Collection, scene_tree: dict = {},
         position: tuple[int] = (0,)) -> dict[tuple[int], bpy.types.Collection]:
     """ Populate scene_tree by scene collections and objects """

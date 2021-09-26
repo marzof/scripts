@@ -39,12 +39,14 @@ is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
 format_svg_size = lambda x, y: (str(x) + 'mm', str(y) + 'mm')
 the_drawing_context = None
 
-def get_drawing_context(args: list[str] = None):
+def get_drawing_context(args: list[str] = None) -> 'Drawing_context':
     """ Return the_drawing_context (create it if necessary) """
     global the_drawing_context
     if the_drawing_context:
         return the_drawing_context
     the_drawing_context = Drawing_context(args)
+    if not the_drawing_context.drawing_camera:
+        return
     print('create drawing_context')
     return the_drawing_context
 
@@ -81,6 +83,10 @@ class Drawing_context:
         object_args = self.__set_flagged_options()
         selection = self.__get_objects(object_args)
         self.selected_objects = selection['objects']
+        if not selection['camera']:
+            print("\nJust one camera has to be selected")
+            self.drawing_camera = None
+            return
         self.drawing_camera = get_drawing_camera(selection['camera']) 
         frame_size = self.drawing_camera.ortho_scale
         self.render_resolution = get_resolution(frame_size, self.drawing_scale)

@@ -68,6 +68,7 @@ def get_framed_subjects(camera: bpy.types.Object,
     """ Check for all object instances in scene and return those which are 
         inside camera frame (and camera limits) as Drawing_subject(s)"""
 
+    global checked_objs
     depsgraph = bpy.context.evaluated_depsgraph_get()
     framed_subjects = []
     scene_tree = drawing_context.scene_tree
@@ -95,6 +96,7 @@ def get_framed_subjects(camera: bpy.types.Object,
             continue
 
         obj_inst_collections = get_object_collections(tree_obj, scene_tree)
+        checked_objs.clear()
         #print(obj_inst.object.name, obj_inst_collections)
         collections_hide_status = [(coll.hide_render or coll.hide_viewport) \
                 for coll in obj_inst_collections \
