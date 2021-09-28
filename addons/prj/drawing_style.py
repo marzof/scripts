@@ -30,6 +30,8 @@ STYLES = {
             'occlusion_end': 128,},
         'h': {'name': 'hid', 'default': False, 'occlusion_start': 1, 
             'occlusion_end': 128,},
+        's': {'name': 'sym', 'default': False, 'occlusion_start': 0, 
+            'occlusion_end': 128,},
         }
 
 drawing_styles = {}

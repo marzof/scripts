@@ -68,7 +68,8 @@ class Drawing_subject:
             parent: bpy.types.Object, is_instance: bool, 
             library: bpy.types.Library, cam_bound_box: list[Vector], 
             is_in_front: bool, is_behind: bool, 
-            collections: dict[bpy.types.Collection, str]):
+            collections: dict[bpy.types.Collection, str],
+            symbol_type: str = None):
         print('Create subject for', name)
         self.eval_obj = eval_obj
         self.name = name
@@ -91,6 +92,7 @@ class Drawing_subject:
         self.bounding_rect = []
         self.render_pixels = []
         self.pixels_range = []
+        self.symbol_type = symbol_type
 
         svg_path_args = {'main': True}
         ## Move a no-materials duplicate to working_scene: materials could 
@@ -109,6 +111,8 @@ class Drawing_subject:
         self.styles = [s for s in drawing_styles if drawing_styles[s].default]
         if self.is_cut:
             self.styles.append('c')
+        if self.symbol_type:
+            self.styles.append('s')
 
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)

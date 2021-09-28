@@ -29,12 +29,22 @@ from prj.utils import is_cut, is_framed, flatten, get_render_data, get_resolutio
 from prj.drawing_subject import Drawing_subject
 from prj.drawing_camera import get_drawing_camera
 from prj.working_scene import Working_scene, get_working_scene
+from mathutils import Vector
 import time
 
+## TODO review the entire code and try to make it more readable
 HI_RES_RENDER_FACTOR: int = 4
+CUSTOM_PROPERTIES = ['prj_symbol', 'prj_stair_mask']
 checked_objs = []
 is_visible = lambda obj: not obj.hide_render and not obj.hide_viewport \
         and not obj.hide_get()
+
+def is_parallel_to_camera(obj, drawing_camera):
+    mat = obj.matrix_world
+    obj_Z_axis = Vector((mat[0][2],mat[1][2],mat[2][2]))
+    dot_product = obj_Z_axis @ drawing_camera.direction
+    if round(abs(dot_product), 5) == 1:
+        return True
 
 def get_object_collections(obj: bpy.types.Object, scene_tree: dict[tuple[int], 
     bpy.types.Collection]) -> dict[bpy.types.Collection, str]:
@@ -76,15 +86,18 @@ def get_framed_subjects(camera: bpy.types.Object,
     for obj_inst in depsgraph.object_instances:
         print('Process', obj_inst.object.name)
 
+        ## Check if obj_inst is inside camera frame
         is_in_frame = is_framed(obj_inst, camera)
         if not is_in_frame['result']:
             continue
 
-        ## Create the temporary Drawing_subject
         inst_name=obj_inst.object.name
         inst_library=obj_inst.object.library
         lib_path = inst_library.filepath if inst_library else inst_library
         eval_obj = bpy.data.objects[inst_name, lib_path]
+        symbol_type = None
+
+        ## Detect actual object to process (obj_inst.obj or its parent)
         if eval_obj not in scene_tree.values():
             tree_obj = bpy.data.objects[obj_inst.parent.name]
             if tree_obj in checked_objs:
@@ -92,11 +105,23 @@ def get_framed_subjects(camera: bpy.types.Object,
         else:
             tree_obj = eval_obj
 
-        if not is_visible(tree_obj):
+        ## Filter not well oriented symbols (Z axis of tree_obj has to be 
+        ## parallel to camera direction)
+        for prop in tree_obj.keys():
+            if prop in CUSTOM_PROPERTIES:
+                symbol_type = prop
+                break
+        if symbol_type and not is_parallel_to_camera(tree_obj, 
+            drawing_context.drawing_camera):
             continue
 
+        ## Not proceeding if object is not visible
+        if not is_visible(tree_obj) and not symbol_type:
+            continue
+
+        ## Get object collections and check collections visibility
         obj_inst_collections = get_object_collections(tree_obj, scene_tree)
-        checked_objs.clear()
+        checked_objs.clear() ## TODO check why clear now
         #print(obj_inst.object.name, obj_inst_collections)
         collections_hide_status = [(coll.hide_render or coll.hide_viewport) \
                 for coll in obj_inst_collections \
@@ -105,6 +130,7 @@ def get_framed_subjects(camera: bpy.types.Object,
         if any(collections_hide_status):
             continue
 
+        ## Create the temporary Drawing_subject
         framed_subject = Drawing_subject(
                 eval_obj=bpy.data.objects[inst_name, lib_path],
                 name=inst_name,
@@ -118,6 +144,7 @@ def get_framed_subjects(camera: bpy.types.Object,
                 is_in_front=is_in_frame['in_front'], 
                 is_behind=is_in_frame['behind'], 
                 collections=obj_inst_collections,
+                symbol_type=symbol_type,
                 )
         framed_subjects.append(framed_subject)
 
@@ -174,8 +201,9 @@ def get_viewed_subjects(render_pixels: 'ImagingCore',
         if subj.color not in viewed_colors:
             if not drawing_camera or not is_cut(subj.obj, subj.matrix, 
                     drawing_camera.frame, drawing_camera.direction):
-                print(subj.name, 'is NOT VISIBLE')
-                continue
+                if not subj.symbol_type:
+                    print(subj.name, 'is NOT VISIBLE')
+                    continue
         print(subj.name, 'is VISIBLE')
         if drawing_camera:
             subj.get_bounding_rect()

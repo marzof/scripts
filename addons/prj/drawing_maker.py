@@ -130,6 +130,7 @@ def draw(subject: 'Drawing_subject', cutter: 'Cutter',
             cutter.change_solver('FAST')
 
     for draw_style in subject.styles:
+        draw_style = 's' if subject.symbol_type else draw_style
         print('draw', subject.name, 'in style', draw_style)
         draw_cut = draw_style == 'c'
         if draw_cut:   ## Hide all but cutter
