@@ -72,7 +72,7 @@ class Drawing_camera:
         self.clip_end = camera.data.clip_end
         self.matrix = camera.matrix_world
         self.local_frame = [v * Vector((1,1,self.clip_start)) 
-                for v in camera.data.view_frame()]
+                for v in camera.data.view_frame(scene=working_scene.scene)]
         self.frame = [camera.matrix_world @ v for v in self.local_frame]
         self.frame_origin = self.frame[2]
         self.frame_x_vector = self.frame[1] - self.frame[2]

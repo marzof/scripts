@@ -31,7 +31,7 @@ from prj.drawing_subject import reset_subjects_list
 from prj.working_scene import get_working_scene
 from prj.svg_path import reset_svgs_data
 from prj.cutter import get_cutter
-from prj.utils import get_scene_tree, get_resolution, MIN_UNIT_FRACTION
+from prj.utils import get_scene_tree, get_resolution, MIN_UNIT_FRACTION, flatten
 import time
 
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
@@ -83,23 +83,24 @@ class Drawing_context:
         object_args = self.__set_flagged_options()
         selection = self.__get_objects(object_args)
         self.selected_objects = selection['objects']
-        if not selection['camera']:
+        camera = selection['camera']
+        if not camera:
             print("\nJust one camera has to be selected")
             self.drawing_camera = None
             return
-        self.drawing_camera = get_drawing_camera(selection['camera']) 
-        frame_size = self.drawing_camera.ortho_scale
-        self.render_resolution = get_resolution(frame_size, self.drawing_scale)
+        self.render_resolution = get_resolution(camera.data,
+                bpy.context.scene, self.drawing_scale)
         self.working_scene = get_working_scene()
         self.working_scene.set_resolution(resolution=self.render_resolution)
+        self.drawing_camera = get_drawing_camera(camera) 
         self.scene_tree = get_scene_tree(bpy.context.scene.collection)
         self.subjects = get_subjects(self.selected_objects, self)
+        self.all_subjects = list(set(flatten(self.subjects.values())))
         self.cutter = get_cutter(self)
         self.svg_size = format_svg_size(
                 self.render_resolution[0] / MIN_UNIT_FRACTION,
                 self.render_resolution[1] / MIN_UNIT_FRACTION)
-        self.svg_factor = frame_size * self.drawing_scale * 100 * \
-                self.RESOLUTION_FACTOR / max(self.render_resolution)
+        self.svg_factor = self.RESOLUTION_FACTOR / (10 * MIN_UNIT_FRACTION)
         print('*** Drawing_context created in', time.time() - context_time)
 
     def __set_flagged_options(self) -> list[str]:

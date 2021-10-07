@@ -34,9 +34,9 @@ from prj.drawing_context import get_drawing_context, is_renderables
 from prj.drawing_camera import get_drawing_camera
 from prj.drawing_maker import draw
 from prj.drawing_subject import get_subjects_list
+from prj.drawing_symbol import Drawing_symbol
 from prj.drawing_style import create_drawing_styles, drawing_styles
 from prj.cutter import get_cutter
-from prj.utils import flatten
 from prj.working_scene import get_working_scene
 import time
 
@@ -190,13 +190,18 @@ def main() -> None:
         print('Back drawings are only possible by user interface')
         print('\n--- Process completed ---\n\n')
         return
-    all_subjects = list(set(flatten(draw_context.subjects.values())))
     working_scene = get_working_scene().scene
     bpy.context.window.scene = working_scene
-    draw_subjects(all_subjects, working_scene)
 
-    rewrite_svgs(all_subjects)
-    get_svg_composition(all_subjects)
+    stair_cuts = [subj for subj in draw_context.all_subjects \
+            if subj.is_symbol and subj.is_stair_cut]
+    for cut in stair_cuts:
+        cut.apply_stair_cut()
+
+    draw_subjects(draw_context.all_subjects, working_scene)
+
+    rewrite_svgs(draw_context.all_subjects)
+    get_svg_composition(draw_context.all_subjects)
     draw_context.remove()
     print(f"\n--- Completed in {time.time() - start_time} seconds ---\n\n")
 

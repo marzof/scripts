@@ -28,7 +28,7 @@ from prj.drawing_maker import add_line_art_mod, create_grease_pencil
 from prj.drawing_maker import GREASE_PENCIL_PREFIX
 from prj.working_scene import get_working_scene
 from prj.drawing_style import drawing_styles
-from prj.utils import remove_grease_pencil
+from prj.utils import remove_grease_pencil, add_modifier
 import time
 
 CAMERA_DISTANCE = .0001
@@ -78,7 +78,8 @@ class Cutter:
                 for v in camera.frame]
         self.obj = mesh_by_verts(CUTTER_NAME, cutter_verts, 
                 self.working_scene.scene)
-        self.modifier = self.add_boolean_mod()
+        self.modifier = add_modifier(self.obj, 'Cut', 'BOOLEAN', 
+                {'operation': 'INTERSECT', 'solver': 'EXACT'})
         
         lineart_gp_name = GREASE_PENCIL_PREFIX + self.obj.name
         self.lineart_gp = create_grease_pencil(lineart_gp_name, 
@@ -86,13 +87,6 @@ class Cutter:
         add_line_art_mod(self.lineart_gp, self.obj, 'OBJECT', 'p', False)
         self.obj.hide_viewport = True
         self.obj.hide_render = True
-
-    def add_boolean_mod(self) -> bpy.types.BooleanModifier:
-        """ Assign boolean modifier to self.obj and return it """
-        modifier = self.obj.modifiers.new('Cut', 'BOOLEAN')
-        modifier.operation = 'INTERSECT'
-        modifier.solver = 'EXACT'
-        return modifier
 
     def remove(self) -> None:
         self.working_scene.unlink_object(self.obj)

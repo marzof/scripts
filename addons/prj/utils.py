@@ -13,7 +13,30 @@ import time
 BASE_ROUNDING: int = 6
 MIN_UNIT_FRACTION = 2 ## 1 = 1 millimeter; 2 = 1/2 millimeter; 4 = 1/4 millimeter
 f_to_8_bit = lambda c: int(hex(int(c * 255)),0)
-    
+
+def create_line_mesh_obj(name: str, vertices: list[Vector],
+        collection: bpy.types.Collection) -> bpy.types.Object:
+    """ Return a new mesh object using vertices """
+    mesh = bpy.data.meshes.new(name)
+    obj = bpy.data.objects.new(name, mesh)
+    collection.objects.link(obj)
+    bm = bmesh.new()
+    verts = [bm.verts.new(v) for v in vertices]
+    edges = [bm.edges.new((verts[i], verts[i+1])) for i in range(len(verts)-1)]
+    bm.to_mesh(mesh)
+    bm.free()
+    return obj
+
+def add_modifier(obj: bpy.types.Object, mod_name: str, mod_type: str, 
+        params: dict, gpencil: bool= False) -> bpy.types.Modifier:
+    if gpencil:
+        mod = obj.grease_pencil_modifiers.new(mod_name, mod_type)
+    else:
+        mod = obj.modifiers.new(mod_name, mod_type)
+    for param in params:
+        setattr(mod, param, params[param])
+    return mod
+
 def reverse_camera(camera: bpy.types.Camera) -> None:
     """ Inverse camera matrix for back views """
     camera.matrix_world = (get_translate_matrix(camera) @ camera.matrix_world) \
@@ -88,19 +111,14 @@ class dotdict(dict):
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
-def get_resolution(cam_scale: float = None, 
+def get_resolution(camera: bpy.types.Camera, scene: bpy.types.Scene, 
         drawing_scale: float = None) -> list[int]:
-    base_resolution = int(math.ceil(cam_scale * drawing_scale * 1000 * \
-            MIN_UNIT_FRACTION))
-    frame_ratio = bpy.context.scene.render.resolution_x / \
-            bpy.context.scene.render.resolution_y
-    if frame_ratio > 1:
-        size_x = base_resolution
-        size_y = int(base_resolution / frame_ratio)
-    else:
-        size_x = int(base_resolution * frame_ratio)
-        size_y = base_resolution
-    return [size_x, size_y]
+    """ Get scene render resolution based on drawing_scale """
+    frame_size = camera.view_frame(scene=scene)
+    scale_factor = drawing_scale * 1000 * MIN_UNIT_FRACTION
+    x_size = int((frame_size[0].x - frame_size[2].x) * scale_factor)
+    y_size = int((frame_size[0].y - frame_size[2].y) * scale_factor)
+    return [x_size, y_size]
 
 def get_render_data(objects: list[bpy.types.Object], 
         scene: bpy.types.Scene) -> 'Imaging_Core':

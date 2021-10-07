@@ -25,7 +25,7 @@
 
 import bpy
 import os
-from prj.utils import make_active
+from prj.utils import make_active, add_modifier
 from prj.drawing_style import drawing_styles
 from prj.drawing_camera import get_drawing_camera
 from prj.working_scene import get_working_scene
@@ -49,23 +49,23 @@ def add_line_art_mod(gp: bpy.types.Object, source: bpy.types.Object,
 
     ## Create and setup lineart modifier
     gp_mod_name = GREASE_PENCIL_MOD + '_' + drawing_styles[style].name
-    gp.grease_pencil_modifiers.new(gp_mod_name, 'GP_LINEART')
-    gp_mod = gp.grease_pencil_modifiers[gp_mod_name]
-    gp_mod.target_layer = gp_layer.info
-    gp_mod.target_material = gp_mat
-    gp_mod.chaining_image_threshold = 0
-    gp_mod.use_multiple_levels = True
-    gp_mod.use_remove_doubles = True
-    gp_mod.use_crease = use_crease
-    gp_mod.use_clip_plane_boundaries = False
-    gp_mod.level_start = drawing_styles[style].occlusion_start
-    gp_mod.level_end = drawing_styles[style].occlusion_end
-    gp_mod.source_type = source_type
-    if source_type == 'OBJECT':
-        gp_mod.source_object = source
-    elif source_type == 'COLLECTION':
-        gp_mod.source_collection = source
-
+    source_key = 'source_object' if source_type == 'OBJECT' \
+            else 'source_collection'
+    gp_mod = add_modifier(gp, gp_mod_name, 'GP_LINEART', 
+            {
+                'target_layer': gp_layer.info,
+                'target_material': gp_mat,
+                'chaining_image_threshold': 0,
+                'use_multiple_levels': True,
+                'use_remove_doubles': True,
+                'use_crease': use_crease,
+                'use_clip_plane_boundaries': False,
+                'level_start': drawing_styles[style].occlusion_start,
+                'level_end': drawing_styles[style].occlusion_end,
+                'smooth_tolerance': 0.0,
+                'source_type': source_type,
+                source_key: source
+                }, True)
 
 def create_grease_pencil(name: str, scene: bpy.types.Scene) -> bpy.types.Object:
     """ Create a grease pencil """
@@ -110,7 +110,8 @@ def export_grease_pencil(subject: 'Drawing_subject',
     svg_main_path.add_object_path(subject, svg_path, svg_suffix)
 
     bpy.ops.wm.gpencil_export_svg(filepath=svg_path, 
-            selected_object_type='VISIBLE') # use_clip_camera=True causes error
+            selected_object_type='VISIBLE') ## use_clip_camera=True causes error
+                                            ## TODO need to do actual clipping
     if remove:
         subject.remove_grease_pencil()
     return svg_path

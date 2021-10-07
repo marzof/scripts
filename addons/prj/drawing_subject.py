@@ -27,7 +27,8 @@ import os
 import re
 import ast
 import math
-from mathutils import Vector
+import inspect
+from mathutils import Vector, geometry
 from prj.utils import point_in_quad, flatten, dotdict, to_hex, f_to_8_bit
 from prj.utils import frame_obj_bound_rect, unfold_ranges, remove_grease_pencil
 from prj.drawing_camera import get_drawing_camera
@@ -44,7 +45,7 @@ def get_subjects_list():
 def reset_subjects_list():
     global drawing_subjects
     drawing_subjects.clear()
-    
+
 class Drawing_subject:
     obj: bpy.types.Object
     bounding_rect: list[Vector]
@@ -61,6 +62,14 @@ class Drawing_subject:
 
     FULL_NAME_SEP: str = '_-_'
     SVG_DATA_RE = re.compile('(?s:.*)<!--\s(.*)\s-->', re.DOTALL)
+
+    def __new__(cls, *args, **data) -> 'Drawing_subject':
+        if data['symbol_type'] and inspect.stack()[1].function != '__new__':
+            print('Create symbol', data['name'])
+            from prj.drawing_symbol import Drawing_symbol
+            return Drawing_symbol(**data)
+        else:
+            return super(Drawing_subject, cls).__new__(cls)
 
     def __init__(self, eval_obj: bpy.types.Object, name: str, 
             drawing_context: 'Drawing_context',
@@ -93,6 +102,7 @@ class Drawing_subject:
         self.render_pixels = []
         self.pixels_range = []
         self.symbol_type = symbol_type
+        self.is_symbol = bool(symbol_type)
 
         svg_path_args = {'main': True}
         ## Move a no-materials duplicate to working_scene: materials could 
@@ -109,11 +119,12 @@ class Drawing_subject:
         self.is_behind = is_behind
         self.is_cut = self.is_in_front and self.is_behind
         self.styles = [s for s in drawing_styles if drawing_styles[s].default]
-        if self.is_cut:
-            self.styles.append('c')
-        if self.symbol_type:
+        if self.is_symbol:
             self.styles.append('s')
+        elif self.is_cut:
+            self.styles.append('c')
 
+        self.drawing_camera = get_drawing_camera()
         self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
         self.svg_path.add_object(self)
         self.previous_data = self.__get_previous_data()
@@ -159,8 +170,7 @@ class Drawing_subject:
     def get_svg_path(self, main: bool = False, 
             prefix: str = None, suffix: str = None) -> None:
         """ Return the svg filepath with prefix or suffix """
-        drawing_camera = get_drawing_camera()
-        path = drawing_camera.path
+        path = self.drawing_camera.path
         sep = "" if path.endswith(os.sep) else os.sep
         pfx = f"{prefix}_" if prefix else ""
         sfx = f"_{suffix}" if suffix else ""

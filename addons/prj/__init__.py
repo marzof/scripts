@@ -10,9 +10,24 @@ import copy
 from prj.drawing_context import get_drawing_context, is_renderables
 from prj.drawing_style import create_drawing_styles
 from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
-from prj.utils import flatten, reverse_camera
+from prj.utils import reverse_camera
 from prj.working_scene import get_working_scene
 import time
+
+symbol_type_descriptions = {
+        'general': 'Type of drawing symbol (drawn by cameras whose Z ' + \
+                'axis is parallel to object\'s Z axis)',
+        'stairs_cut': 'Stairs cut line (only firts and last verts are ' + \
+                'considered. Stairs parts on origin side are kept)',
+                }
+bpy.types.Object.prj_symbol_type = bpy.props.EnumProperty(
+        name='prj_symbol_type', description=symbol_type_descriptions['general'],
+        items=[
+            ('none', 'None', 'Not a symbol', 0), 
+            ('generic', 'Generic symbol', 'Generic symbol', 1),
+            ('stairs_cut', 'Stairs cut line', 
+                symbol_type_descriptions['stairs_cut'], 2),
+            ])
 
 STRING_NUMBERS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 DIGITS = {'NUMPAD_0', 'NUMPAD_1', 'NUMPAD_2', 'NUMPAD_3', 'NUMPAD_4', 
@@ -157,14 +172,19 @@ class Prj(bpy.types.Operator):
 
         create_drawing_styles()
         self.drawing_context = get_drawing_context(args)
-        all_subjects = list(set(flatten(self.drawing_context.subjects.values())))
         working_scene = get_working_scene().scene
         bpy.context.window.scene = working_scene
         depsgraph = bpy.context.evaluated_depsgraph_get()
-        draw_subjects(all_subjects, working_scene) 
 
-        rewrite_svgs(all_subjects)
-        get_svg_composition(all_subjects)
+        stair_cuts = [subj for subj in self.drawing_context.all_subjects \
+                if subj.is_symbol and subj.is_stair_cut]
+        for cut in stair_cuts:
+            cut.apply_stair_cut()
+        
+        draw_subjects(self.drawing_context.all_subjects, working_scene) 
+
+        rewrite_svgs(self.drawing_context.all_subjects)
+        get_svg_composition(self.drawing_context.all_subjects)
         self.reset_scene(reverse_cam = 'B' in self.flag_keys)
         print(f"\n--- Completed in {time.time() - start_time} seconds ---\n\n")
 
@@ -235,11 +255,29 @@ class Prj(bpy.types.Operator):
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
+
+class OBJECT_PT_prj_symbol(bpy.types.Panel):
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
+    bl_label = "Prj"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.use_property_split = True
+        obj = context.object
+        obj_type = obj.type
+        is_drawable = (obj_type in {'MESH', 'CURVE'})
+        if is_drawable:
+            layout.prop(obj, "prj_symbol_type", text="Symbol type")
+
 def register():
     bpy.utils.register_class(Prj)
+    bpy.utils.register_class(OBJECT_PT_prj_symbol)
 
 def unregister():
     bpy.utils.unregister_class(Prj)
+    bpy.utils.unregister_class(OBJECT_PT_prj_symbol)
 
 if __name__ == "__main__":
     register()

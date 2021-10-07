@@ -25,7 +25,7 @@
 import bpy
 import math
 import numpy as np
-from prj.utils import is_cut, is_framed, flatten, get_render_data, get_resolution
+from prj.utils import is_cut, is_framed, flatten, get_render_data
 from prj.drawing_subject import Drawing_subject
 from prj.drawing_camera import get_drawing_camera
 from prj.working_scene import Working_scene, get_working_scene
@@ -34,12 +34,12 @@ import time
 
 ## TODO review the entire code and try to make it more readable
 HI_RES_RENDER_FACTOR: int = 4
-CUSTOM_PROPERTIES = ['prj_symbol', 'prj_stair_mask']
 checked_objs = []
 is_visible = lambda obj: not obj.hide_render and not obj.hide_viewport \
         and not obj.hide_get()
 
-def is_parallel_to_camera(obj, drawing_camera):
+def is_parallel_to_camera(obj: bpy.types.Object,
+        drawing_camera: 'Drawing_camera') -> bool:
     mat = obj.matrix_world
     obj_Z_axis = Vector((mat[0][2],mat[1][2],mat[2][2]))
     dot_product = obj_Z_axis @ drawing_camera.direction
@@ -47,7 +47,7 @@ def is_parallel_to_camera(obj, drawing_camera):
         return True
 
 def get_object_collections(obj: bpy.types.Object, scene_tree: dict[tuple[int], 
-    bpy.types.Collection]) -> dict[bpy.types.Collection, str]:
+    bpy.types.Collection]) -> dict[bpy.types.Collection, list[str]]:
     """ Get the collections obj belongs to (based on scene_tree)"""
     global checked_objs
     obj_inst_collections = {}
@@ -57,6 +57,7 @@ def get_object_collections(obj: bpy.types.Object, scene_tree: dict[tuple[int],
         if scene_tree[position] != obj:
             continue
         checked_objs.append(obj)
+        parent_collection = scene_tree[position[:-1]]
         positions += 1
         ## For obj in position like (0, 0, 2, 1, 0, 1) get collections at 
         ##      position: (0,0), (0,0,2), (0,0,2,1), (0,0,2,1,0)
@@ -68,9 +69,11 @@ def get_object_collections(obj: bpy.types.Object, scene_tree: dict[tuple[int],
     ##      the collection is hidden
     for coll in tmp_collections:
         if tmp_collections.count(coll) < positions:
-            obj_inst_collections[coll] = 'WEAK'
+            obj_inst_collections[coll] = ['WEAK']
         else:
-            obj_inst_collections[coll] = 'STRONG'
+            obj_inst_collections[coll] = ['STRONG']
+        if coll == parent_collection:
+            obj_inst_collections[coll].append('PARENT')
     return obj_inst_collections
 
 def get_framed_subjects(camera: bpy.types.Object, 
@@ -95,7 +98,8 @@ def get_framed_subjects(camera: bpy.types.Object,
         inst_library=obj_inst.object.library
         lib_path = inst_library.filepath if inst_library else inst_library
         eval_obj = bpy.data.objects[inst_name, lib_path]
-        symbol_type = None
+        symbol_type = None if obj_inst.object.prj_symbol_type == 'none' \
+                else obj_inst.object.prj_symbol_type 
 
         ## Detect actual object to process (obj_inst.obj or its parent)
         if eval_obj not in scene_tree.values():
@@ -107,10 +111,6 @@ def get_framed_subjects(camera: bpy.types.Object,
 
         ## Filter not well oriented symbols (Z axis of tree_obj has to be 
         ## parallel to camera direction)
-        for prop in tree_obj.keys():
-            if prop in CUSTOM_PROPERTIES:
-                symbol_type = prop
-                break
         if symbol_type and not is_parallel_to_camera(tree_obj, 
             drawing_context.drawing_camera):
             continue
@@ -125,7 +125,7 @@ def get_framed_subjects(camera: bpy.types.Object,
         #print(obj_inst.object.name, obj_inst_collections)
         collections_hide_status = [(coll.hide_render or coll.hide_viewport) \
                 for coll in obj_inst_collections \
-                if obj_inst_collections[coll] == 'STRONG']
+                if 'STRONG' in obj_inst_collections[coll]]
         ## If any (STRONG) obj_inst collection is hidden then ignore the obj_inst
         if any(collections_hide_status):
             continue
@@ -147,7 +147,7 @@ def get_framed_subjects(camera: bpy.types.Object,
                 symbol_type=symbol_type,
                 )
         framed_subjects.append(framed_subject)
-
+        
     return framed_subjects
 
 def get_colors_spectrum(size: int) -> list[tuple[float]]:
@@ -198,12 +198,11 @@ def get_viewed_subjects(render_pixels: 'ImagingCore',
 
     visible_subjects = []
     for subj in subjects:
-        if subj.color not in viewed_colors:
+        if subj.color not in viewed_colors and not subj.is_symbol:
             if not drawing_camera or not is_cut(subj.obj, subj.matrix, 
                     drawing_camera.frame, drawing_camera.direction):
-                if not subj.symbol_type:
-                    print(subj.name, 'is NOT VISIBLE')
-                    continue
+                print(subj.name, 'is NOT VISIBLE')
+                continue
         print(subj.name, 'is VISIBLE')
         if drawing_camera:
             subj.get_bounding_rect()
@@ -229,11 +228,13 @@ def set_subjects_overlaps(visible_subjects: list[Drawing_subject]) -> None:
 def filter_selected_subjects(subjects: list[Drawing_subject],
         selected_objects: list[bpy.types.Object]) -> list [Drawing_subject]:
     """ Filter subjects based on selected_objects """
-    subject_is_selected = lambda subj: subj.eval_obj.original in selected_objects
-    parent_is_selected = lambda subj: subj.parent \
-                and subj.parent.original in selected_objects
-    selected_subjects = [subj for subj in subjects \
-            if subject_is_selected(subj) or parent_is_selected(subj)] 
+    selected_subjects = []
+    for subj in subjects:
+        subj_is_selected = subj.eval_obj.original in selected_objects
+        parent_is_selected = subj.parent and subj.parent.original \
+                in selected_objects
+        if subj_is_selected or parent_is_selected or subj.is_symbol:
+            selected_subjects.append(subj)
     return selected_subjects
 
 def get_previous_pixels_subjects(base_subjects: list[Drawing_subject], 
@@ -301,6 +302,8 @@ def get_subjects(selected_objects: list[bpy.types.Object],
             working_scene.add_subject(framed_subj)
     ## Calculate overlaps for every visible subject (based on bounding box)
     for subj in visible_subjects:
+        if subj.is_symbol:
+            continue
         subj.get_overlap_subjects(visible_subjects)
         
     ## Filter subjects by selection 

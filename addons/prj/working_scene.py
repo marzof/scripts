@@ -90,11 +90,11 @@ class Working_scene:
     def get_resolution(self) -> list[int]:
         return [self.scene.render.resolution_x, self.scene.render.resolution_y]
 
-    def set_resolution(self, cam_scale: float = None, 
+    def set_resolution(self, camera: bpy.types.Camera = None,
             drawing_scale: float = None, 
             resolution: list[int] = None) -> list[int]:
         if not resolution:
-            resolution = get_resolution(cam_scale, drawing_scale)
+            resolution = get_resolution(camera, self.scene, drawing_scale)
         self.scene.render.resolution_x = resolution[0]
         self.scene.render.resolution_y = resolution[1]
         return resolution
@@ -108,7 +108,7 @@ class Working_scene:
         for obj in self.scene.collection.all_objects:
             self.scene.collection.objects.unlink(obj)
             if clear:
-                bpy.data.objects.remove(obj)
+                bpy.data.meshes.remove(obj.data)
         bpy.data.scenes.remove(self.scene)
         global the_working_scene
         if self == the_working_scene:
