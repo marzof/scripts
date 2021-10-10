@@ -31,6 +31,7 @@ import inspect
 from mathutils import Vector, geometry
 from prj.utils import point_in_quad, flatten, dotdict, to_hex, f_to_8_bit
 from prj.utils import frame_obj_bound_rect, unfold_ranges, remove_grease_pencil
+from prj.utils import name_cleaner
 from prj.drawing_camera import get_drawing_camera
 from prj.drawing_style import drawing_styles
 from prj.svg_path import Svg_path
@@ -91,8 +92,12 @@ class Drawing_subject:
         self.mesh = mesh
         self.matrix = matrix
         self.parent = parent
-        self.full_name = f"{self.parent.name}{self.FULL_NAME_SEP}{self.name}" \
-                if self.parent else name
+        if self.parent:
+            clean_parent_name = name_cleaner(self.parent.name)
+            self.full_name = f"{clean_parent_name}{self.FULL_NAME_SEP}" + \
+                    f"{self.name}"
+        else:
+            self.full_name = name
         self.is_instance = is_instance
         self.library = library
         self.cam_bound_box = cam_bound_box
@@ -104,7 +109,6 @@ class Drawing_subject:
         self.symbol_type = symbol_type
         self.is_symbol = bool(symbol_type)
 
-        svg_path_args = {'main': True}
         ## Move a no-materials duplicate to working_scene: materials could 
         ## bother lineart (and originals are kept untouched)
         self.working_scene = get_working_scene()
@@ -125,8 +129,8 @@ class Drawing_subject:
             self.styles.append('c')
 
         self.drawing_camera = get_drawing_camera()
-        self.svg_path = Svg_path(path=self.get_svg_path(**svg_path_args))
-        self.svg_path.add_object(self)
+        self.svg_path = Svg_path(path=self.get_svg_path())
+        self.svg_path.add_subject(self)
         self.previous_data = self.__get_previous_data()
         self.previous_render_pixels = None if not self.previous_data \
                 else unfold_ranges(self.previous_data['render_pixels'])
@@ -139,6 +143,9 @@ class Drawing_subject:
         self.type = self.obj.type
         self.lineart_source_type = 'OBJECT'
         self.grease_pencil = None
+        self.conditions = {'is_cut': self.is_cut, 'xray': self.xray_drawing, 
+                'outline': self.draw_outline, 'wire': self.wire_drawing,
+                'back': self.back_drawing, 'symbol': self.is_symbol}
         drawing_subjects.append(self)
 
     def __get_previous_data(self):
@@ -167,8 +174,7 @@ class Drawing_subject:
         #        int(to_hex(a),0))
         self.color = (f_to_8_bit(r), f_to_8_bit(g), f_to_8_bit(b), f_to_8_bit(a))
 
-    def get_svg_path(self, main: bool = False, 
-            prefix: str = None, suffix: str = None) -> None:
+    def get_svg_path(self, prefix: str = None, suffix: str = None) -> str:
         """ Return the svg filepath with prefix or suffix """
         path = self.drawing_camera.path
         sep = "" if path.endswith(os.sep) else os.sep

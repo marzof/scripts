@@ -32,6 +32,7 @@ from prj.working_scene import get_working_scene
 from prj.svg_path import reset_svgs_data
 from prj.cutter import get_cutter
 from prj.utils import get_scene_tree, get_resolution, MIN_UNIT_FRACTION, flatten
+from prj.utils import name_cleaner, check_obj_name_uniqueness
 import time
 
 is_renderables = lambda obj: (obj.type, bool(obj.instance_collection)) \
@@ -94,6 +95,7 @@ class Drawing_context:
         self.working_scene.set_resolution(resolution=self.render_resolution)
         self.drawing_camera = get_drawing_camera(camera) 
         self.scene_tree = get_scene_tree(bpy.context.scene.collection)
+
         self.subjects = get_subjects(self.selected_objects, self)
         self.all_subjects = list(set(flatten(self.subjects.values())))
         self.cutter = get_cutter(self)

@@ -29,7 +29,7 @@ def reset_svgs_data():
     svgs_data.clear()
 
 class Svg_path:
-    objects: dict['Drawing_subject', list[dict[str, str]]]
+    subjects: dict['Drawing_subject', list[dict[str, str]]]
 
     def __new__(cls, *args, **data) -> 'Svg_path':
         path = data['path']
@@ -40,13 +40,13 @@ class Svg_path:
     def __init__(self, path: str):
         if path not in svgs_data:
             self.path = path
-            self.objects = {}
+            self.subjects = {}
             svgs_data[path] = self
 
-    def add_object(self, obj):
-        self.objects[obj] = []
+    def add_subject(self, subj: 'Drawing_subject') -> None:
+        self.subjects[subj] = []
 
-    def add_object_path(self, obj, path, data):
+    def add_subject_path(self, subj, path, data):
         file_data = {'path': path, 'data': data}
-        self.objects[obj].append(file_data)
+        self.subjects[subj].append(file_data)
 
