@@ -107,7 +107,7 @@ def export_grease_pencil(subject: 'Drawing_subject',
     svg_path = subject.get_svg_path(suffix=svg_suffix)
     
     svg_main_path = subject.svg_path
-    svg_main_path.add_object_path(subject, svg_path, svg_suffix)
+    svg_main_path.add_subject_path(subject, svg_path, svg_suffix)
 
     bpy.ops.wm.gpencil_export_svg(filepath=svg_path, 
             selected_object_type='VISIBLE') ## use_clip_camera=True causes error

@@ -25,7 +25,7 @@
 import bpy
 import math
 import numpy as np
-from prj.utils import is_cut, is_framed, flatten, get_render_data
+from prj.utils import is_cut, is_framed, flatten, get_render_data, name_cleaner
 from prj.drawing_subject import Drawing_subject
 from prj.drawing_camera import get_drawing_camera
 from prj.working_scene import Working_scene, get_working_scene
@@ -40,6 +40,7 @@ is_visible = lambda obj: not obj.hide_render and not obj.hide_viewport \
 
 def is_parallel_to_camera(obj: bpy.types.Object,
         drawing_camera: 'Drawing_camera') -> bool:
+    """ Check if obj z axis is parallel to drawing_camera z axis """
     mat = obj.matrix_world
     obj_Z_axis = Vector((mat[0][2],mat[1][2],mat[2][2]))
     dot_product = obj_Z_axis @ drawing_camera.direction
@@ -94,8 +95,8 @@ def get_framed_subjects(camera: bpy.types.Object,
         if not is_in_frame['result']:
             continue
 
-        inst_name=obj_inst.object.name
-        inst_library=obj_inst.object.library
+        inst_name = obj_inst.object.name
+        inst_library = obj_inst.object.library
         lib_path = inst_library.filepath if inst_library else inst_library
         eval_obj = bpy.data.objects[inst_name, lib_path]
         symbol_type = None if obj_inst.object.prj_symbol_type == 'none' \
@@ -113,6 +114,10 @@ def get_framed_subjects(camera: bpy.types.Object,
         ## parallel to camera direction)
         if symbol_type and not is_parallel_to_camera(tree_obj, 
             drawing_context.drawing_camera):
+            continue
+
+        ## Don't draw symbols in back view
+        if drawing_context.back_drawing and symbol_type:
             continue
 
         ## Not proceeding if object is not visible
@@ -133,7 +138,7 @@ def get_framed_subjects(camera: bpy.types.Object,
         ## Create the temporary Drawing_subject
         framed_subject = Drawing_subject(
                 eval_obj=bpy.data.objects[inst_name, lib_path],
-                name=inst_name,
+                name=name_cleaner(inst_name),
                 drawing_context=drawing_context,
                 mesh = bpy.data.meshes.new_from_object(obj_inst.object),
                 matrix=obj_inst.object.matrix_world.copy().freeze(),

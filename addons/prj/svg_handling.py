@@ -6,6 +6,7 @@ from prj.svgread import Svg_read
 from prj.svglib import AbsSvg_drawing, AbsStyle, AbsLayer, AbsUse
 from prj.svglib import AbsPath, AbsGroup
 from prj.utils import transform_points, get_path_coords, join_coords
+from prj.utils import name_cleaner
 from prj.drawing_camera import get_drawing_camera
 from prj.drawing_style import drawing_styles
 
@@ -17,8 +18,8 @@ def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
         -> AbsSvg_drawing:
     """ Create an abstract version of object svg """
 
-    files = {f['path']: {'obj':obj, 'data':f['data']} 
-            for obj in svg_path.objects for f in svg_path.objects[obj]}
+    files = {f['path']: {'subj':subj, 'data':f['data']} 
+            for subj in svg_path.subjects for f in svg_path.subjects[subj]}
     css = f"@import url(../{BASE_CSS});"
     abssvg = AbsSvg_drawing(context.svg_size)
     abssvg.set_id(SVG_ID)
@@ -33,11 +34,11 @@ def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
         abssvg.add_entity(abslayer)
 
     for f in files:
-        obj = files[f]['obj']
+        subj = files[f]['subj']
         layer_label = files[f]['data']
         abslayer = abslayers[layer_label]
         absgroup = AbsGroup()
-        absgroup.set_id(f'{obj.name}_{abslayer.label}')
+        absgroup.set_id(f'{subj.name}_{abslayer.label}')
         abslayer.add_entity(absgroup)
         is_cut = abslayer.label == 'cut'
 
@@ -63,8 +64,12 @@ def prepare_obj_svg(context: 'Drawing_context', svg_path: 'Svg_path') \
 
         for abspath in abspaths:
             abspath.add_class(layer_label)
-            for collection in obj.collections:
-                abspath.add_class(collection.name)
+            for collection in subj.collections:
+                abspath.add_class(name_cleaner(collection.name))
+            for condition in subj.conditions:
+                if not subj.conditions[condition]:
+                    continue
+                abspath.add_class(condition)
             absgroup.add_entity(abspath)
 
     for f in files:
@@ -122,6 +127,11 @@ def add_subjects_as_use(subjects: list['Drawing_subject'], style: str,
         new_use = AbsUse(link)
         new_use.set_id(use_id)
         new_use.set_attribute({'xlink:title': subject.name})
+        new_use.add_class(drawing_styles[style].name)
         for collection in subject.collections:
-            new_use.add_class(collection.name)
+            new_use.add_class(name_cleaner(collection.name))
+        for condition in subject.conditions:
+            if not subject.conditions[condition]:
+                continue
+            new_use.add_class(condition)
         container.add_entity(new_use)

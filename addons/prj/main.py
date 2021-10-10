@@ -22,8 +22,12 @@
 # Dependencies: 
 # TODO...
 
-import bpy
 import sys, os
+import site
+cwd = os.path.dirname(os.path.realpath(__file__))
+site.addsitedir(os.path.join(cwd, "libs", "site", "packages"))
+
+import bpy
 import prj
 from pathlib import Path as Filepath
 from prj.svg_path import svgs_data
@@ -38,7 +42,9 @@ from prj.drawing_symbol import Drawing_symbol
 from prj.drawing_style import create_drawing_styles, drawing_styles
 from prj.cutter import get_cutter
 from prj.working_scene import get_working_scene
+from prj.utils import check_obj_name_uniqueness
 import time
+
 
 drawings: list['Svg_drawing'] = []
 
@@ -103,7 +109,7 @@ def rewrite_svgs(subjects: list['Drawing_subject']) -> None:
     for svg_data in svgs_data:
         drawing_start_time = time.time()
         drawing_data = svgs_data[svg_data]
-        for subject in drawing_data.objects:
+        for subject in drawing_data.subjects:
             if subject not in subjects:
                 continue
             abstract_subj_svg = prepare_obj_svg(draw_context, drawing_data)
@@ -117,7 +123,7 @@ def append_subject_data(svg_file: 'io.TextIOWrapper',
         drawing_data: 'Svg_path') -> None:
     """ Append data about subject in svg_file """
     svg_file.write("<!--" + os.linesep)
-    for subject in drawing_data.objects:
+    for subject in drawing_data.subjects:
         svg_file.write(f'{{')
         svg_file.write(f'"subject": "{subject.name}",')
         svg_file.write(os.linesep)
@@ -173,6 +179,21 @@ def get_svg_composition(subjects: list['Drawing_subject']) -> None:
     composition = abstract_composition.to_real(composition_filepath)
     print(f'\t...completed in {(time.time() - composition_start_time)}\n')
 
+def check_formatting():
+    ## TODO comment and type hints
+    unique_names = check_obj_name_uniqueness()
+    if not unique_names['result']:
+        print('Please make the following objects names unique:')
+        print('*Note:')
+        print('\t# Uppercase and lowercase are considered as the same')
+        print('\t# Characters that are not alphanumeric or hyphen (-) ' + \
+                'are considered underscore (_)\n\n')
+        for obj_ref in unique_names['content']:
+            location = '' if not obj_ref[1] else f' in {obj_ref[1]}'
+            print(obj_ref[0] + location)
+        print('\n\n')
+        return {'result': False, 'content': unique_names['content']}
+    return {'result': True, 'content': []}
 
 def main() -> None:
     print('Start now')
@@ -180,6 +201,10 @@ def main() -> None:
 
     args = [arg for arg in sys.argv[sys.argv.index("--") + 1:]]
     print('args', args)
+
+    format_correctness = check_formatting()
+    if not format_correctness['result']:
+        raise Exception('OBJECTS NAMES NOT UNIQUE')
 
     create_drawing_styles()
     draw_context = get_drawing_context(args)

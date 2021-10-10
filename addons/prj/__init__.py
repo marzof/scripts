@@ -4,12 +4,17 @@ bl_info = {
     "category": "3D View",
 }
 
+import os
+import site
+cwd = os.path.dirname(os.path.realpath(__file__))
+site.addsitedir(os.path.join(cwd, "libs", "site", "packages"))
 import bpy
-import os, pathlib
+import pathlib
 import copy
 from prj.drawing_context import get_drawing_context, is_renderables
 from prj.drawing_style import create_drawing_styles
 from prj.main import draw_subjects, rewrite_svgs, get_svg_composition
+from prj.main import check_formatting
 from prj.utils import reverse_camera
 from prj.working_scene import get_working_scene
 import time
@@ -200,12 +205,13 @@ class Prj(bpy.types.Operator):
             return {'CANCELLED'}
         elif event.type in {'RET', 'NUMPAD_ENTER', 'LEFTMOUSE'}:
             context.area.header_text_set(None)
-            if 'B' in self.flag_keys and not self.selected_objects_names:
-                self.report({'WARNING'}, 
-                        "Back drawings need one or more objects selected")
-                return {'CANCELLED'}
             if 'B' in self.flag_keys:
+                if not self.selected_objects_names:
+                    self.report({'WARNING'}, 
+                            "Back drawings need one or more objects selected")
+                    return {'CANCELLED'}
                 reverse_camera(self.selected_camera)
+
             self.execute(context)
             return {'FINISHED'}
         else:
@@ -241,9 +247,6 @@ class Prj(bpy.types.Operator):
         self.initial_scene = bpy.context.scene
         self.initial_scene_camera = bpy.context.scene.camera
         self.initial_view_perspective = r3d.view_perspective
-        # In order to avoid drawing error need not to be in camera view
-        if r3d.view_perspective == 'CAMERA':
-            r3d.view_perspective = 'PERSP'
 
         selection = bpy.context.selected_objects
         self.selected_objects_names = [obj.name for obj in selection 
@@ -251,6 +254,22 @@ class Prj(bpy.types.Operator):
         self.selected_camera = self.get_camera(selection)
         if not self.selected_camera:
             return {'CANCELLED'}
+        format_correctness = check_formatting()
+        if not format_correctness['result']:
+            for obj in bpy.context.selected_objects:
+                obj.select_set(False)
+            for obj_ref in format_correctness['content']:
+                if obj_ref[1]:
+                    continue
+                bpy.data.objects[obj_ref].select_set(True)
+            bpy.context.view_layer.objects.active = None
+            self.report({'WARNING'}, "Wrong objects names, " + \
+                    "check the message in the system console")
+            return {'CANCELLED'}
+
+        # In order to avoid drawing error need not to be in camera view
+        if r3d.view_perspective == 'CAMERA':
+            r3d.view_perspective = 'PERSP'
 
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}

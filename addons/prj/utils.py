@@ -3,6 +3,7 @@
 
 import bpy, bmesh
 import os
+import re
 import math
 from PIL import Image
 from mathutils import Matrix, Vector, geometry
@@ -13,6 +14,36 @@ import time
 BASE_ROUNDING: int = 6
 MIN_UNIT_FRACTION = 2 ## 1 = 1 millimeter; 2 = 1/2 millimeter; 4 = 1/4 millimeter
 f_to_8_bit = lambda c: int(hex(int(c * 255)),0)
+
+def name_cleaner(name: str) -> str:
+    return re.sub(r'[^\w\d-]', '_', name, flags=re.IGNORECASE)
+
+def check_obj_name_uniqueness() -> dict:
+    """ Check if in the scene and in linked objects every object has a unique 
+        name (case insentive and not alphanumeric characters replaced by 
+        undescore) """
+    objects_names: list[tuple[str]] = []
+    duplicates: list[tuple[str]] = []
+    for lib in bpy.data.libraries:
+        with bpy.data.libraries.load(lib.filepath) as (data_from, data_to):
+            for obj_name in data_from.objects:
+                obj_ref = obj_name, lib.filepath
+                if obj_ref in bpy.data.objects:
+                    clean_name = (name_cleaner(obj_name).lower(), lib.filepath)
+                    if clean_name in objects_names:
+                        duplicates.append(obj_ref)
+                        continue
+                    objects_names.append(clean_name)
+    for obj in bpy.context.scene.collection.all_objects:
+        obj_ref = obj.name, None
+        clean_name = (name_cleaner(obj.name).lower(), None)
+        if clean_name in objects_names:
+            duplicates.append(obj_ref)
+            continue
+        objects_names.append(clean_name)
+    if duplicates:
+        return {'result': False, 'content': duplicates}
+    return {'result': True, 'content': []}
 
 def create_line_mesh_obj(name: str, vertices: list[Vector],
         collection: bpy.types.Collection) -> bpy.types.Object:
