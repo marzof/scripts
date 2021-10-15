@@ -25,7 +25,7 @@
 # - pstoedit
 
 
-import sys
+import sys, os
 from pathlib import Path
 import subprocess, shlex
 import re
@@ -42,10 +42,12 @@ factor_marker = '-f'
 
 
 def svg2dwg(path):
+    output_path = Path(path.parents[0]) / "DWGS"
+    output_path.mkdir(parents=True, exist_ok=True)
     filename = path.stem
     svg = filename + '.svg'
-    eps = filename + '.eps'
-    dxf = filename + '.dxf'
+    eps = str(output_path) + os.sep + filename + '.eps'
+    dxf = str(output_path) + os.sep + filename + '.dxf'
 
     subprocess.run(['inkscape', svg, '-C', '-o', eps])
 
@@ -54,7 +56,7 @@ def svg2dwg(path):
                     eps, dxf)
     subprocess.run(svg2dxf, shell=True) 
 
-    subprocess.run([oda_file_converter, path.parents[0], path.parents[0], 
+    subprocess.run([oda_file_converter, output_path, output_path,
         'ACAD2013', 'DWG', '1', '1', filename + '.dxf'])
     subprocess.run(['rm', eps, dxf])
 
