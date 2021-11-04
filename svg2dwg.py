@@ -31,17 +31,9 @@ import subprocess, shlex
 import re
 
 oda_file_converter = '/usr/bin/ODAFileConverter'
+scale_marker = '-s'
 
-scale_factor = 1
-factor_marker = '-f'
-#if factor_marker in args:
-#    factor_index = args.index(factor_marker) + 1 
-#    scale_factor = int(args[factor_index])
-#    print('### Render factor:', large_render_factor)
-#    del args[factor_index - 1 : factor_index + 1]
-
-
-def svg2dwg(path):
+def svg2dwg(path: Path, scale_factor: float) -> None:
     output_path = Path(path.parents[0]) / "DWGS"
     output_path.mkdir(parents=True, exist_ok=True)
     filename = path.stem
@@ -52,21 +44,32 @@ def svg2dwg(path):
     subprocess.run(['inkscape', svg, '-C', '-o', eps])
 
     svg2dxf = "pstoedit -xscale {} -yscale {} -dt -f ".format(str(scale_factor),
-            str(scale_factor)) + "'dxf_s:-polyaslines -ctl -mm' {} {}".format(
+            str(scale_factor)) + "'dxf_14:-polyaslines -ctl -mm' {} {}".format(
                     eps, dxf)
     subprocess.run(svg2dxf, shell=True) 
+    dxf_f = open(dxf, 'r')
+    dxf_content = dxf_f.read()
+    fixed_dxf_content = re.sub('\$LUNITS.*\n(\s*70).*\n(\s*)4', 
+            r'$LUNITS\n\g<1>\n\g<2>2', dxf_content, flags = re.MULTILINE)
+    dxf_f.close()
+    fixed_dxf = open(dxf, 'w')
+    fixed_dxf.write(fixed_dxf_content)
+    fixed_dxf.close()
 
     subprocess.run([oda_file_converter, output_path, output_path,
         'ACAD2013', 'DWG', '1', '1', filename + '.dxf'])
     subprocess.run(['rm', eps, dxf])
 
 def main():
-    #args = [arg for arg in sys.argv] #[sys.argv.index("--") + 1:]]
-    f = sys.argv[1]
+    args = [arg for arg in sys.argv] #[sys.argv.index("--") + 1:]]
+    if scale_marker in args:
+        scale_index = args.index(scale_marker) + 1 
+        scale_factor = float(args[scale_index])
+    else:
+        scale_factor = 1
+    f = sys.argv[-1]
     path = Path(f)
 
-    svg2dwg(path)
+    svg2dwg(path, scale_factor)
 
 main()
-
-
