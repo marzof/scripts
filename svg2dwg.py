@@ -32,6 +32,7 @@ import re
 
 oda_file_converter = '/usr/bin/ODAFileConverter'
 scale_marker = '-s'
+scale_re = re.compile("(\d*)[:\/](\d*)")
 
 def svg2dwg(path: Path, scale_factor: float) -> None:
     output_path = Path(path.parents[0]) / "DWGS"
@@ -60,11 +61,18 @@ def svg2dwg(path: Path, scale_factor: float) -> None:
         'ACAD2013', 'DWG', '1', '1', filename + '.dxf'])
     subprocess.run(['rm', eps, dxf])
 
+
 def main():
     args = [arg for arg in sys.argv] #[sys.argv.index("--") + 1:]]
     if scale_marker in args:
         scale_index = args.index(scale_marker) + 1 
-        scale_factor = float(args[scale_index])
+        if ':' in args[scale_index] or '/' in args[scale_index]:
+            scale = scale_re.search(args[scale_index])
+            base_scale_factor = float(scale.group(1)) / float(scale.group(2))
+        else: 
+            base_scale_factor = float(args[scale_index])
+        scale_factor = 1 / (base_scale_factor * 10)
+        print(scale_factor)
     else:
         scale_factor = 1
     f = sys.argv[-1]
