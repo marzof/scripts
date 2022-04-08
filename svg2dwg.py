@@ -35,6 +35,7 @@ scale_marker = '-s'
 scale_re = re.compile("(\d*)[:\/](\d*)")
 
 def svg2dwg(path: Path, scale_factor: float) -> None:
+    ## TODO fix path when called by a folder different from the svg one
     output_path = Path(path.parents[0]) / "DWGS"
     output_path.mkdir(parents=True, exist_ok=True)
     filename = path.stem
@@ -63,7 +64,13 @@ def svg2dwg(path: Path, scale_factor: float) -> None:
 
 
 def main():
+    ## TODO Multiple linked svgs are not converted in dxf: fix it
     args = [arg for arg in sys.argv] #[sys.argv.index("--") + 1:]]
+    if len(args) == 1:
+        ## Just the command has been given
+        print('Enter a scale factor with -s flag and an svg file to convert')
+        print('For example: svg2dwg -s 1:50 drawing.svg')
+        return
     if scale_marker in args:
         scale_index = args.index(scale_marker) + 1 
         if ':' in args[scale_index] or '/' in args[scale_index]:
@@ -72,7 +79,7 @@ def main():
         else: 
             base_scale_factor = float(args[scale_index])
         scale_factor = 1 / (base_scale_factor * 10)
-        print(scale_factor)
+        print('Scale_factor:', scale_factor)
     else:
         scale_factor = 1
     f = sys.argv[-1]
