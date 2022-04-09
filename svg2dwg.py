@@ -43,11 +43,15 @@ def svg2dwg(path: Path, scale_factor: float) -> None:
     eps = str(output_path) + os.sep + filename + '.eps'
     dxf = str(output_path) + os.sep + filename + '.dxf'
 
-    subprocess.run(['inkscape', svg, '-C', '-o', eps])
+    ## Ungroup (multiple times) all before exporting in eps to allow pstoedit 
+    ## to read every entities
+    svg2eps_cmd = ['inkscape', '--actions', 'select-all:groups; ' + \
+            'SelectionUnGroup; SelectionUnGroup; SelectionUnGroup; ' + \
+            f'export-filename: {eps}; export-do;', svg]
+    subprocess.run(svg2eps_cmd)
 
-    svg2dxf = "pstoedit -xscale {} -yscale {} -dt -f ".format(str(scale_factor),
-            str(scale_factor)) + "'dxf_14:-polyaslines -ctl -mm' {} {}".format(
-                    eps, dxf)
+    svg2dxf = f"pstoedit -xscale {str(scale_factor)} -yscale {str(scale_factor)}" 
+    svg2dxf += f" -dt -f 'dxf_14:-polyaslines -ctl -mm' {eps} {dxf}"
     subprocess.run(svg2dxf, shell=True) 
     dxf_f = open(dxf, 'r')
     dxf_content = dxf_f.read()
@@ -64,7 +68,6 @@ def svg2dwg(path: Path, scale_factor: float) -> None:
 
 
 def main():
-    ## TODO Multiple linked svgs are not converted in dxf: fix it
     args = [arg for arg in sys.argv] #[sys.argv.index("--") + 1:]]
     if len(args) == 1:
         ## Just the command has been given
