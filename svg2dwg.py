@@ -35,11 +35,10 @@ scale_marker = '-s'
 scale_re = re.compile("(\d*)[:\/](\d*)")
 
 def svg2dwg(path: Path, scale_factor: float) -> None:
-    ## TODO fix path when called by a folder different from the svg one
     output_path = Path(path.parents[0]) / "DWGS"
     output_path.mkdir(parents=True, exist_ok=True)
     filename = path.stem
-    svg = filename + '.svg'
+    svg = str(Path(path.parents[0])) + os.sep + filename + '.svg'
     eps = str(output_path) + os.sep + filename + '.eps'
     dxf = str(output_path) + os.sep + filename + '.dxf'
 
