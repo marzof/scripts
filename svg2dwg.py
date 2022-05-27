@@ -32,7 +32,7 @@ import re
 
 oda_file_converter = '/usr/bin/ODAFileConverter'
 scale_marker = '-s'
-scale_re = re.compile("(\d*)[:\/](\d*)")
+scale_re = re.compile("([\d,\.]*)[:\/]([\d,\.]*)")
 
 def svg2dwg(path: Path, scale_factor: float) -> None:
     output_path = Path(path.parents[0]) / "DWGS"
